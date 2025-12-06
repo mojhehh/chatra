@@ -9,29 +9,54 @@
 
   <!-- Firebase SDKs -->
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
 </head>
 
 <body class="bg-gray-900 text-white h-screen flex flex-col">
 
-  <!-- Chat Messages -->
-  <div id="messages"
-       class="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-800">
+  <!-- Login Form (visible by default) -->
+  <div id="loginForm" class="flex-1 flex items-center justify-center">
+    <div class="bg-gray-800 p-6 rounded-xl w-96">
+      <h2 class="text-xl font-bold mb-4 text-center">Login</h2>
+      <input id="emailInput" type="email" placeholder="Email" class="mb-4 p-2 rounded w-full bg-gray-600" required>
+      <input id="passwordInput" type="password" placeholder="Password" class="mb-4 p-2 rounded w-full bg-gray-600" required>
+      <input id="usernameInput" type="text" placeholder="Username" class="mb-4 p-2 rounded w-full bg-gray-600" required>
+      <button id="loginBtn" class="w-full p-3 bg-blue-500 rounded hover:bg-blue-600">Login</button>
+      <p class="mt-3 text-sm text-gray-400">Don't have an account? <a href="#" id="registerLink" class="text-blue-400">Register here</a></p>
+    </div>
   </div>
 
-  <!-- Message Input -->
-  <div class="p-4 bg-gray-700 flex">
-    <input id="msgInput"
-           class="flex-1 p-3 rounded bg-gray-600 outline-none"
-           placeholder="Type a message...">
-    <button id="sendBtn"
-            class="ml-3 px-4 py-2 bg-blue-500 rounded hover:bg-blue-600">
-      Send
-    </button>
+  <!-- Registration Form (hidden by default) -->
+  <div id="registerForm" class="flex-1 flex items-center justify-center hidden">
+    <div class="bg-gray-800 p-6 rounded-xl w-96">
+      <h2 class="text-xl font-bold mb-4 text-center">Register</h2>
+      <input id="regEmailInput" type="email" placeholder="Email" class="mb-4 p-2 rounded w-full bg-gray-600" required>
+      <input id="regPasswordInput" type="password" placeholder="Password" class="mb-4 p-2 rounded w-full bg-gray-600" required>
+      <input id="regUsernameInput" type="text" placeholder="Username" class="mb-4 p-2 rounded w-full bg-gray-600" required>
+      <button id="registerBtn" class="w-full p-3 bg-blue-500 rounded hover:bg-blue-600">Register</button>
+      <p class="mt-3 text-sm text-gray-400">Already have an account? <a href="#" id="loginLink" class="text-blue-400">Login here</a></p>
+    </div>
+  </div>
+
+  <!-- Chat Interface (hidden by default) -->
+  <div id="chatInterface" class="hidden flex-1 flex flex-col">
+
+    <!-- Chat Messages -->
+    <div id="messages" class="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-800">
+    </div>
+
+    <!-- Message Input -->
+    <div class="p-4 bg-gray-700 flex">
+      <input id="msgInput" class="flex-1 p-3 rounded bg-gray-600 outline-none" placeholder="Type a message...">
+      <button id="sendBtn" class="ml-3 px-4 py-2 bg-blue-500 rounded hover:bg-blue-600">
+        Send
+      </button>
+    </div>
   </div>
 
   <script>
-    // YOUR FIREBASE CONFIG
+    // Firebase configuration
     const firebaseConfig = {
       apiKey: "AIzaSyC945jY7UEh4sOOuuk7OMZVXeIh333kxVk",
       authDomain: "chat-app-710f0.firebaseapp.com",
@@ -44,23 +69,106 @@
 
     // Initialize Firebase
     firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
     const db = firebase.database();
 
-    // Ask for username
-    let username = localStorage.getItem("username");
-    if (!username) {
-      username = prompt("Enter a username:");
-      localStorage.setItem("username", username);
-    }
-
+    // DOM elements
+    const loginForm = document.getElementById("loginForm");
+    const registerForm = document.getElementById("registerForm");
+    const chatInterface = document.getElementById("chatInterface");
+    const emailInput = document.getElementById("emailInput");
+    const passwordInput = document.getElementById("passwordInput");
+    const usernameInput = document.getElementById("usernameInput");
+    const loginBtn = document.getElementById("loginBtn");
+    const regEmailInput = document.getElementById("regEmailInput");
+    const regPasswordInput = document.getElementById("regPasswordInput");
+    const regUsernameInput = document.getElementById("regUsernameInput");
+    const registerBtn = document.getElementById("registerBtn");
     const msgInput = document.getElementById("msgInput");
     const sendBtn = document.getElementById("sendBtn");
     const messagesDiv = document.getElementById("messages");
+
+    // Switch to Register form
+    document.getElementById("registerLink").onclick = () => {
+      loginForm.classList.add("hidden");
+      registerForm.classList.remove("hidden");
+    };
+
+    // Switch to Login form
+    document.getElementById("loginLink").onclick = () => {
+      registerForm.classList.add("hidden");
+      loginForm.classList.remove("hidden");
+    };
+
+    // Register User
+    registerBtn.onclick = async () => {
+      const email = regEmailInput.value.trim();
+      const password = regPasswordInput.value.trim();
+      const username = regUsernameInput.value.trim();
+
+      if (email === "" || password === "" || username === "") return;
+
+      try {
+        // Create user with email and password
+        const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+        const user = userCredential.user;
+
+        // Save the username in Firebase Database
+        const userRef = db.ref("users/" + user.uid);
+        await userRef.set({ username: username });
+
+        // Store the username in local storage
+        localStorage.setItem("username", username);
+
+        // Hide registration form and show login form
+        registerForm.classList.add("hidden");
+        loginForm.classList.remove("hidden");
+
+        alert("Registration successful! Please login.");
+      } catch (error) {
+        console.error("Error registering:", error);
+        alert("Registration failed: " + error.message);
+      }
+    };
+
+    // Sign In User
+    loginBtn.onclick = async () => {
+      const email = emailInput.value.trim();
+      const password = passwordInput.value.trim();
+      const username = usernameInput.value.trim();
+
+      if (email === "" || password === "" || username === "") return;
+
+      try {
+        // Sign in with email and password
+        const userCredential = await auth.signInWithEmailAndPassword(email, password);
+        const user = userCredential.user;
+
+        // Save the username in Firebase Database if it's the first time logging in
+        const userRef = db.ref("users/" + user.uid);
+        const snapshot = await userRef.once("value");
+        if (!snapshot.exists()) {
+          await userRef.set({ username: username });
+        }
+
+        // Store the username in local storage
+        localStorage.setItem("username", username);
+
+        // Hide login form and show chat interface
+        loginForm.classList.add("hidden");
+        chatInterface.classList.remove("hidden");
+      } catch (error) {
+        console.error("Error signing in:", error);
+        alert("Login failed: " + error.message);
+      }
+    };
 
     // Send a message
     sendBtn.onclick = () => {
       const text = msgInput.value.trim();
       if (text === "") return;
+
+      const username = localStorage.getItem("username");
 
       db.ref("messages").push({
         user: username,
@@ -71,10 +179,9 @@
       msgInput.value = "";
     };
 
-    // Listen for new messages in realtime
+    // Listen for new messages in real-time
     db.ref("messages").on("child_added", snap => {
       const msg = snap.val();
-
       const el = document.createElement("div");
       el.innerHTML = `
         <div class="p-3 bg-gray-700 rounded">
@@ -82,7 +189,6 @@
           ${msg.text}
         </div>
       `;
-
       messagesDiv.appendChild(el);
 
       // Auto scroll to bottom
