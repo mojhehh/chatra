@@ -15,14 +15,40 @@
 
 <body class="bg-gray-900 text-white h-screen flex flex-col">
 
-  <!-- Login Form -->
+  <!-- Login Form (visible by default) -->
   <div id="loginForm" class="flex-1 flex items-center justify-center">
     <div class="bg-gray-800 p-6 rounded-xl w-96">
       <h2 class="text-xl font-bold mb-4 text-center">Login</h2>
-      <input id="emailInput" type="email" placeholder="Email" class="mb-4 p-2 rounded w-full bg-gray-600" required>
-      <input id="passwordInput" type="password" placeholder="Password" class="mb-4 p-2 rounded w-full bg-gray-600" required>
-      <button id="loginBtn" class="w-full p-3 bg-blue-500 rounded hover:bg-blue-600">Login</button>
-      <p class="mt-3 text-sm text-gray-400">Don't have an account? <a href="#" id="registerLink" class="text-blue-400">Register here</a></p>
+
+      <!-- Username only -->
+      <input
+        id="loginUsername"
+        type="text"
+        placeholder="Username"
+        class="mb-4 p-2 rounded w-full bg-gray-600"
+        required
+      />
+
+      <!-- Password -->
+      <input
+        id="loginPassword"
+        type="password"
+        placeholder="Password"
+        class="mb-4 p-2 rounded w-full bg-gray-600"
+        required
+      />
+
+      <button
+        id="loginBtn"
+        class="w-full p-3 bg-blue-500 rounded hover:bg-blue-600"
+      >
+        Login
+      </button>
+
+      <p class="mt-3 text-sm text-gray-400">
+        Don't have an account?
+        <a href="#" id="registerLink" class="text-blue-400">Register here</a>
+      </p>
     </div>
   </div>
 
@@ -30,20 +56,61 @@
   <div id="registerForm" class="flex-1 flex items-center justify-center hidden">
     <div class="bg-gray-800 p-6 rounded-xl w-96">
       <h2 class="text-xl font-bold mb-4 text-center">Register</h2>
-      <input id="regEmailInput" type="email" placeholder="Email" class="mb-4 p-2 rounded w-full bg-gray-600" required>
-      <input id="regPasswordInput" type="password" placeholder="Password" class="mb-4 p-2 rounded w-full bg-gray-600" required>
-      <input id="regUsernameInput" type="text" placeholder="Username" class="mb-4 p-2 rounded w-full bg-gray-600" required>
-      <button id="registerBtn" class="w-full p-3 bg-blue-500 rounded hover:bg-blue-600">Register</button>
-      <p class="mt-3 text-sm text-gray-400">Already have an account? <a href="#" id="loginLink" class="text-blue-400">Login here</a></p>
+
+      <!-- Username -->
+      <input
+        id="regUsername"
+        type="text"
+        placeholder="Username"
+        class="mb-4 p-2 rounded w-full bg-gray-600"
+        required
+      />
+
+      <!-- Password -->
+      <input
+        id="regPassword"
+        type="password"
+        placeholder="Password"
+        class="mb-4 p-2 rounded w-full bg-gray-600"
+        required
+      />
+
+      <button
+        id="registerBtn"
+        class="w-full p-3 bg-blue-500 rounded hover:bg-blue-600"
+      >
+        Register
+      </button>
+
+      <p class="mt-3 text-sm text-gray-400">
+        Already have an account?
+        <a href="#" id="loginLink" class="text-blue-400">Login here</a>
+      </p>
     </div>
   </div>
 
   <!-- Chat Interface (hidden by default) -->
   <div id="chatInterface" class="hidden flex-1 flex flex-col">
-    <div id="messages" class="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-800"></div>
+
+    <!-- Chat Messages -->
+    <div
+      id="messages"
+      class="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-800"
+    ></div>
+
+    <!-- Message Input -->
     <div class="p-4 bg-gray-700 flex">
-      <input id="msgInput" class="flex-1 p-3 rounded bg-gray-600 outline-none" placeholder="Type a message...">
-      <button id="sendBtn" class="ml-3 px-4 py-2 bg-blue-500 rounded hover:bg-blue-600">Send</button>
+      <input
+        id="msgInput"
+        class="flex-1 p-3 rounded bg-gray-600 outline-none"
+        placeholder="Type a message..."
+      />
+      <button
+        id="sendBtn"
+        class="ml-3 px-4 py-2 bg-blue-500 rounded hover:bg-blue-600"
+      >
+        Send
+      </button>
     </div>
   </div>
 
@@ -68,54 +135,73 @@
     const loginForm = document.getElementById("loginForm");
     const registerForm = document.getElementById("registerForm");
     const chatInterface = document.getElementById("chatInterface");
-    const emailInput = document.getElementById("emailInput");
-    const passwordInput = document.getElementById("passwordInput");
-    const usernameInput = document.getElementById("usernameInput");
+
+    const loginUsernameInput = document.getElementById("loginUsername");
+    const loginPasswordInput = document.getElementById("loginPassword");
     const loginBtn = document.getElementById("loginBtn");
-    const regEmailInput = document.getElementById("regEmailInput");
-    const regPasswordInput = document.getElementById("regPasswordInput");
-    const regUsernameInput = document.getElementById("regUsernameInput");
+
+    const regUsernameInput = document.getElementById("regUsername");
+    const regPasswordInput = document.getElementById("regPassword");
     const registerBtn = document.getElementById("registerBtn");
+
     const msgInput = document.getElementById("msgInput");
     const sendBtn = document.getElementById("sendBtn");
     const messagesDiv = document.getElementById("messages");
 
+    const registerLink = document.getElementById("registerLink");
+    const loginLink = document.getElementById("loginLink");
+
     // Switch to Register form
-    document.getElementById("registerLink").onclick = () => {
+    registerLink.onclick = () => {
       loginForm.classList.add("hidden");
       registerForm.classList.remove("hidden");
     };
 
     // Switch to Login form
-    document.getElementById("loginLink").onclick = () => {
+    loginLink.onclick = () => {
       registerForm.classList.add("hidden");
       loginForm.classList.remove("hidden");
     };
 
-    // Register User
-    registerBtn.onclick = async () => {
-      const email = regEmailInput.value.trim();
-      const password = regPasswordInput.value.trim();
-      const username = regUsernameInput.value.trim();
+    // Helper: make fake email from username
+    function makeEmailFromUsername(username) {
+      // you can change the domain if you want
+      return username.toLowerCase() + "@gmail.com";
+    }
 
-      if (email === "" || password === "" || username === "") return;
+    // Register User (username + password only)
+    registerBtn.onclick = async () => {
+      const username = regUsernameInput.value.trim();
+      const password = regPasswordInput.value.trim();
+
+      if (!username || !password) {
+        alert("Please fill username and password.");
+        return;
+      }
+
+      // IMPORTANT: make sure usernames don't contain spaces or '@'
+      if (username.includes("@") || username.includes(" ")) {
+        alert("Username can't have spaces or '@'.");
+        return;
+      }
+
+      const fakeEmail = makeEmailFromUsername(username);
 
       try {
-        // Create user with email and password
-        const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+        const userCredential = await auth.createUserWithEmailAndPassword(
+          fakeEmail,
+          password
+        );
         const user = userCredential.user;
 
         // Save the username in Firebase Database
         const userRef = db.ref("users/" + user.uid);
-        await userRef.set({
-          username: username,
-          email: email
-        });
+        await userRef.set({ username });
 
         // Store the username in localStorage
         localStorage.setItem("username", username);
 
-        // Hide registration form and show login form
+        // Switch back to login
         registerForm.classList.add("hidden");
         loginForm.classList.remove("hidden");
 
@@ -126,33 +212,34 @@
       }
     };
 
-    // Sign In User
+    // Sign In User (username + password only)
     loginBtn.onclick = async () => {
-      const email = emailInput.value.trim();
-      const password = passwordInput.value.trim();
+      const username = loginUsernameInput.value.trim();
+      const password = loginPasswordInput.value.trim();
 
-      if (email === "" || password === "") return;
+      if (!username || !password) {
+        alert("Please fill username and password.");
+        return;
+      }
+
+      if (username.includes("@") || username.includes(" ")) {
+        alert("Username can't have spaces or '@'.");
+        return;
+      }
+
+      const fakeEmail = makeEmailFromUsername(username);
 
       try {
-        // Sign in with email and password
-        const userCredential = await auth.signInWithEmailAndPassword(email, password);
+        const userCredential = await auth.signInWithEmailAndPassword(
+          fakeEmail,
+          password
+        );
         const user = userCredential.user;
 
-        // Retrieve user data from Firebase
-        const userRef = db.ref("users/" + user.uid);
-        const snapshot = await userRef.once("value");
-        
-        // If no user data, ask for a username and save it
-        if (!snapshot.exists()) {
-          const username = prompt("Please enter a username:");
-          await userRef.set({ username: username });
-          localStorage.setItem("username", username);
-        } else {
-          const username = snapshot.val().username;
-          localStorage.setItem("username", username);
-        }
+        // Store username in localStorage for chat
+        localStorage.setItem("username", username);
 
-        // Hide login form and show chat interface
+        // Show chat
         loginForm.classList.add("hidden");
         chatInterface.classList.remove("hidden");
       } catch (error) {
@@ -166,7 +253,7 @@
       const text = msgInput.value.trim();
       if (text === "") return;
 
-      const username = localStorage.getItem("username");
+      const username = localStorage.getItem("username") || "Unknown";
 
       db.ref("messages").push({
         user: username,
@@ -177,13 +264,13 @@
       msgInput.value = "";
     };
 
-    // Listen for new messages in real--time
-    db.ref("messages").on("child_added", snap => {
+    // Listen for new messages in real-time
+    db.ref("messages").on("child_added", (snap) => {
       const msg = snap.val();
       const el = document.createElement("div");
       el.innerHTML = `
         <div class="p-3 bg-gray-700 rounded">
-          <span class="font-bold text-orange-300">${msg.user}</span>: 
+          <span class="font-bold text-orange-300">${msg.user}</span>:
           ${msg.text}
         </div>
       `;
