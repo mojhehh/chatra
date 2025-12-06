@@ -25,7 +25,7 @@
         id="loginUsername"
         type="text"
         placeholder="Username"
-        class="mb-4 p-2 rounded w-full bg-gray-600"
+        class="mb-3 p-2 rounded w-full bg-gray-600"
         required
       />
 
@@ -34,9 +34,19 @@
         id="loginPassword"
         type="password"
         placeholder="Password"
-        class="mb-4 p-2 rounded w-full bg-gray-600"
+        class="mb-3 p-2 rounded w-full bg-gray-600"
         required
       />
+
+      <!-- Remember me -->
+      <label class="flex items-center gap-2 mb-3 text-sm text-gray-300">
+        <input id="rememberMe" type="checkbox" class="h-4 w-4">
+        <span>Remember me on this device</span>
+      </label>
+
+      <!-- Error / info messages -->
+      <p id="loginError" class="text-sm text-red-400 min-h-[1.25rem] mb-1"></p>
+      <p id="loginInfo" class="text-sm text-emerald-400 min-h-[1.25rem] mb-2"></p>
 
       <button
         id="loginBtn"
@@ -62,7 +72,7 @@
         id="regUsername"
         type="text"
         placeholder="Username"
-        class="mb-4 p-2 rounded w-full bg-gray-600"
+        class="mb-3 p-2 rounded w-full bg-gray-600"
         required
       />
 
@@ -71,9 +81,21 @@
         id="regPassword"
         type="password"
         placeholder="Password"
-        class="mb-4 p-2 rounded w-full bg-gray-600"
+        class="mb-3 p-2 rounded w-full bg-gray-600"
         required
       />
+
+      <!-- Confirm Password -->
+      <input
+        id="regPasswordConfirm"
+        type="password"
+        placeholder="Confirm Password"
+        class="mb-3 p-2 rounded w-full bg-gray-600"
+        required
+      />
+
+      <!-- Error / info messages -->
+      <p id="registerError" class="text-sm text-red-400 min-h-[1.25rem] mb-2"></p>
 
       <button
         id="registerBtn"
@@ -91,6 +113,17 @@
 
   <!-- Chat Interface (hidden by default) -->
   <div id="chatInterface" class="hidden flex-1 flex flex-col">
+
+    <!-- Chat header with user + logout -->
+    <div class="flex items-center justify-between px-4 py-2 bg-gray-900 border-b border-gray-800">
+      <span id="chatUserLabel" class="text-sm text-gray-300"></span>
+      <button
+        id="logoutBtn"
+        class="text-sm px-3 py-1 rounded bg-red-500 hover:bg-red-600"
+      >
+        Logout
+      </button>
+    </div>
 
     <!-- Chat Messages -->
     <div
@@ -129,59 +162,115 @@
     // Initialize Firebase
     firebase.initializeApp(firebaseConfig);
     const auth = firebase.auth();
-    const db = firebase.database();
+    const db   = firebase.database();
 
     // DOM elements
-    const loginForm = document.getElementById("loginForm");
+    const loginForm   = document.getElementById("loginForm");
     const registerForm = document.getElementById("registerForm");
     const chatInterface = document.getElementById("chatInterface");
 
-    const loginUsernameInput = document.getElementById("loginUsername");
-    const loginPasswordInput = document.getElementById("loginPassword");
-    const loginBtn = document.getElementById("loginBtn");
+    const loginUsernameInput  = document.getElementById("loginUsername");
+    const loginPasswordInput  = document.getElementById("loginPassword");
+    const rememberMeCheckbox  = document.getElementById("rememberMe");
+    const loginBtn            = document.getElementById("loginBtn");
+    const loginError          = document.getElementById("loginError");
+    const loginInfo           = document.getElementById("loginInfo");
 
-    const regUsernameInput = document.getElementById("regUsername");
-    const regPasswordInput = document.getElementById("regPassword");
-    const registerBtn = document.getElementById("registerBtn");
+    const regUsernameInput        = document.getElementById("regUsername");
+    const regPasswordInput        = document.getElementById("regPassword");
+    const regPasswordConfirmInput = document.getElementById("regPasswordConfirm");
+    const registerBtn             = document.getElementById("registerBtn");
+    const registerError           = document.getElementById("registerError");
 
-    const msgInput = document.getElementById("msgInput");
-    const sendBtn = document.getElementById("sendBtn");
+    const msgInput    = document.getElementById("msgInput");
+    const sendBtn     = document.getElementById("sendBtn");
     const messagesDiv = document.getElementById("messages");
 
-    const registerLink = document.getElementById("registerLink");
-    const loginLink = document.getElementById("loginLink");
+    const registerLink  = document.getElementById("registerLink");
+    const loginLink     = document.getElementById("loginLink");
+    const logoutBtn     = document.getElementById("logoutBtn");
+    const chatUserLabel = document.getElementById("chatUserLabel");
+
+    // Helper: clear messages
+    function clearLoginMessages() {
+      loginError.textContent = "";
+      loginInfo.textContent  = "";
+    }
+
+    function clearRegisterMessages() {
+      registerError.textContent = "";
+    }
+
+    function updateChatUserLabel(username) {
+      chatUserLabel.textContent = username ? `Logged in as ${username}` : "";
+    }
+
+    // On load: prefill username if "remember me" was used
+    (function initRememberMe() {
+      const remember      = localStorage.getItem("rememberMe") === "true";
+      const savedUsername = localStorage.getItem("rememberedUsername");
+      if (remember && savedUsername) {
+        rememberMeCheckbox.checked = true;
+        loginUsernameInput.value   = savedUsername;
+      }
+    })();
 
     // Switch to Register form
     registerLink.onclick = () => {
+      clearLoginMessages();
       loginForm.classList.add("hidden");
       registerForm.classList.remove("hidden");
     };
 
     // Switch to Login form
     loginLink.onclick = () => {
+      clearRegisterMessages();
       registerForm.classList.add("hidden");
       loginForm.classList.remove("hidden");
     };
 
     // Helper: make fake email from username
     function makeEmailFromUsername(username) {
-      // you can change the domain if you want
       return username.toLowerCase() + "@gmail.com";
     }
 
-    // Register User (username + password only)
-    registerBtn.onclick = async () => {
-      const username = regUsernameInput.value.trim();
-      const password = regPasswordInput.value.trim();
+    // 🔍 Check if username is already taken in DB
+    async function isUsernameTaken(username) {
+      const snapshot = await db
+        .ref("users")
+        .orderByChild("username")
+        .equalTo(username)
+        .once("value");
 
-      if (!username || !password) {
-        alert("Please fill username and password.");
+      return snapshot.exists();
+    }
+
+    // Register User (username + password + confirm)
+    registerBtn.onclick = async () => {
+      clearRegisterMessages();
+
+      const username        = regUsernameInput.value.trim();
+      const password        = regPasswordInput.value.trim();
+      const passwordConfirm = regPasswordConfirmInput.value.trim();
+
+      if (!username || !password || !passwordConfirm) {
+        registerError.textContent = "Please fill all fields.";
         return;
       }
 
-      // IMPORTANT: make sure usernames don't contain spaces or '@'
       if (username.includes("@") || username.includes(" ")) {
-        alert("Username can't have spaces or '@'.");
+        registerError.textContent = "Username can't have spaces or '@'.";
+        return;
+      }
+
+      if (password !== passwordConfirm) {
+        registerError.textContent = "Passwords do not match.";
+        return;
+      }
+
+      // NEW: check username in database
+      if (await isUsernameTaken(username)) {
+        registerError.textContent = "That username is already taken.";
         return;
       }
 
@@ -198,55 +287,136 @@
         const userRef = db.ref("users/" + user.uid);
         await userRef.set({ username });
 
-        // Store the username in localStorage
+        // Store the username in localStorage (for chat)
         localStorage.setItem("username", username);
 
-        // Switch back to login
+        // Log them out so they still go through login flow
+        await auth.signOut();
+
+        // Switch back to login, show success message
         registerForm.classList.add("hidden");
         loginForm.classList.remove("hidden");
-
-        alert("Registration successful! Please login.");
+        clearLoginMessages();
+        loginInfo.textContent = "Account created! You can log in now.";
       } catch (error) {
         console.error("Error registering:", error);
-        alert("Registration failed: " + error.message);
+        if (error.code === "auth/email-already-in-use") {
+          registerError.textContent = "That username is already taken.";
+        } else if (error.code === "auth/weak-password") {
+          registerError.textContent = "Password is too weak.";
+        } else {
+          registerError.textContent = "Could not register. Try again.";
+        }
       }
     };
 
-    // Sign In User (username + password only)
+    // Sign In User (username + password only) with persistence
     loginBtn.onclick = async () => {
+      clearLoginMessages();
+
       const username = loginUsernameInput.value.trim();
       const password = loginPasswordInput.value.trim();
+      const remember = rememberMeCheckbox.checked;
 
       if (!username || !password) {
-        alert("Please fill username and password.");
+        loginError.textContent = "Please fill username and password.";
         return;
       }
 
       if (username.includes("@") || username.includes(" ")) {
-        alert("Username can't have spaces or '@'.");
+        loginError.textContent = "Username can't have spaces or '@'.";
         return;
       }
 
       const fakeEmail = makeEmailFromUsername(username);
 
       try {
+        // Set persistence based on "remember me"
+        const persistence = remember
+          ? firebase.auth.Auth.Persistence.LOCAL   // stay logged in across restarts
+          : firebase.auth.Auth.Persistence.SESSION; // only until browser/tab closed
+
+        await auth.setPersistence(persistence);
+
         const userCredential = await auth.signInWithEmailAndPassword(
           fakeEmail,
           password
         );
         const user = userCredential.user;
 
-        // Store username in localStorage for chat
+        // Store username for chat
         localStorage.setItem("username", username);
+
+        // Handle remember me
+        if (remember) {
+          localStorage.setItem("rememberMe", "true");
+          localStorage.setItem("rememberedUsername", username);
+        } else {
+          localStorage.removeItem("rememberMe");
+          localStorage.removeItem("rememberedUsername");
+        }
+
+        updateChatUserLabel(username);
 
         // Show chat
         loginForm.classList.add("hidden");
         chatInterface.classList.remove("hidden");
       } catch (error) {
         console.error("Error signing in:", error);
-        alert("Login failed: " + error.message);
+        loginError.textContent = "Wrong username or password.";
       }
     };
+
+    // Logout
+    logoutBtn.onclick = async () => {
+      try {
+        await auth.signOut();
+      } catch (e) {
+        console.error("Error signing out:", e);
+      }
+
+      chatInterface.classList.add("hidden");
+      loginForm.classList.remove("hidden");
+
+      // Clear chat UI
+      messagesDiv.innerHTML = "";
+      msgInput.value        = "";
+      loginPasswordInput.value = "";
+      clearLoginMessages();
+      updateChatUserLabel("");
+
+      const remember = localStorage.getItem("rememberMe") === "true";
+      if (!remember) {
+        localStorage.removeItem("username");
+        localStorage.removeItem("rememberedUsername");
+        loginUsernameInput.value = "";
+      } else {
+        const savedUsername = localStorage.getItem("rememberedUsername");
+        loginUsernameInput.value = savedUsername || "";
+      }
+    };
+
+    // Auto-handle already logged-in users on page load
+    auth.onAuthStateChanged((user) => {
+      if (user) {
+        // Get username from localStorage or from fake email
+        let username = localStorage.getItem("username");
+        if (!username && user.email) {
+          username = user.email.split("@")[0];
+          localStorage.setItem("username", username);
+        }
+        updateChatUserLabel(username || "User");
+
+        loginForm.classList.add("hidden");
+        registerForm.classList.add("hidden");
+        chatInterface.classList.remove("hidden");
+      } else {
+        // Not logged in
+        chatInterface.classList.add("hidden");
+        loginForm.classList.remove("hidden");
+        updateChatUserLabel("");
+      }
+    });
 
     // Send a message
     sendBtn.onclick = () => {
@@ -264,10 +434,10 @@
       msgInput.value = "";
     };
 
-    // Listen for new messages in real--time
+    // Listen for new messages in real-time
     db.ref("messages").on("child_added", (snap) => {
       const msg = snap.val();
-      const el = document.createElement("div");
+      const el  = document.createElement("div");
       el.innerHTML = `
         <div class="p-3 bg-gray-700 rounded">
           <span class="font-bold text-orange-300">${msg.user}</span>:
