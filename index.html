@@ -2,158 +2,36 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Seltra Chat — Global Only</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Simple Chat App</title>
 
-  <!-- Tailwind (for quick styling) -->
+  <!-- Tailwind CSS (optional, for looks) -->
   <script src="https://cdn.tailwindcss.com"></script>
 
-  <!-- Firebase compat SDKs -->
+  <!-- Firebase SDKs -->
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
-
-  <style>
-    body[data-theme="dark"] {
-      background-color: #020617;
-      color: #e5e7eb;
-    }
-    body[data-theme="light"] {
-      background-color: #f9fafb;
-      color: #111827;
-    }
-    .message-deleted {
-      font-style: italic;
-      opacity: 0.7;
-    }
-    .scroll-area {
-      max-height: 60vh;
-      overflow-y: auto;
-    }
-  </style>
 </head>
-<body class="min-h-screen" data-theme="dark">
-  <div class="max-w-3xl mx-auto p-4">
-    <h1 class="text-2xl font-bold mb-4 text-center">Seltra Chat</h1>
 
-    <!-- AUTH SECTION -->
-    <div id="auth-section" class="grid md:grid-cols-2 gap-8 mb-8">
-      <div class="border rounded-lg p-4">
-        <h2 class="text-xl font-semibold mb-2">Create Account</h2>
-        <input id="signup-username" class="w-full border rounded px-3 py-2 mb-2" placeholder="Username" />
-        <input id="signup-email" class="w-full border rounded px-3 py-2 mb-2" placeholder="Email" />
-        <input id="signup-password" type="password" class="w-full border rounded px-3 py-2 mb-2" placeholder="Password" />
-        <button id="signup-btn" class="w-full bg-orange-500 hover:bg-orange-600 text-white rounded py-2">Sign Up</button>
-      </div>
+<body class="bg-gray-900 text-white h-screen flex flex-col">
 
-      <div class="border rounded-lg p-4">
-        <h2 class="text-xl font-semibold mb-2">Log In</h2>
-        <input id="login-email" class="w-full border rounded px-3 py-2 mb-2" placeholder="Email" />
-        <input id="login-password" type="password" class="w-full border rounded px-3 py-2 mb-2" placeholder="Password" />
-        <button id="login-btn" class="w-full bg-blue-500 hover:bg-blue-600 text-white rounded py-2 mb-2">Log In</button>
-        <button id="logout-btn" class="w-full bg-gray-500 hover:bg-gray-600 text-white rounded py-2">Log Out</button>
-      </div>
-    </div>
+  <!-- Chat Messages -->
+  <div id="messages"
+       class="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-800">
+  </div>
 
-    <!-- MAIN CHAT SECTION (hidden until logged in) -->
-    <div id="chat-section" class="hidden border rounded-lg p-4">
-      <!-- Header -->
-      <div class="flex items-center justify-between mb-3">
-        <div>
-          <div class="text-xs uppercase tracking-wide text-slate-400">Global chat</div>
-          <div class="text-lg font-semibold">Seltra Chat</div>
-          <div id="current-user-line" class="text-xs text-slate-400"></div>
-        </div>
-        <button id="header-logout-btn" class="text-xs px-3 py-1 rounded-full bg-slate-700 hover:bg-slate-600">
-          Log out
-        </button>
-      </div>
-
-      <!-- Tabs (like 2 tabs: Chat / Settings) -->
-      <div class="flex border-b mb-3 text-sm">
-        <button
-          class="tab-btn px-3 py-2 border-b-2 border-orange-500 font-medium"
-          data-tab="chat"
-        >
-          Chat
-        </button>
-        <button
-          class="tab-btn px-3 py-2 border-b-2 border-transparent text-slate-400"
-          data-tab="settings"
-        >
-          Settings
-        </button>
-      </div>
-
-      <!-- TAB: CHAT (iMessage style) -->
-      <div id="tab-chat" class="flex flex-col gap-2">
-        <div id="messages" class="scroll-area border rounded-lg p-3 mb-1 text-sm bg-black/20"></div>
-        <div id="typing-indicator" class="text-xs text-amber-400 mb-1 h-4 px-1"></div>
-
-        <div class="mt-auto">
-          <input
-            id="image-url"
-            class="w-full border rounded px-3 py-1 mb-1 text-xs"
-            placeholder="Optional image URL"
-          />
-          <div class="flex gap-2">
-            <textarea
-              id="message-input"
-              class="flex-1 border rounded px-3 py-2 text-sm"
-              rows="2"
-              placeholder="Type a message..."
-            ></textarea>
-            <button
-              id="send-btn"
-              class="self-end bg-orange-500 hover:bg-orange-600 text-white rounded px-4 py-2 text-sm"
-            >
-              Send
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- TAB: SETTINGS -->
-      <div id="tab-settings" class="hidden text-sm space-y-4 pt-1">
-        <div>
-          <div class="font-semibold mb-1">Account</div>
-          <div class="text-xs text-slate-400">Logged in as:</div>
-          <div id="settings-username" class="font-medium"></div>
-          <div id="settings-email" class="text-xs text-slate-400"></div>
-        </div>
-
-        <div>
-          <label class="block text-xs mb-1">Status</label>
-          <select id="status-select" class="w-full border rounded px-2 py-1 text-sm">
-            <option value="online">Online</option>
-            <option value="away">Away</option>
-            <option value="busy">Busy</option>
-            <option value="offline">Offline</option>
-          </select>
-        </div>
-
-        <div>
-          <label class="block text-xs mb-1">Theme</label>
-          <button
-            id="toggle-theme-btn"
-            class="px-3 py-1 rounded border border-slate-600 text-xs"
-          >
-            Toggle dark / light
-          </button>
-        </div>
-
-        <div>
-          <div class="font-semibold mb-1 text-xs">Blocked users</div>
-          <div id="blocked-list" class="scroll-area border rounded p-2 text-xs min-h-[40px]">
-            No one blocked.
-          </div>
-        </div>
-      </div>
-    </div>
+  <!-- Message Input -->
+  <div class="p-4 bg-gray-700 flex">
+    <input id="msgInput"
+           class="flex-1 p-3 rounded bg-gray-600 outline-none"
+           placeholder="Type a message...">
+    <button id="sendBtn"
+            class="ml-3 px-4 py-2 bg-blue-500 rounded hover:bg-blue-600">
+      Send
+    </button>
   </div>
 
   <script>
-    // ------------- FIREBASE SETUP -------------
+    // YOUR FIREBASE CONFIG
     const firebaseConfig = {
       apiKey: "AIzaSyC945jY7UEh4sOOuuk7OMZVXeIh333kxVk",
       authDomain: "chat-app-710f0.firebaseapp.com",
@@ -164,465 +42,53 @@
       databaseURL: "https://chat-app-710f0-default-rtdb.firebaseio.com"
     };
 
+    // Initialize Firebase
     firebase.initializeApp(firebaseConfig);
-    const auth = firebase.auth();
     const db = firebase.database();
 
-    // ------------- GLOBAL STATE -------------
-    let currentUser = null;
-    let typingTimeout = null;
-    let blockedMap = {}; // { blockedUid: true }
-    let globalMessagesListener = null;
-
-    // ------------- UTILS -------------
-    function $(id) {
-      return document.getElementById(id);
+    // Ask for username
+    let username = localStorage.getItem("username");
+    if (!username) {
+      username = prompt("Enter a username:");
+      localStorage.setItem("username", username);
     }
 
-    function scrollMessagesToBottom() {
-      const box = $("messages");
-      box.scrollTop = box.scrollHeight;
-    }
+    const msgInput = document.getElementById("msgInput");
+    const sendBtn = document.getElementById("sendBtn");
+    const messagesDiv = document.getElementById("messages");
 
-    // ------------- AUTH -------------
-    $("signup-btn").addEventListener("click", () => {
-      const username = $("signup-username").value.trim();
-      const email = $("signup-email").value.trim();
-      const password = $("signup-password").value;
+    // Send a message
+    sendBtn.onclick = () => {
+      const text = msgInput.value.trim();
+      if (text === "") return;
 
-      if (!username || !email || !password) {
-        alert("Fill everything.");
-        return;
-      }
-
-      auth.createUserWithEmailAndPassword(email, password)
-        .then(cred => {
-          const uid = cred.user.uid;
-          return db.ref("users/" + uid).set({
-            username,
-            email,
-            photoURL: "",
-            status: "online",
-            role: "user",
-            theme: "dark",
-            createdAt: Date.now()
-          });
-        })
-        .then(() => {
-          alert("Account created!");
-        })
-        .catch(err => alert(err.message));
-    });
-
-    $("login-btn").addEventListener("click", () => {
-      const email = $("login-email").value.trim();
-      const password = $("login-password").value;
-
-      if (!email || !password) {
-        alert("Enter email and password.");
-        return;
-      }
-
-      auth.signInWithEmailAndPassword(email, password)
-        .catch(err => alert(err.message));
-    });
-
-    $("logout-btn").addEventListener("click", () => {
-      auth.signOut();
-    });
-
-    $("header-logout-btn").addEventListener("click", () => {
-      auth.signOut();
-    });
-
-    auth.onAuthStateChanged(async (user) => {
-      currentUser = user;
-      if (user) {
-        $("auth-section").classList.add("hidden");
-        $("chat-section").classList.remove("hidden");
-
-        // load user profile
-        const snap = await db.ref("users/" + user.uid).once("value");
-        let data = snap.val();
-        if (!data) {
-          data = {
-            username: user.email ? user.email.split("@")[0] : "User",
-            email: user.email || "",
-            status: "online",
-            theme: "dark"
-          };
-          db.ref("users/" + user.uid).set({
-            ...data,
-            role: "user",
-            createdAt: Date.now()
-          });
-        }
-
-        $("current-user-line").textContent = "Logged in as " + (data.username || "(no username)");
-        $("settings-username").textContent = data.username || "(no username)";
-        $("settings-email").textContent = data.email || user.email || "";
-        $("status-select").value = data.status || "online";
-        document.body.dataset.theme = data.theme || "dark";
-
-        listenBlocks();
-        listenGlobalMessages();
-        listenTyping();
-      } else {
-        $("auth-section").classList.remove("hidden");
-        $("chat-section").classList.add("hidden");
-        $("messages").innerHTML = "";
-        $("typing-indicator").textContent = "";
-      }
-    });
-
-    // ------------- STATUS + THEME -------------
-    $("status-select").addEventListener("change", () => {
-      if (!currentUser) return;
-      const status = $("status-select").value;
-      db.ref("users/" + currentUser.uid + "/status").set(status);
-    });
-
-    $("toggle-theme-btn").addEventListener("click", () => {
-      if (!currentUser) return;
-      const ref = db.ref("users/" + currentUser.uid + "/theme");
-      ref.once("value").then(snap => {
-        const current = snap.val() || "dark";
-        const next = current === "dark" ? "light" : "dark";
-        ref.set(next);
-        document.body.dataset.theme = next;
-      });
-    });
-
-    // ------------- TABS (Chat / Settings) -------------
-    document.querySelectorAll(".tab-btn").forEach(btn => {
-      btn.addEventListener("click", () => {
-        const tab = btn.getAttribute("data-tab");
-        document.querySelectorAll(".tab-btn").forEach(b => {
-          b.classList.remove("border-orange-500", "font-medium");
-          b.classList.add("border-transparent", "text-slate-400");
-        });
-        btn.classList.remove("border-transparent", "text-slate-400");
-        btn.classList.add("border-orange-500", "font-medium");
-
-        $("tab-chat").classList.toggle("hidden", tab !== "chat");
-        $("tab-settings").classList.toggle("hidden", tab !== "settings");
-      });
-    });
-
-    // ------------- BLOCKS -------------
-    function listenBlocks() {
-      if (!currentUser) return;
-      db.ref("blocks/" + currentUser.uid).on("value", snap => {
-        blockedMap = snap.val() || {};
-        renderBlockedList();
-      });
-    }
-
-    function blockUser(blockedUid, username) {
-      if (!currentUser || blockedUid === currentUser.uid) return;
-      db.ref("blocks/" + currentUser.uid + "/" + blockedUid).set(true);
-      alert("Blocked " + username);
-    }
-
-    function unblockUser(blockedUid) {
-      if (!currentUser) return;
-      db.ref("blocks/" + currentUser.uid + "/" + blockedUid).remove();
-    }
-
-    function renderBlockedList() {
-      const container = $("blocked-list");
-      container.innerHTML = "";
-      const entries = Object.entries(blockedMap);
-      if (entries.length === 0) {
-        container.textContent = "No one blocked.";
-        return;
-      }
-      entries.forEach(([uid, val]) => {
-        if (!val) return;
-        const row = document.createElement("div");
-        row.className = "flex items-center justify-between mb-1";
-        const label = document.createElement("span");
-        label.textContent = uid;
-        const btn = document.createElement("button");
-        btn.textContent = "Unblock";
-        btn.className = "text-xs bg-red-600 text-white rounded px-2 py-0.5";
-        btn.addEventListener("click", () => unblockUser(uid));
-        row.appendChild(label);
-        row.appendChild(btn);
-        container.appendChild(row);
-      });
-    }
-
-    // ------------- GLOBAL MESSAGES -------------
-    function listenGlobalMessages() {
-      if (!currentUser) return;
-      if (globalMessagesListener) {
-        db.ref("globalMessages").off("value", globalMessagesListener);
-      }
-      globalMessagesListener = (snap) => {
-        const val = snap.val() || {};
-        const list = Object.entries(val).map(([id, msg]) => ({ id, ...msg }));
-        list.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-        renderMessages(list);
-      };
-      db.ref("globalMessages")
-        .orderByChild("createdAt")
-        .limitToLast(200)
-        .on("value", globalMessagesListener);
-    }
-
-    function sendGlobalMessage(text, imageUrl = "") {
-      if (!currentUser) return;
-      if (!text && !imageUrl) return;
-      const msgRef = db.ref("globalMessages").push();
-      msgRef.set({
-        text,
-        imageUrl,
-        senderId: currentUser.uid,
-        createdAt: Date.now(),
-        deleted: false
-      });
-    }
-
-    // ------------- REACTIONS, DELETE, REPORT, SEEN -------------
-    function reactToMessage(messageId, emoji) {
-      if (!currentUser) return;
-      const path = "globalMessages/" + messageId;
-      db.ref(path + "/reactions/" + emoji + "/" + currentUser.uid).set(true);
-    }
-
-    function deleteMessage(messageId, senderId) {
-      if (!currentUser || currentUser.uid !== senderId) return;
-      const path = "globalMessages/" + messageId;
-      db.ref(path + "/deleted").set(true);
-    }
-
-    function reportMessage(messageId, messageText, senderId) {
-      if (!currentUser) return;
-      const messagePath = "globalMessages/" + messageId;
-      const ref = db.ref("reports").push();
-      ref.set({
-        messagePath,
-        messageText,
-        senderId,
-        reporterId: currentUser.uid,
-        createdAt: Date.now(),
-        status: "open"
-      });
-      alert("Reported.");
-    }
-
-    function markSeen(messageId) {
-      if (!currentUser) return;
-      const path = "globalMessages/" + messageId;
-      db.ref(path + "/seenBy/" + currentUser.uid).set(true);
-    }
-
-    // ------------- TYPING -------------
-    function setTyping(isTyping) {
-      if (!currentUser) return;
-      const ref = db.ref("typing/global/main/" + currentUser.uid);
-      if (isTyping) {
-        ref.set(true);
-      } else {
-        ref.remove();
-      }
-    }
-
-    function listenTyping() {
-      db.ref("typing/global/main").on("value", snap => {
-        const val = snap.val() || {};
-        const uids = Object.keys(val).filter(uid => uid !== (currentUser && currentUser.uid));
-        if (uids.length === 0) {
-          $("typing-indicator").textContent = "";
-        } else if (uids.length === 1) {
-          $("typing-indicator").textContent = "Someone is typing...";
-        } else {
-          $("typing-indicator").textContent = "Several people are typing...";
-        }
-      });
-    }
-
-    // ------------- MESSAGE RENDERING (iMessage style) -------------
-    async function renderMessages(list) {
-      const container = $("messages");
-      container.innerHTML = "";
-
-      // collect senderIds to fetch usernames once
-      const userIds = new Set();
-      list.forEach(m => {
-        if (m.senderId) userIds.add(m.senderId);
+      db.ref("messages").push({
+        user: username,
+        text: text,
+        time: Date.now()
       });
 
-      const idToName = {};
-      const promises = [];
-      userIds.forEach(uid => {
-        promises.push(
-          db.ref("users/" + uid).once("value").then(snap => {
-            const d = snap.val() || {};
-            idToName[uid] = d.username || uid;
-          })
-        );
-      });
-      await Promise.all(promises);
+      msgInput.value = "";
+    };
 
-      list.forEach(msg => {
-        if (msg.senderId && blockedMap[msg.senderId]) return; // skip blocked
+    // Listen for new messages in realtime
+    db.ref("messages").on("child_added", snap => {
+      const msg = snap.val();
 
-        const fromMe = currentUser && msg.senderId === currentUser.uid;
+      const el = document.createElement("div");
+      el.innerHTML = `
+        <div class="p-3 bg-gray-700 rounded">
+          <span class="font-bold text-orange-300">${msg.user}</span>: 
+          ${msg.text}
+        </div>
+      `;
 
-        const outer = document.createElement("div");
-        outer.className = "mb-2 flex " + (fromMe ? "justify-end" : "justify-start");
+      messagesDiv.appendChild(el);
 
-        const wrapper = document.createElement("div");
-        wrapper.className = "max-w-[80%]";
-
-        const header = document.createElement("div");
-        header.className = "flex items-center justify-between text-[10px] mb-0.5 " +
-          (fromMe ? "text-right" : "text-left");
-        const nameSpan = document.createElement("span");
-        nameSpan.textContent = idToName[msg.senderId] || msg.senderId || "unknown";
-        const timeSpan = document.createElement("span");
-        timeSpan.className = "opacity-60 ml-2";
-        timeSpan.textContent = msg.createdAt ? new Date(msg.createdAt).toLocaleTimeString() : "";
-        if (fromMe) {
-          header.appendChild(timeSpan);
-          header.appendChild(nameSpan);
-        } else {
-          header.appendChild(nameSpan);
-          header.appendChild(timeSpan);
-        }
-        wrapper.appendChild(header);
-
-        const bubble = document.createElement("div");
-        bubble.className =
-          "rounded-2xl px-3 py-2 text-sm shadow " +
-          (msg.deleted
-            ? "bg-slate-700/60 text-slate-300 message-deleted"
-            : fromMe
-              ? "bg-blue-500 text-white rounded-br-sm"
-              : "bg-slate-700 text-slate-50 rounded-bl-sm");
-
-        if (msg.deleted) {
-          bubble.textContent = "Message deleted";
-        } else {
-          if (msg.text) {
-            const p = document.createElement("div");
-            p.textContent = msg.text;
-            bubble.appendChild(p);
-          }
-          if (msg.imageUrl) {
-            const img = document.createElement("img");
-            img.src = msg.imageUrl;
-            img.className = "mt-1 max-h-48 rounded-lg";
-            bubble.appendChild(img);
-          }
-        }
-
-        wrapper.appendChild(bubble);
-
-        // actions row
-        const actions = document.createElement("div");
-        actions.className =
-          "flex items-center gap-2 mt-1 text-[10px] " +
-          (fromMe ? "justify-end" : "justify-start");
-
-        // reactions
-        ["👍", "😂", "❤️"].forEach(emoji => {
-          const btn = document.createElement("button");
-          btn.textContent = emoji;
-          btn.className = "px-1 rounded border border-white/10 hover:bg-white/10";
-          btn.addEventListener("click", () => reactToMessage(msg.id, emoji));
-          actions.appendChild(btn);
-        });
-
-        // seen
-        const seenCount = msg.seenBy ? Object.keys(msg.seenBy).length : 0;
-        const seenLabel = document.createElement("span");
-        seenLabel.className = "opacity-60 ml-1";
-        if (seenCount > 0) {
-          seenLabel.textContent = "Seen by " + seenCount;
-        }
-        actions.appendChild(seenLabel);
-
-        // delete (own)
-        if (fromMe && !msg.deleted) {
-          const delBtn = document.createElement("button");
-          delBtn.textContent = "Delete";
-          delBtn.className = "ml-2 text-red-300 underline";
-          delBtn.addEventListener("click", () => deleteMessage(msg.id, msg.senderId));
-          actions.appendChild(delBtn);
-        }
-
-        // block
-        if (!fromMe && msg.senderId) {
-          const blockBtn = document.createElement("button");
-          blockBtn.textContent = "Block";
-          blockBtn.className = "ml-2 text-yellow-300 underline";
-          blockBtn.addEventListener("click", () =>
-            blockUser(msg.senderId, idToName[msg.senderId] || msg.senderId)
-          );
-          actions.appendChild(blockBtn);
-        }
-
-        // report
-        if (!msg.deleted) {
-          const repBtn = document.createElement("button");
-          repBtn.textContent = "Report";
-          repBtn.className = "ml-2 text-pink-300 underline";
-          repBtn.addEventListener("click", () =>
-            reportMessage(msg.id, msg.text || "", msg.senderId || "")
-          );
-          actions.appendChild(repBtn);
-        }
-
-        wrapper.appendChild(actions);
-        outer.appendChild(wrapper);
-        container.appendChild(outer);
-
-        // mark seen
-        markSeen(msg.id);
-      });
-
-      scrollMessagesToBottom();
-    }
-
-    // ------------- SENDING MESSAGES (INPUT) -------------
-    $("send-btn").addEventListener("click", () => {
-      sendFromInput();
+      // Auto scroll to bottom
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
     });
-
-    $("message-input").addEventListener("keydown", (e) => {
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        sendFromInput();
-      } else {
-        handleTyping();
-      }
-    });
-
-    $("message-input").addEventListener("keyup", handleTyping);
-
-    function sendFromInput() {
-      const text = $("message-input").value.trim();
-      const imageUrl = $("image-url").value.trim();
-      if (!text && !imageUrl) return;
-
-      sendGlobalMessage(text, imageUrl);
-
-      $("message-input").value = "";
-      $("image-url").value = "";
-      setTyping(false);
-    }
-
-    function handleTyping() {
-      if (!currentUser) return;
-      setTyping(true);
-      if (typingTimeout) clearTimeout(typingTimeout);
-      typingTimeout = setTimeout(() => {
-        setTyping(false);
-      }, 2000);
-    }
   </script>
+
 </body>
 </html>
