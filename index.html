@@ -264,7 +264,7 @@
       msgInput.value = "";
     };
 
-    // Listen for new messages in real-time
+    // Listen for new messages in real--time
     db.ref("messages").on("child_added", (snap) => {
       const msg = snap.val();
       const el = document.createElement("div");
