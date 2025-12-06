@@ -88,6 +88,53 @@
     const sendBtn = document.getElementById("sendBtn");
     const messagesDiv = document.getElementById("messages");
 
+    let messagesListener = null;
+
+    const toggleForms = (showLogin) => {
+      if (showLogin) {
+        loginForm.classList.remove("hidden");
+        registerForm.classList.add("hidden");
+        chatInterface.classList.add("hidden");
+      } else {
+        loginForm.classList.add("hidden");
+        registerForm.classList.add("hidden");
+        chatInterface.classList.remove("hidden");
+      }
+    };
+
+    const clearMessages = () => {
+      messagesDiv.innerHTML = "";
+    };
+
+    const renderMessage = ({ user, text, time }) => {
+      const container = document.createElement("div");
+      container.className = "p-3 bg-gray-700 rounded";
+
+      const header = document.createElement("div");
+      header.className = "flex items-center justify-between mb-1";
+
+      const userLabel = document.createElement("span");
+      userLabel.className = "font-bold text-orange-300";
+      userLabel.textContent = user || "Unknown";
+
+      const timestamp = document.createElement("span");
+      timestamp.className = "text-xs text-gray-400";
+      timestamp.textContent = new Date(time || Date.now()).toLocaleTimeString();
+
+      header.appendChild(userLabel);
+      header.appendChild(timestamp);
+
+      const messageBody = document.createElement("p");
+      messageBody.className = "text-gray-100";
+      messageBody.textContent = text;
+
+      container.appendChild(header);
+      container.appendChild(messageBody);
+
+      messagesDiv.appendChild(container);
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    };
+
     // Switch to Register form
     document.getElementById("registerLink").onclick = () => {
       loginForm.classList.add("hidden");
@@ -100,30 +147,31 @@
       loginForm.classList.remove("hidden");
     };
 
+    const saveUsername = async (uid, username) => {
+      if (!uid || !username) return;
+      const userRef = db.ref("users/" + uid);
+      await userRef.set({ username });
+      localStorage.setItem("username", username);
+    };
+
     // Register User
     registerBtn.onclick = async () => {
       const email = regEmailInput.value.trim();
       const password = regPasswordInput.value.trim();
       const username = regUsernameInput.value.trim();
 
-      if (email === "" || password === "" || username === "") return;
+      if (!email || !password || !username) {
+        alert("Please fill all fields.");
+        return;
+      }
 
       try {
-        // Create user with email and password
-        const userCredential = await auth.createUserWithEmailAndPassword(email, password);
-        const user = userCredential.user;
+        const { user } = await auth.createUserWithEmailAndPassword(email, password);
+        await saveUsername(user.uid, username);
+        await user.updateProfile({ displayName: username });
 
-        // Save the username in Firebase Database
-        const userRef = db.ref("users/" + user.uid);
-        await userRef.set({ username: username });
-
-        // Store the username in local storage
-        localStorage.setItem("username", username);
-
-        // Hide registration form and show login form
-        registerForm.classList.add("hidden");
-        loginForm.classList.remove("hidden");
-
+        await auth.signOut();
+        toggleForms(true);
         alert("Registration successful! Please login.");
       } catch (error) {
         console.error("Error registering:", error);
@@ -137,62 +185,87 @@
       const password = passwordInput.value.trim();
       const username = usernameInput.value.trim();
 
-      if (email === "" || password === "" || username === "") return;
+      if (!email || !password || !username) {
+        alert("Please fill all fields.");
+        return;
+      }
 
       try {
-        // Sign in with email and password
-        const userCredential = await auth.signInWithEmailAndPassword(email, password);
-        const user = userCredential.user;
+        const { user } = await auth.signInWithEmailAndPassword(email, password);
 
-        // Save the username in Firebase Database if it's the first time logging in
         const userRef = db.ref("users/" + user.uid);
         const snapshot = await userRef.once("value");
-        if (!snapshot.exists()) {
-          await userRef.set({ username: username });
-        }
+        const storedUsername = snapshot.val()?.username || username;
+        await saveUsername(user.uid, storedUsername);
 
-        // Store the username in local storage
-        localStorage.setItem("username", username);
-
-        // Hide login form and show chat interface
-        loginForm.classList.add("hidden");
-        chatInterface.classList.remove("hidden");
+        toggleForms(false);
+        attachMessageListener();
       } catch (error) {
         console.error("Error signing in:", error);
         alert("Login failed: " + error.message);
       }
     };
 
-    // Send a message
-    sendBtn.onclick = () => {
-      const text = msgInput.value.trim();
-      if (text === "") return;
+    const detachMessageListener = () => {
+      if (messagesListener) {
+        messagesListener.off();
+        messagesListener = null;
+      }
+    };
 
-      const username = localStorage.getItem("username");
+    const attachMessageListener = () => {
+      detachMessageListener();
+
+      clearMessages();
+      messagesListener = db.ref("messages").limitToLast(50);
+      messagesListener.on("child_added", (snap) => {
+        const msg = snap.val();
+        if (!msg?.text) return;
+        renderMessage(msg);
+      });
+    };
+
+    // Send a message
+    const sendMessage = () => {
+      const text = msgInput.value.trim();
+      if (!text) return;
+
+      const username = localStorage.getItem("username") || auth.currentUser?.displayName || "Anonymous";
+      const uid = auth.currentUser?.uid;
+      if (!uid) {
+        alert("You must be logged in to send messages.");
+        return;
+      }
 
       db.ref("messages").push({
         user: username,
-        text: text,
+        text,
+        uid,
         time: Date.now()
       });
 
       msgInput.value = "";
     };
 
-    // Listen for new messages in real-time
-    db.ref("messages").on("child_added", snap => {
-      const msg = snap.val();
-      const el = document.createElement("div");
-      el.innerHTML = `
-        <div class="p-3 bg-gray-700 rounded">
-          <span class="font-bold text-orange-300">${msg.user}</span>: 
-          ${msg.text}
-        </div>
-      `;
-      messagesDiv.appendChild(el);
+    sendBtn.onclick = sendMessage;
+    msgInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
 
-      // Auto scroll to bottom
-      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    auth.onAuthStateChanged((user) => {
+      if (user) {
+        const username = localStorage.getItem("username") || user.displayName || "User";
+        localStorage.setItem("username", username);
+        toggleForms(false);
+        attachMessageListener();
+      } else {
+        toggleForms(true);
+        detachMessageListener();
+        clearMessages();
+      }
     });
   </script>
 
