@@ -1,0 +1,851 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Seltra Chat v1</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Tailwind (for quick styling) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Firebase compat SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+
+  <style>
+    body[data-theme="dark"] {
+      background-color: #020617;
+      color: #e5e7eb;
+    }
+    body[data-theme="light"] {
+      background-color: #f9fafb;
+      color: #111827;
+    }
+    .message-deleted {
+      font-style: italic;
+      opacity: 0.7;
+    }
+    .scroll-area {
+      max-height: 60vh;
+      overflow-y: auto;
+    }
+  </style>
+</head>
+<body class="min-h-screen" data-theme="dark">
+  <div class="max-w-6xl mx-auto p-4">
+    <h1 class="text-2xl font-bold mb-4">Seltra Chat v1</h1>
+
+    <!-- AUTH SECTION -->
+    <div id="auth-section" class="grid md:grid-cols-2 gap-8 mb-8">
+      <div class="border rounded-lg p-4">
+        <h2 class="text-xl font-semibold mb-2">Create Account</h2>
+        <input id="signup-username" class="w-full border rounded px-3 py-2 mb-2" placeholder="Username" />
+        <input id="signup-email" class="w-full border rounded px-3 py-2 mb-2" placeholder="Email" />
+        <input id="signup-password" type="password" class="w-full border rounded px-3 py-2 mb-2" placeholder="Password" />
+        <button id="signup-btn" class="w-full bg-orange-500 hover:bg-orange-600 text-white rounded py-2">Sign Up</button>
+      </div>
+
+      <div class="border rounded-lg p-4">
+        <h2 class="text-xl font-semibold mb-2">Log In</h2>
+        <input id="login-email" class="w-full border rounded px-3 py-2 mb-2" placeholder="Email" />
+        <input id="login-password" type="password" class="w-full border rounded px-3 py-2 mb-2" placeholder="Password" />
+        <button id="login-btn" class="w-full bg-blue-500 hover:bg-blue-600 text-white rounded py-2 mb-2">Log In</button>
+        <button id="logout-btn" class="w-full bg-gray-500 hover:bg-gray-600 text-white rounded py-2">Log Out</button>
+      </div>
+    </div>
+
+    <!-- MAIN CHAT SECTION (hidden until logged in) -->
+    <div id="chat-section" class="hidden border rounded-lg p-4">
+      <div class="flex flex-col md:flex-row gap-4">
+        <!-- LEFT SIDEBAR -->
+        <div class="w-full md:w-64 border-r md:pr-4">
+          <div id="current-user" class="mb-4 text-sm">
+            <div class="font-semibold">You:</div>
+            <div id="current-username"></div>
+            <div id="current-email" class="text-xs opacity-70"></div>
+          </div>
+
+          <div class="mb-4">
+            <label class="block text-xs mb-1">Status:</label>
+            <select id="status-select" class="w-full border rounded px-2 py-1 text-sm">
+              <option value="online">Online</option>
+              <option value="away">Away</option>
+              <option value="busy">Busy</option>
+              <option value="offline">Offline</option>
+            </select>
+          </div>
+
+          <button id="toggle-theme-btn" class="w-full mb-4 bg-slate-700 text-white text-sm rounded py-1">
+            Toggle Theme
+          </button>
+
+          <div class="mb-4">
+            <h3 class="font-semibold mb-1 text-sm">Mode</h3>
+            <div class="flex flex-col gap-2">
+              <button data-mode="global" class="mode-btn w-full text-left border rounded px-2 py-1 text-sm bg-slate-800 text-white">
+                Global Chat
+              </button>
+              <button data-mode="group" class="mode-btn w-full text-left border rounded px-2 py-1 text-sm">
+                Groups
+              </button>
+              <button data-mode="dm" class="mode-btn w-full text-left border rounded px-2 py-1 text-sm">
+                Direct Messages
+              </button>
+            </div>
+          </div>
+
+          <!-- Groups controls -->
+          <div id="group-controls" class="hidden text-sm">
+            <h3 class="font-semibold mb-2">Groups</h3>
+            <input id="new-group-name" class="w-full border rounded px-2 py-1 mb-1" placeholder="New group name" />
+            <button id="create-group-btn" class="w-full mb-2 bg-green-600 text-white rounded py-1 text-xs">Create Group</button>
+
+            <div class="scroll-area border rounded p-2 text-xs" id="groups-list"></div>
+          </div>
+
+          <!-- DM controls -->
+          <div id="dm-controls" class="hidden text-sm">
+            <h3 class="font-semibold mb-2">Direct Messages</h3>
+            <input id="dm-username" class="w-full border rounded px-2 py-1 mb-1" placeholder="Start DM with username" />
+            <button id="start-dm-btn" class="w-full mb-2 bg-purple-600 text-white rounded py-1 text-xs">Open DM</button>
+
+            <div class="scroll-area border rounded p-2 text-xs" id="dm-list"></div>
+          </div>
+
+          <!-- Blocked users list -->
+          <div class="mt-4 text-xs">
+            <h3 class="font-semibold mb-1">Blocked Users</h3>
+            <div id="blocked-list" class="scroll-area border rounded p-2"></div>
+          </div>
+        </div>
+
+        <!-- RIGHT CONTENT (chat) -->
+        <div class="flex-1 flex flex-col">
+          <div class="mb-2 text-sm">
+            <span id="room-title" class="font-semibold">Global Chat</span>
+            <span id="room-subtitle" class="text-xs opacity-70 ml-2">(everyone)</span>
+          </div>
+
+          <!-- Typing indicator -->
+          <div id="typing-indicator" class="text-xs text-amber-400 mb-1 h-4"></div>
+
+          <!-- Messages -->
+          <div id="messages" class="scroll-area border rounded p-2 mb-2 text-sm bg-black/20"></div>
+
+          <!-- Input -->
+          <div class="mt-auto">
+            <input id="image-url" class="w-full border rounded px-2 py-1 mb-1 text-xs" placeholder="Optional image URL" />
+            <textarea id="message-input" class="w-full border rounded px-2 py-2 mb-2 text-sm" rows="2" placeholder="Type a message..."></textarea>
+            <button id="send-btn" class="w-full bg-orange-500 hover:bg-orange-600 text-white rounded py-2 text-sm">
+              Send
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ------------- FIREBASE SETUP -------------
+const firebaseConfig = {
+  apiKey: "AIzaSyC945jY7UEh4sOOuuk7OMZVXeIh333kxVk",
+  authDomain: "chat-app-710f0.firebaseapp.com",
+  projectId: "chat-app-710f0",
+  storageBucket: "chat-app-710f0.firebasestorage.app",
+  messagingSenderId: "225892837672",
+  appId: "1:225892837672:web:f190f3585c4ffbd0f1c81d",
+  databaseURL: "https://chat-app-710f0-default-rtdb.firebaseio.com"
+};
+
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const db = firebase.database();
+
+    // ------------- GLOBAL STATE -------------
+    let currentUser = null;
+    let currentMode = "global"; // "global" | "group" | "dm"
+    let currentGroupId = null;
+    let currentDmId = null;
+    let typingTimeout = null;
+    let blockedMap = {}; // { blockedUid: true }
+
+    // ------------- UTILS -------------
+    function $(id) {
+      return document.getElementById(id);
+    }
+
+    function getDmId(uid1, uid2) {
+      return uid1 < uid2 ? uid1 + "_" + uid2 : uid2 + "_" + uid1;
+    }
+
+    function scrollMessagesToBottom() {
+      const box = $("messages");
+      box.scrollTop = box.scrollHeight;
+    }
+
+    // ------------- AUTH -------------
+    $("signup-btn").addEventListener("click", () => {
+      const username = $("signup-username").value.trim();
+      const email = $("signup-email").value.trim();
+      const password = $("signup-password").value;
+
+      if (!username || !email || !password) {
+        alert("Fill everything.");
+        return;
+      }
+
+      auth.createUserWithEmailAndPassword(email, password)
+        .then(cred => {
+          const uid = cred.user.uid;
+          return db.ref("users/" + uid).set({
+            username,
+            email,
+            photoURL: "",
+            status: "online",
+            role: "user",
+            theme: "dark",
+            createdAt: Date.now()
+          });
+        })
+        .then(() => {
+          alert("Account created!");
+        })
+        .catch(err => alert(err.message));
+    });
+
+    $("login-btn").addEventListener("click", () => {
+      const email = $("login-email").value.trim();
+      const password = $("login-password").value;
+
+      if (!email || !password) {
+        alert("Enter email and password.");
+        return;
+      }
+
+      auth.signInWithEmailAndPassword(email, password)
+        .catch(err => alert(err.message));
+    });
+
+    $("logout-btn").addEventListener("click", () => {
+      auth.signOut();
+    });
+
+    auth.onAuthStateChanged(async (user) => {
+      currentUser = user;
+      if (user) {
+        $("auth-section").classList.add("hidden");
+        $("chat-section").classList.remove("hidden");
+
+        // load user profile
+        const snap = await db.ref("users/" + user.uid).once("value");
+        const data = snap.val() || {};
+        $("current-username").textContent = data.username || "(no username)";
+        $("current-email").textContent = data.email || user.email || "";
+        $("status-select").value = data.status || "online";
+        document.body.dataset.theme = data.theme || "dark";
+
+        listenBlocks();
+        loadGroups();
+        loadDmList();
+        switchMode("global");
+      } else {
+        $("auth-section").classList.remove("hidden");
+        $("chat-section").classList.add("hidden");
+      }
+    });
+
+    // ------------- STATUS + THEME -------------
+    $("status-select").addEventListener("change", () => {
+      if (!currentUser) return;
+      const status = $("status-select").value;
+      db.ref("users/" + currentUser.uid + "/status").set(status);
+    });
+
+    $("toggle-theme-btn").addEventListener("click", () => {
+      if (!currentUser) return;
+      const ref = db.ref("users/" + currentUser.uid + "/theme");
+      ref.once("value").then(snap => {
+        const current = snap.val() || "dark";
+        const next = current === "dark" ? "light" : "dark";
+        ref.set(next);
+        document.body.dataset.theme = next;
+      });
+    });
+
+    // ------------- BLOCKS -------------
+    function listenBlocks() {
+      if (!currentUser) return;
+      db.ref("blocks/" + currentUser.uid).on("value", snap => {
+        blockedMap = snap.val() || {};
+        renderBlockedList();
+        // re-render messages if needed
+      });
+    }
+
+    function blockUser(blockedUid, username) {
+      if (!currentUser || blockedUid === currentUser.uid) return;
+      db.ref("blocks/" + currentUser.uid + "/" + blockedUid).set(true);
+      alert("Blocked " + username);
+    }
+
+    function unblockUser(blockedUid) {
+      if (!currentUser) return;
+      db.ref("blocks/" + currentUser.uid + "/" + blockedUid).remove();
+    }
+
+    function renderBlockedList() {
+      const container = $("blocked-list");
+      container.innerHTML = "";
+      const entries = Object.entries(blockedMap);
+      if (entries.length === 0) {
+        container.textContent = "No one blocked.";
+        return;
+      }
+      entries.forEach(([uid, val]) => {
+        if (!val) return;
+        const row = document.createElement("div");
+        row.className = "flex items-center justify-between mb-1";
+        const label = document.createElement("span");
+        label.textContent = uid;
+        const btn = document.createElement("button");
+        btn.textContent = "Unblock";
+        btn.className = "text-xs bg-red-600 text-white rounded px-2 py-0.5";
+        btn.addEventListener("click", () => unblockUser(uid));
+        row.appendChild(label);
+        row.appendChild(btn);
+        container.appendChild(row);
+      });
+    }
+
+    // ------------- MODE SWITCH (GLOBAL / GROUP / DM) -------------
+    document.querySelectorAll(".mode-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const mode = btn.getAttribute("data-mode");
+        switchMode(mode);
+      });
+    });
+
+    function switchMode(mode) {
+      currentMode = mode;
+      currentGroupId = null;
+      currentDmId = null;
+      $("group-controls").classList.toggle("hidden", mode !== "group");
+      $("dm-controls").classList.toggle("hidden", mode !== "dm");
+
+      if (mode === "global") {
+        $("room-title").textContent = "Global Chat";
+        $("room-subtitle").textContent = "(everyone)";
+        listenGlobalMessages();
+        listenTyping("global", "main");
+      } else if (mode === "group") {
+        $("room-title").textContent = "Groups";
+        $("room-subtitle").textContent = "(select a group)";
+        $("messages").innerHTML = "Select a group on the left or create one.";
+        $("typing-indicator").textContent = "";
+      } else if (mode === "dm") {
+        $("room-title").textContent = "Direct Messages";
+        $("room-subtitle").textContent = "(select a DM)";
+        $("messages").innerHTML = "Select a DM on the left or start a new one.";
+        $("typing-indicator").textContent = "";
+      }
+    }
+
+    // ------------- GLOBAL MESSAGES -------------
+    let globalMessagesListener = null;
+    function listenGlobalMessages() {
+      if (!currentUser) return;
+      if (globalMessagesListener) {
+        db.ref("globalMessages").off("value", globalMessagesListener);
+      }
+      globalMessagesListener = (snap) => {
+        const val = snap.val() || {};
+        const list = Object.entries(val).map(([id, msg]) => ({ id, ...msg }));
+        list.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+        renderMessages(list, "global");
+      };
+      db.ref("globalMessages")
+        .orderByChild("createdAt")
+        .limitToLast(200)
+        .on("value", globalMessagesListener);
+    }
+
+    function sendGlobalMessage(text, imageUrl = "") {
+      if (!currentUser) return;
+      if (!text && !imageUrl) return;
+      const msgRef = db.ref("globalMessages").push();
+      msgRef.set({
+        text,
+        imageUrl,
+        senderId: currentUser.uid,
+        createdAt: Date.now(),
+        deleted: false
+      });
+    }
+
+    // ------------- GROUPS -------------
+    function loadGroups() {
+      if (!currentUser) return;
+      db.ref("groups").on("value", snap => {
+        const val = snap.val() || {};
+        const list = Object.entries(val).map(([id, g]) => ({ id, ...g }));
+        renderGroupsList(list);
+      });
+    }
+
+    function renderGroupsList(groups) {
+      const container = $("groups-list");
+      container.innerHTML = "";
+      if (groups.length === 0) {
+        container.textContent = "No groups yet.";
+        return;
+      }
+      groups.forEach(group => {
+        const isMember = group.members && group.members[currentUser.uid];
+        const row = document.createElement("div");
+        row.className = "flex items-center justify-between mb-1";
+        const label = document.createElement("button");
+        label.textContent = group.name || group.id;
+        label.className = "text-left flex-1 mr-1 underline";
+        label.addEventListener("click", () => enterGroup(group.id, group.name));
+        row.appendChild(label);
+
+        const btn = document.createElement("button");
+        btn.textContent = isMember ? "In" : "Join";
+        btn.className = "text-xs bg-blue-600 text-white rounded px-2 py-0.5";
+        btn.addEventListener("click", () => joinGroup(group.id));
+        row.appendChild(btn);
+        container.appendChild(row);
+      });
+    }
+
+    $("create-group-btn").addEventListener("click", () => {
+      if (!currentUser) return;
+      const name = $("new-group-name").value.trim();
+      if (!name) return;
+      const ref = db.ref("groups").push();
+      const id = ref.key;
+      ref.set({
+        name,
+        ownerId: currentUser.uid,
+        members: { [currentUser.uid]: true }
+      });
+      $("new-group-name").value = "";
+      enterGroup(id, name);
+    });
+
+    function joinGroup(groupId) {
+      if (!currentUser) return;
+      db.ref("groups/" + groupId + "/members/" + currentUser.uid).set(true);
+    }
+
+    let groupMessagesListener = null;
+    function enterGroup(groupId, name) {
+      currentMode = "group";
+      currentGroupId = groupId;
+      $("room-title").textContent = "Group: " + (name || groupId);
+      $("room-subtitle").textContent = "";
+      $("group-controls").classList.remove("hidden");
+
+      if (groupMessagesListener) {
+        db.ref("groupMessages/" + groupId).off("value", groupMessagesListener);
+      }
+      groupMessagesListener = (snap) => {
+        const val = snap.val() || {};
+        const list = Object.entries(val).map(([id, msg]) => ({ id, ...msg }));
+        list.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+        renderMessages(list, "group");
+      };
+      db.ref("groupMessages/" + groupId)
+        .orderByChild("createdAt")
+        .limitToLast(200)
+        .on("value", groupMessagesListener);
+
+      listenTyping("group", groupId);
+    }
+
+    function sendGroupMessage(groupId, text, imageUrl = "") {
+      if (!currentUser) return;
+      if (!text && !imageUrl) return;
+      const msgRef = db.ref("groupMessages/" + groupId).push();
+      msgRef.set({
+        text,
+        imageUrl,
+        senderId: currentUser.uid,
+        createdAt: Date.now(),
+        deleted: false
+      });
+    }
+
+    // ------------- DMs -------------
+    function loadDmList() {
+      if (!currentUser) return;
+      db.ref("dms").on("value", snap => {
+        const val = snap.val() || {};
+        const list = [];
+        Object.entries(val).forEach(([id, dm]) => {
+          if (!dm.participants || !dm.participants[currentUser.uid]) return;
+          list.push({ id, ...dm });
+        });
+        renderDmList(list);
+      });
+    }
+
+    function renderDmList(dms) {
+      const container = $("dm-list");
+      container.innerHTML = "";
+      if (dms.length === 0) {
+        container.textContent = "No DMs yet.";
+        return;
+      }
+      dms.forEach(dm => {
+        const row = document.createElement("div");
+        row.className = "flex items-center justify-between mb-1";
+        const idLabel = document.createElement("button");
+        idLabel.textContent = dm.id;
+        idLabel.className = "flex-1 text-left underline";
+        idLabel.addEventListener("click", () => enterDm(dm.id));
+        row.appendChild(idLabel);
+        container.appendChild(row);
+      });
+    }
+
+    $("start-dm-btn").addEventListener("click", async () => {
+      if (!currentUser) return;
+      const username = $("dm-username").value.trim();
+      if (!username) return;
+      const snap = await db.ref("users").orderByChild("username").equalTo(username).limitToFirst(1).once("value");
+      if (!snap.exists()) {
+        alert("No user with that username.");
+        return;
+      }
+      const otherUid = Object.keys(snap.val())[0];
+      openDmWith(otherUid);
+    });
+
+    function openDmWith(otherUid) {
+      if (!currentUser) return;
+      const dmId = getDmId(currentUser.uid, otherUid);
+      const ref = db.ref("dms/" + dmId + "/participants");
+      ref.update({
+        [currentUser.uid]: true,
+        [otherUid]: true
+      });
+      enterDm(dmId);
+    }
+
+    let dmMessagesListener = null;
+    function enterDm(dmId) {
+      currentMode = "dm";
+      currentDmId = dmId;
+      $("room-title").textContent = "DM: " + dmId;
+      $("room-subtitle").textContent = "";
+      $("dm-controls").classList.remove("hidden");
+
+      if (dmMessagesListener) {
+        db.ref("dms/" + dmId + "/messages").off("value", dmMessagesListener);
+      }
+      dmMessagesListener = (snap) => {
+        const val = snap.val() || {};
+        const list = Object.entries(val).map(([id, msg]) => ({ id, ...msg }));
+        list.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+        renderMessages(list, "dm");
+      };
+      db.ref("dms/" + dmId + "/messages")
+        .orderByChild("createdAt")
+        .limitToLast(200)
+        .on("value", dmMessagesListener);
+
+      listenTyping("dm", dmId);
+    }
+
+    function sendDmMessage(dmId, text, imageUrl = "") {
+      if (!currentUser) return;
+      if (!text && !imageUrl) return;
+      const msgRef = db.ref("dms/" + dmId + "/messages").push();
+      msgRef.set({
+        text,
+        imageUrl,
+        senderId: currentUser.uid,
+        createdAt: Date.now(),
+        deleted: false
+      });
+    }
+
+    // ------------- REACTIONS, DELETE, REPORT, SEEN -------------
+    function reactToMessage(scope, roomId, messageId, emoji) {
+      if (!currentUser) return;
+      let path;
+      if (scope === "global") {
+        path = "globalMessages/" + messageId;
+      } else if (scope === "group") {
+        path = "groupMessages/" + roomId + "/" + messageId;
+      } else if (scope === "dm") {
+        path = "dms/" + roomId + "/messages/" + messageId;
+      } else {
+        return;
+      }
+      db.ref(path + "/reactions/" + emoji + "/" + currentUser.uid).set(true);
+    }
+
+    function deleteMessage(scope, roomId, messageId, senderId) {
+      if (!currentUser || currentUser.uid !== senderId) return;
+      let path;
+      if (scope === "global") {
+        path = "globalMessages/" + messageId;
+      } else if (scope === "group") {
+        path = "groupMessages/" + roomId + "/" + messageId;
+      } else if (scope === "dm") {
+        path = "dms/" + roomId + "/messages/" + messageId;
+      } else {
+        return;
+      }
+      db.ref(path + "/deleted").set(true);
+    }
+
+    function reportMessage(scope, roomId, messageId, messageText, senderId) {
+      if (!currentUser) return;
+      let messagePath;
+      if (scope === "global") {
+        messagePath = "globalMessages/" + messageId;
+      } else if (scope === "group") {
+        messagePath = "groupMessages/" + roomId + "/" + messageId;
+      } else if (scope === "dm") {
+        messagePath = "dms/" + roomId + "/messages/" + messageId;
+      } else {
+        return;
+      }
+      const ref = db.ref("reports").push();
+      ref.set({
+        messagePath,
+        messageText,
+        senderId,
+        reporterId: currentUser.uid,
+        createdAt: Date.now(),
+        status: "open"
+      });
+      alert("Reported.");
+    }
+
+    function markSeen(scope, roomId, messageId) {
+      if (!currentUser) return;
+      let path;
+      if (scope === "global") {
+        path = "globalMessages/" + messageId;
+      } else if (scope === "group") {
+        path = "groupMessages/" + roomId + "/" + messageId;
+      } else if (scope === "dm") {
+        path = "dms/" + roomId + "/messages/" + messageId;
+      } else {
+        return;
+      }
+      db.ref(path + "/seenBy/" + currentUser.uid).set(true);
+    }
+
+    // ------------- TYPING -------------
+    function setTyping(scope, roomId, isTyping) {
+      if (!currentUser) return;
+      const ref = db.ref("typing/" + scope + "/" + roomId + "/" + currentUser.uid);
+      if (isTyping) {
+        ref.set(true);
+      } else {
+        ref.remove();
+      }
+    }
+
+    function listenTyping(scope, roomId) {
+      db.ref("typing/" + scope + "/" + roomId).on("value", snap => {
+        const val = snap.val() || {};
+        const uids = Object.keys(val).filter(uid => uid !== (currentUser && currentUser.uid));
+        if (uids.length === 0) {
+          $("typing-indicator").textContent = "";
+        } else if (uids.length === 1) {
+          $("typing-indicator").textContent = uids[0] + " is typing...";
+        } else {
+          $("typing-indicator").textContent = uids.length + " people are typing...";
+        }
+      });
+    }
+
+    // ------------- MESSAGE RENDERING -------------
+    async function renderMessages(list, scope) {
+      const container = $("messages");
+      container.innerHTML = "";
+
+      // collect senderIds to fetch usernames once
+      const userIds = new Set();
+      list.forEach(m => {
+        if (m.senderId) userIds.add(m.senderId);
+      });
+
+      const idToName = {};
+      const promises = [];
+      userIds.forEach(uid => {
+        promises.push(
+          db.ref("users/" + uid).once("value").then(snap => {
+            const d = snap.val() || {};
+            idToName[uid] = d.username || uid;
+          })
+        );
+      });
+      await Promise.all(promises);
+
+      list.forEach(msg => {
+        // skip blocked
+        if (msg.senderId && blockedMap[msg.senderId]) return;
+
+        const row = document.createElement("div");
+        row.className = "border-b border-white/10 py-1 text-sm";
+
+        const header = document.createElement("div");
+        header.className = "flex items-center justify-between text-xs mb-0.5";
+        const left = document.createElement("span");
+        left.textContent = (idToName[msg.senderId] || msg.senderId || "unknown");
+        const right = document.createElement("span");
+        right.className = "opacity-60";
+        right.textContent = msg.createdAt ? new Date(msg.createdAt).toLocaleTimeString() : "";
+        header.appendChild(left);
+        header.appendChild(right);
+        row.appendChild(header);
+
+        const body = document.createElement("div");
+        if (msg.deleted) {
+          body.textContent = "Message deleted";
+          body.className = "message-deleted";
+        } else {
+          if (msg.text) {
+            const p = document.createElement("div");
+            p.textContent = msg.text;
+            body.appendChild(p);
+          }
+          if (msg.imageUrl) {
+            const img = document.createElement("img");
+            img.src = msg.imageUrl;
+            img.className = "mt-1 max-h-40 rounded";
+            body.appendChild(img);
+          }
+        }
+        row.appendChild(body);
+
+        // reactions + actions
+        const actions = document.createElement("div");
+        actions.className = "flex items-center gap-2 mt-1 text-xs";
+
+        // reactions
+        ["👍", "😂", "❤️"].forEach(emoji => {
+          const btn = document.createElement("button");
+          btn.textContent = emoji;
+          btn.className = "px-1 rounded border border-white/10 hover:bg-white/10";
+          btn.addEventListener("click", () => {
+            const roomId = scope === "global" ? "main" : (scope === "group" ? currentGroupId : currentDmId);
+            reactToMessage(scope, roomId, msg.id, emoji);
+          });
+          actions.appendChild(btn);
+        });
+
+        // seen
+        const seenCount = msg.seenBy ? Object.keys(msg.seenBy).length : 0;
+        const seenLabel = document.createElement("span");
+        seenLabel.className = "ml-auto opacity-60";
+        if (seenCount > 0) {
+          seenLabel.textContent = "Seen by " + seenCount;
+        }
+        actions.appendChild(seenLabel);
+
+        // delete (own)
+        if (msg.senderId === (currentUser && currentUser.uid) && !msg.deleted) {
+          const delBtn = document.createElement("button");
+          delBtn.textContent = "Delete";
+          delBtn.className = "ml-2 text-red-400 underline";
+          delBtn.addEventListener("click", () => {
+            const roomId = scope === "global" ? "main" : (scope === "group" ? currentGroupId : currentDmId);
+            deleteMessage(scope, roomId, msg.id, msg.senderId);
+          });
+          actions.appendChild(delBtn);
+        }
+
+        // block
+        if (msg.senderId && msg.senderId !== (currentUser && currentUser.uid)) {
+          const blockBtn = document.createElement("button");
+          blockBtn.textContent = "Block";
+          blockBtn.className = "ml-2 text-yellow-400 underline";
+          blockBtn.addEventListener("click", () => {
+            blockUser(msg.senderId, idToName[msg.senderId] || msg.senderId);
+          });
+          actions.appendChild(blockBtn);
+        }
+
+        // report
+        if (!msg.deleted) {
+          const repBtn = document.createElement("button");
+          repBtn.textContent = "Report";
+          repBtn.className = "ml-2 text-pink-400 underline";
+          repBtn.addEventListener("click", () => {
+            const roomId = scope === "global" ? "main" : (scope === "group" ? currentGroupId : currentDmId);
+            reportMessage(scope, roomId, msg.id, msg.text || "", msg.senderId || "");
+          });
+          actions.appendChild(repBtn);
+        }
+
+        row.appendChild(actions);
+        container.appendChild(row);
+
+        // mark seen
+        const roomId = scope === "global" ? "main" : (scope === "group" ? currentGroupId : currentDmId);
+        markSeen(scope, roomId, msg.id);
+      });
+
+      scrollMessagesToBottom();
+    }
+
+    // ------------- SENDING MESSAGES (INPUT) -------------
+    $("send-btn").addEventListener("click", () => {
+      sendFromInput();
+    });
+
+    $("message-input").addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendFromInput();
+      } else {
+        handleTyping();
+      }
+    });
+
+    $("message-input").addEventListener("keyup", handleTyping);
+
+    function sendFromInput() {
+      const text = $("message-input").value.trim();
+      const imageUrl = $("image-url").value.trim();
+      if (!text && !imageUrl) return;
+
+      if (currentMode === "global") {
+        sendGlobalMessage(text, imageUrl);
+      } else if (currentMode === "group" && currentGroupId) {
+        sendGroupMessage(currentGroupId, text, imageUrl);
+      } else if (currentMode === "dm" && currentDmId) {
+        sendDmMessage(currentDmId, text, imageUrl);
+      } else {
+        alert("Pick a chat first.");
+        return;
+      }
+
+      $("message-input").value = "";
+      $("image-url").value = "";
+      setTyping(currentMode === "global" ? "global" : currentMode, currentMode === "global" ? "main" : (currentMode === "group" ? currentGroupId : currentDmId), false);
+    }
+
+    function handleTyping() {
+      if (!currentUser) return;
+      const scope = currentMode === "global" ? "global" : currentMode;
+      const roomId = currentMode === "global" ? "main" : (currentMode === "group" ? currentGroupId : currentDmId);
+      if (!roomId) return;
+      setTyping(scope, roomId, true);
+      if (typingTimeout) clearTimeout(typingTimeout);
+      typingTimeout = setTimeout(() => {
+        setTyping(scope, roomId, false);
+      }, 2000);
+    }
+  </script>
+</body>
+</html>
