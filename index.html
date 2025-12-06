@@ -148,6 +148,15 @@
   </div>
 
   <script>
+    // --- GLOBAL ERROR LOGGING ---
+    window.addEventListener("error", (event) => {
+      console.error("[window error]", event.message, "at", event.filename + ":" + event.lineno);
+    });
+
+    window.addEventListener("unhandledrejection", (event) => {
+      console.error("[unhandled rejection]", event.reason);
+    });
+
     // Firebase configuration
     const firebaseConfig = {
       apiKey: "AIzaSyC945jY7UEh4sOOuuk7OMZVXeIh333kxVk",
@@ -159,10 +168,14 @@
       databaseURL: "https://chat-app-710f0-default-rtdb.firebaseio.com"
     };
 
+    console.log("[init] starting firebase init");
+
     // Initialize Firebase
     firebase.initializeApp(firebaseConfig);
     const auth = firebase.auth();
     const db   = firebase.database();
+
+    console.log("[init] firebase initialized");
 
     // DOM elements
     const loginForm      = document.getElementById("loginForm");
@@ -203,15 +216,21 @@
 
     function updateChatUserLabel(username) {
       chatUserLabel.textContent = username ? `Logged in as ${username}` : "";
+      console.log("[ui] chat user label set to:", chatUserLabel.textContent);
     }
 
     // On load: prefill username if "remember me" was used
     (function initRememberMe() {
-      const remember      = localStorage.getItem("rememberMe") === "true";
-      const savedUsername = localStorage.getItem("rememberedUsername");
-      if (remember && savedUsername) {
-        rememberMeCheckbox.checked = true;
-        loginUsernameInput.value   = savedUsername;
+      try {
+        const remember      = localStorage.getItem("rememberMe") === "true";
+        const savedUsername = localStorage.getItem("rememberedUsername");
+        console.log("[rememberMe] remember =", remember, "savedUsername =", savedUsername);
+        if (remember && savedUsername) {
+          rememberMeCheckbox.checked = true;
+          loginUsernameInput.value   = savedUsername;
+        }
+      } catch (err) {
+        console.error("[rememberMe] error reading localStorage", err);
       }
     })();
 
@@ -220,6 +239,7 @@
       clearLoginMessages();
       loginForm.classList.add("hidden");
       registerForm.classList.remove("hidden");
+      console.log("[ui] switched to register form");
     };
 
     // Switch to Login form
@@ -227,6 +247,7 @@
       clearRegisterMessages();
       registerForm.classList.add("hidden");
       loginForm.classList.remove("hidden");
+      console.log("[ui] switched to login form");
     };
 
     // Helper: make fake email from username
@@ -236,13 +257,22 @@
 
     // 🔍 Check if username is already taken in DB
     async function isUsernameTaken(username) {
-      const snapshot = await db
-        .ref("users")
-        .orderByChild("username")
-        .equalTo(username)
-        .once("value");
-
-      return snapshot.exists();
+      console.log("[users] checking if username taken:", username);
+      try {
+        const snapshot = await db
+          .ref("users")
+          .orderByChild("username")
+          .equalTo(username)
+          .once("value");
+        const exists = snapshot.exists();
+        console.log("[users] username taken =", exists);
+        return exists;
+      } catch (err) {
+        console.error("[users] error while checking username", err);
+        // If we can't check, be safe and say "taken" so we don't create bad state
+        registerError.textContent = "Error checking username. Try again.";
+        return true;
+      }
     }
 
     // Register User (username + password + confirm)
@@ -252,6 +282,8 @@
       const username        = regUsernameInput.value.trim();
       const password        = regPasswordInput.value.trim();
       const passwordConfirm = regPasswordConfirmInput.value.trim();
+
+      console.log("[register] submit", { username });
 
       if (!username || !password || !passwordConfirm) {
         registerError.textContent = "Please fill all fields.";
@@ -270,11 +302,14 @@
 
       // Check username in database
       if (await isUsernameTaken(username)) {
-        registerError.textContent = "That username is already taken.";
+        if (!registerError.textContent) {
+          registerError.textContent = "That username is already taken.";
+        }
         return;
       }
 
       const fakeEmail = makeEmailFromUsername(username);
+      console.log("[register] creating auth user", fakeEmail);
 
       try {
         const userCredential = await auth.createUserWithEmailAndPassword(
@@ -282,16 +317,19 @@
           password
         );
         const user = userCredential.user;
+        console.log("[register] auth user created", user.uid);
 
         // Save the username in Firebase Database
         const userRef = db.ref("users/" + user.uid);
         await userRef.set({ username });
+        console.log("[register] username saved to /users", user.uid);
 
         // Store the username in localStorage (for chat)
         localStorage.setItem("username", username);
 
         // Log them out so they still go through login flow
         await auth.signOut();
+        console.log("[register] signed out after registration");
 
         // Switch back to login, show success message
         registerForm.classList.add("hidden");
@@ -299,7 +337,7 @@
         clearLoginMessages();
         loginInfo.textContent = "Account created! You can log in now.";
       } catch (error) {
-        console.error("Error registering:", error);
+        console.error("[register] Error registering:", error);
         if (error.code === "auth/email-already-in-use") {
           registerError.textContent = "That username is already taken.";
         } else if (error.code === "auth/weak-password") {
@@ -317,6 +355,8 @@
       const username = loginUsernameInput.value.trim();
       const password = loginPasswordInput.value.trim();
       const remember = rememberMeCheckbox.checked;
+
+      console.log("[login] submit", { username, remember });
 
       if (!username || !password) {
         loginError.textContent = "Please fill username and password.";
@@ -336,13 +376,16 @@
           ? firebase.auth.Auth.Persistence.LOCAL   // stay logged in across restarts
           : firebase.auth.Auth.Persistence.SESSION; // only until browser/tab closed
 
+        console.log("[login] setting persistence", remember ? "LOCAL" : "SESSION");
         await auth.setPersistence(persistence);
 
+        console.log("[login] signing in with email", fakeEmail);
         const userCredential = await auth.signInWithEmailAndPassword(
           fakeEmail,
           password
         );
         const user = userCredential.user;
+        console.log("[login] signed in as", user.uid);
 
         // Store username for chat
         localStorage.setItem("username", username);
@@ -358,11 +401,15 @@
 
         updateChatUserLabel(username);
 
-        // Show chat (messages listener starts in onAuthStateChanged)
+        // Show chat (messages listener also starts in onAuthStateChanged)
         loginForm.classList.add("hidden");
         chatInterface.classList.remove("hidden");
+
+        // EXTRA: start listener right away too (in case onAuthStateChanged is slow)
+        console.log("[login] manually starting messages listener after login");
+        startMessagesListener();
       } catch (error) {
-        console.error("Error signing in:", error);
+        console.error("[login] Error signing in:", error);
         loginError.textContent = "Wrong username or password.";
       }
     };
@@ -370,6 +417,7 @@
     // Real-time message listener
     let messagesListener = null;
     let messagesRef      = null;
+    const seenMessageKeys = new Set();
 
     function renderMessage(msg) {
       const wrapper = document.createElement("div");
@@ -391,46 +439,108 @@
       messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }
 
-    function startMessagesListener() {
-      stopMessagesListener(); // avoid duplicates
-
-      messagesRef = db.ref("messages");
-      messagesListener = (snap) => {
-        const msg = snap.val() || {};
+    function renderMessageOnce(key, msg) {
+      if (!key) {
+        console.warn("[messages] missing key for message", msg);
         renderMessage(msg);
-      };
+        return;
+      }
+      if (seenMessageKeys.has(key)) return;
+      seenMessageKeys.add(key);
+      renderMessage(msg);
+    }
 
-      // attach
-      messagesRef.on("child_added", messagesListener);
+    function startMessagesListener() {
+      console.log("[messages] startMessagesListener called");
+      stopMessagesListener(); // avoid duplicates
+      seenMessageKeys.clear();
+      messagesDiv.innerHTML = "";
+
+      try {
+        // order by time so history makes sense
+        messagesRef = db.ref("messages").orderByChild("time");
+
+        // Load existing messages once
+        messagesRef.once(
+          "value",
+          (snap) => {
+            const count = snap.numChildren();
+            console.log("[messages] initial load snapshot, count =", count);
+            snap.forEach((child) => {
+              renderMessageOnce(child.key, child.val() || {});
+            });
+          },
+          (error) => {
+            console.error("[messages] error during initial load:", error);
+          }
+        );
+
+        // Listen for new messages live
+        messagesListener = (snap) => {
+          const msg = snap.val() || {};
+          console.log("[messages] child_added", { key: snap.key, msg });
+          renderMessageOnce(snap.key, msg);
+        };
+
+        messagesRef.on(
+          "child_added",
+          messagesListener,
+          (error) => {
+            console.error("[messages] listener error:", error);
+          }
+        );
+      } catch (err) {
+        console.error("[messages] startMessagesListener crashed:", err);
+      }
     }
 
     function stopMessagesListener() {
-      if (messagesRef && messagesListener) {
-        messagesRef.off("child_added", messagesListener);
+      console.log("[messages] stopMessagesListener called");
+      try {
+        if (messagesRef && messagesListener) {
+          messagesRef.off("child_added", messagesListener);
+        }
+      } catch (err) {
+        console.error("[messages] error while stopping listener:", err);
       }
       messagesRef = null;
       messagesListener = null;
+      seenMessageKeys.clear();
     }
 
     // Auto-handle already logged-in users on page load
     auth.onAuthStateChanged((user) => {
+      console.log("[auth] onAuthStateChanged user =", user ? user.uid : null);
+
       if (user) {
         // Get username from localStorage or from fake email
-        let username = localStorage.getItem("username");
+        let username = null;
+        try {
+          username = localStorage.getItem("username");
+        } catch (err) {
+          console.error("[auth] error reading username from localStorage", err);
+        }
+
         if (!username && user.email) {
           username = user.email.split("@")[0];
-          localStorage.setItem("username", username);
+          try {
+            localStorage.setItem("username", username);
+          } catch (err) {
+            console.error("[auth] error writing username to localStorage", err);
+          }
         }
+
         updateChatUserLabel(username || "User");
 
         loginForm.classList.add("hidden");
         registerForm.classList.add("hidden");
         chatInterface.classList.remove("hidden");
 
-        // start realtime messages
+        console.log("[auth] starting messages listener from auth state change");
         startMessagesListener();
       } else {
         // Not logged in
+        console.log("[auth] user is null, stopping listener and showing login");
         stopMessagesListener();
         messagesDiv.innerHTML = "";
 
@@ -442,14 +552,16 @@
 
     // Logout
     logoutBtn.onclick = async () => {
+      console.log("[logout] clicked");
       try {
         await auth.signOut();
+        console.log("[logout] signOut complete");
       } catch (e) {
-        console.error("Error signing out:", e);
+        console.error("[logout] Error signing out:", e);
       }
 
       // UI reset happens in onAuthStateChanged
-      msgInput.value        = "";
+      msgInput.value           = "";
       loginPasswordInput.value = "";
       clearLoginMessages();
 
@@ -471,6 +583,7 @@
 
       const userObj = auth.currentUser;
       if (!userObj) {
+        console.warn("[send] tried to send while not logged in");
         msgInput.value = "";
         return;
       }
@@ -479,11 +592,20 @@
         localStorage.getItem("username") ||
         (userObj.email ? userObj.email.split("@")[0] : "Unknown");
 
-      db.ref("messages").push({
-        user: username,
-        text: text,
-        time: firebase.database.ServerValue.TIMESTAMP
-      });
+      console.log("[send] sending message", { username, text });
+
+      db.ref("messages")
+        .push({
+          user: username,
+          text: text,
+          time: firebase.database.ServerValue.TIMESTAMP
+        })
+        .then((ref) => {
+          console.log("[send] message saved under key", ref.key);
+        })
+        .catch((error) => {
+          console.error("[send] error sending message:", error);
+        });
 
       msgInput.value = "";
     };
