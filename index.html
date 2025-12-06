@@ -165,9 +165,9 @@
     const db   = firebase.database();
 
     // DOM elements
-    const loginForm   = document.getElementById("loginForm");
-    const registerForm = document.getElementById("registerForm");
-    const chatInterface = document.getElementById("chatInterface");
+    const loginForm      = document.getElementById("loginForm");
+    const registerForm   = document.getElementById("registerForm");
+    const chatInterface  = document.getElementById("chatInterface");
 
     const loginUsernameInput  = document.getElementById("loginUsername");
     const loginPasswordInput  = document.getElementById("loginPassword");
@@ -268,7 +268,7 @@
         return;
       }
 
-      // NEW: check username in database
+      // Check username in database
       if (await isUsernameTaken(username)) {
         registerError.textContent = "That username is already taken.";
         return;
@@ -358,7 +358,7 @@
 
         updateChatUserLabel(username);
 
-        // Show chat
+        // Show chat (messages listener starts in onAuthStateChanged)
         loginForm.classList.add("hidden");
         chatInterface.classList.remove("hidden");
       } catch (error) {
@@ -367,34 +367,50 @@
       }
     };
 
-    // Logout
-    logoutBtn.onclick = async () => {
-      try {
-        await auth.signOut();
-      } catch (e) {
-        console.error("Error signing out:", e);
+    // Real-time message listener
+    let messagesListener = null;
+    let messagesRef      = null;
+
+    function renderMessage(msg) {
+      const wrapper = document.createElement("div");
+      wrapper.className = "p-3 bg-gray-700 rounded";
+
+      const userSpan = document.createElement("span");
+      userSpan.className = "font-bold text-orange-300";
+      userSpan.textContent = msg.user || "Unknown";
+
+      const textSpan = document.createElement("span");
+      textSpan.className = "ml-1 break-words";
+      textSpan.textContent = msg.text || "";
+
+      wrapper.appendChild(userSpan);
+      wrapper.appendChild(document.createTextNode(": "));
+      wrapper.appendChild(textSpan);
+
+      messagesDiv.appendChild(wrapper);
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+
+    function startMessagesListener() {
+      stopMessagesListener(); // avoid duplicates
+
+      messagesRef = db.ref("messages");
+      messagesListener = (snap) => {
+        const msg = snap.val() || {};
+        renderMessage(msg);
+      };
+
+      // attach
+      messagesRef.on("child_added", messagesListener);
+    }
+
+    function stopMessagesListener() {
+      if (messagesRef && messagesListener) {
+        messagesRef.off("child_added", messagesListener);
       }
-
-      chatInterface.classList.add("hidden");
-      loginForm.classList.remove("hidden");
-
-      // Clear chat UI
-      messagesDiv.innerHTML = "";
-      msgInput.value        = "";
-      loginPasswordInput.value = "";
-      clearLoginMessages();
-      updateChatUserLabel("");
-
-      const remember = localStorage.getItem("rememberMe") === "true";
-      if (!remember) {
-        localStorage.removeItem("username");
-        localStorage.removeItem("rememberedUsername");
-        loginUsernameInput.value = "";
-      } else {
-        const savedUsername = localStorage.getItem("rememberedUsername");
-        loginUsernameInput.value = savedUsername || "";
-      }
-    };
+      messagesRef = null;
+      messagesListener = null;
+    }
 
     // Auto-handle already logged-in users on page load
     auth.onAuthStateChanged((user) => {
@@ -410,44 +426,74 @@
         loginForm.classList.add("hidden");
         registerForm.classList.add("hidden");
         chatInterface.classList.remove("hidden");
+
+        // start realtime messages
+        startMessagesListener();
       } else {
         // Not logged in
+        stopMessagesListener();
+        messagesDiv.innerHTML = "";
+
         chatInterface.classList.add("hidden");
         loginForm.classList.remove("hidden");
         updateChatUserLabel("");
       }
     });
 
+    // Logout
+    logoutBtn.onclick = async () => {
+      try {
+        await auth.signOut();
+      } catch (e) {
+        console.error("Error signing out:", e);
+      }
+
+      // UI reset happens in onAuthStateChanged
+      msgInput.value        = "";
+      loginPasswordInput.value = "";
+      clearLoginMessages();
+
+      const remember = localStorage.getItem("rememberMe") === "true";
+      if (!remember) {
+        localStorage.removeItem("username");
+        localStorage.removeItem("rememberedUsername");
+        loginUsernameInput.value = "";
+      } else {
+        const savedUsername = localStorage.getItem("rememberedUsername");
+        loginUsernameInput.value = savedUsername || "";
+      }
+    };
+
     // Send a message
     sendBtn.onclick = () => {
       const text = msgInput.value.trim();
       if (text === "") return;
 
-      const username = localStorage.getItem("username") || "Unknown";
+      const userObj = auth.currentUser;
+      if (!userObj) {
+        msgInput.value = "";
+        return;
+      }
+
+      const username =
+        localStorage.getItem("username") ||
+        (userObj.email ? userObj.email.split("@")[0] : "Unknown");
 
       db.ref("messages").push({
         user: username,
         text: text,
-        time: Date.now()
+        time: firebase.database.ServerValue.TIMESTAMP
       });
 
       msgInput.value = "";
     };
 
-    // Listen for new messages in real-time
-    db.ref("messages").on("child_added", (snap) => {
-      const msg = snap.val();
-      const el  = document.createElement("div");
-      el.innerHTML = `
-        <div class="p-3 bg-gray-700 rounded">
-          <span class="font-bold text-orange-300">${msg.user}</span>:
-          ${msg.text}
-        </div>
-      `;
-      messagesDiv.appendChild(el);
-
-      // Auto scroll to bottom
-      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    // Optional: press Enter to send
+    msgInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendBtn.click();
+      }
     });
   </script>
 
