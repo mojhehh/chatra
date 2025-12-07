@@ -2,149 +2,382 @@
 <html lang="en">
    <head>
       <meta charset="UTF-8" />
-      <title>Simple Chat App</title>
+      <title>Chatra</title>
       <!-- Tailwind CSS (optional, for looks) -->
       <script src="https://cdn.tailwindcss.com"></script>
       <!-- Firebase SDKs -->
       <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
       <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
       <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
-      <!-- Hide scrollbar but keep scrolling -->
+      <!-- Hide scrollbar but keep scrolling + custom animations / glassmorphism -->
       <style>
          #messages {
-         scrollbar-width: none;          /* Firefox */
+         scrollbar-width: none; /* Firefox */
          }
          #messages::-webkit-scrollbar {
-         display: none;                  /* Chrome, Edge, Safari */
+         display: none; /* Chrome, Edge, Safari */
+         }
+         /* Glass card style for panels */
+         .glass-card {
+         background: radial-gradient(circle at top left, rgba(56, 189, 248, 0.2), transparent 55%),
+         radial-gradient(circle at bottom right, rgba(129, 140, 248, 0.18), transparent 55%),
+         rgba(15, 23, 42, 0.92);
+         border: 1px solid rgba(148, 163, 184, 0.4);
+         backdrop-filter: blur(18px);
+         box-shadow: 0 24px 60px rgba(15, 23, 42, 0.95);
+         transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+         }
+         .glass-card:hover {
+         transform: translateY(-3px);
+         box-shadow: 0 28px 80px rgba(59, 130, 246, 0.65);
+         border-color: rgba(96, 165, 250, 0.7);
+         }
+         /* Animated background blobs */
+         .bg-orb {
+         position: fixed;
+         border-radius: 9999px;
+         filter: blur(60px);
+         opacity: 0.75;
+         pointer-events: none;
+         z-index: -10;
+         }
+         .bg-orb-blue {
+         background: radial-gradient(circle, rgba(56, 189, 248, 0.7), transparent 60%);
+         animation: float-slow 16s ease-in-out infinite alternate;
+         }
+         .bg-orb-purple {
+         background: radial-gradient(circle, rgba(129, 140, 248, 0.7), transparent 60%);
+         animation: float-medium 20s ease-in-out infinite alternate;
+         }
+         .bg-orb-pink {
+         background: radial-gradient(circle, rgba(236, 72, 153, 0.7), transparent 60%);
+         animation: float-fast 22s ease-in-out infinite alternate;
+         }
+         @keyframes float-slow {
+         0% {
+         transform: translate3d(-10px, 0, 0) scale(1);
+         }
+         100% {
+         transform: translate3d(20px, 30px, 0) scale(1.08);
+         }
+         }
+         @keyframes float-medium {
+         0% {
+         transform: translate3d(10px, 20px, 0) scale(0.95);
+         }
+         100% {
+         transform: translate3d(-20px, -10px, 0) scale(1.05);
+         }
+         }
+         @keyframes float-fast {
+         0% {
+         transform: translate3d(-25px, 10px, 0) scale(1.05);
+         }
+         100% {
+         transform: translate3d(15px, -25px, 0) scale(0.98);
+         }
+         }
+         /* Message bubble animation */
+         @keyframes slide-up-fade {
+         0% {
+         opacity: 0;
+         transform: translateY(8px) scale(0.98);
+         }
+         100% {
+         opacity: 1;
+         transform: translateY(0) scale(1);
+         }
+         }
+         .message-bubble-anim {
+         animation: slide-up-fade 0.22s ease-out;
+         }
+         /* Subtle glowing border for input area */
+         .input-shell {
+         box-shadow:
+         0 0 0 1px rgba(148, 163, 184, 0.3),
+         0 0 25px rgba(37, 99, 235, 0.22);
+         }
+         /* Glow on primary buttons */
+         .btn-primary {
+         box-shadow:
+         0 14px 40px rgba(37, 99, 235, 0.7),
+         0 0 20px rgba(59, 130, 246, 0.7);
+         transition:
+         transform 0.15s ease,
+         box-shadow 0.15s ease,
+         background-color 0.15s ease;
+         }
+         .btn-primary:hover {
+         transform: translateY(-1px) scale(1.02);
+         box-shadow:
+         0 18px 60px rgba(37, 99, 235, 0.9),
+         0 0 30px rgba(59, 130, 246, 0.9);
+         }
+         .btn-primary:active {
+         transform: translateY(0) scale(0.98);
+         box-shadow:
+         0 10px 30px rgba(37, 99, 235, 0.7),
+         0 0 18px rgba(59, 130, 246, 0.7);
          }
       </style>
    </head>
-   <body class="bg-gray-900 text-white h-screen flex flex-col">
+   <body class="bg-slate-950 text-white h-screen flex flex-col relative overflow-hidden">
+      <!-- Glowing background blobs -->
+      <div class="bg-orb bg-orb-blue w-80 h-80 -top-24 -left-16"></div>
+      <div class="bg-orb bg-orb-purple w-96 h-96 -bottom-40 -right-10"></div>
+      <div class="bg-orb bg-orb-pink w-72 h-72 top-1/4 right-1/3"></div>
+      <!-- Top bar / logo -->
+      <header class="px-4 pt-4 pb-2 flex items-center justify-between z-10">
+         <div class="flex items-center gap-3">
+            <div
+               class="h-9 w-9 rounded-2xl bg-gradient-to-tr from-sky-500 via-indigo-500 to-pink-500 shadow-2xl shadow-sky-500/60 flex items-center justify-center text-xl font-black"
+               >
+               💬
+            </div>
+            <div class="flex flex-col">
+               <span class="text-sm tracking-[0.2em] uppercase text-sky-300/80">
+               Real-time
+               </span>
+               <h1 class="font-semibold text-lg text-slate-50 drop-shadow-[0_0_12px_rgba(59,130,246,0.75)]">
+                  Nebula Chat
+               </h1>
+            </div>
+         </div>
+         <div
+            class="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900/70 border border-sky-500/40 shadow-lg shadow-sky-500/40 text-[11px] uppercase tracking-widest"
+            >
+            <span class="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.9)]"></span>
+            <span class="text-slate-200">Online</span>
+         </div>
+      </header>
       <!-- Login Form (visible by default) -->
-      <div id="loginForm" class="flex-1 flex items-center justify-center">
-         <div class="bg-gray-800 p-6 rounded-xl w-96">
-            <h2 class="text-xl font-bold mb-4 text-center">Login</h2>
+      <div
+         id="loginForm"
+         class="flex-1 flex items-center justify-center pb-6 px-4"
+         >
+         <div
+            class="glass-card w-full max-w-md p-8 rounded-2xl shadow-[0_25px_80px_rgba(15,23,42,0.95)]"
+            >
+            <div class="flex flex-col items-center mb-6">
+               <h2 class="text-2xl font-semibold text-center mb-2">Welcome back</h2>
+               <p class="text-sm text-slate-300 text-center">
+                  Log in to start chating
+               </p>
+            </div>
             <!-- Username only -->
+            <label class="block text-xs font-medium text-slate-300 mb-1 ml-1"
+               >Username</label
+               >
             <input
                id="loginUsername"
                type="text"
-               placeholder="Username"
-               class="mb-3 p-2 rounded w-full bg-gray-600"
+               placeholder="Your username"
+               class="mb-4 p-3 rounded-xl w-full bg-slate-800/80 border border-slate-600/60 focus:border-sky-400 focus:ring-2 focus:ring-sky-500/60 outline-none transition-all shadow-inner shadow-slate-900/80"
                required
                />
             <!-- Password -->
+            <label class="block text-xs font-medium text-slate-300 mb-1 ml-1"
+               >Password</label
+               >
             <input
                id="loginPassword"
                type="password"
-               placeholder="Password"
-               class="mb-3 p-2 rounded w-full bg-gray-600"
+               placeholder="••••••••"
+               class="mb-3 p-3 rounded-xl w-full bg-slate-800/80 border border-slate-600/60 focus:border-sky-400 focus:ring-2 focus:ring-sky-500/60 outline-none transition-all shadow-inner shadow-slate-900/80"
                required
                />
             <!-- Remember me -->
-            <label class="flex items-center gap-2 mb-3 text-sm text-gray-300">
-            <input id="rememberMe" type="checkbox" class="h-4 w-4">
+            <label class="flex items-center gap-2 mb-3 text-xs text-gray-300">
+            <input
+               id="rememberMe"
+               type="checkbox"
+               class="h-4 w-4 rounded border-slate-500 bg-slate-800/90"
+               />
             <span>Remember me on this device</span>
             </label>
             <!-- Error / info messages -->
-            <p id="loginError" class="text-sm text-red-400 min-h-[1.25rem] mb-1"></p>
-            <p id="loginInfo" class="text-sm text-emerald-400 min-h-[1.25rem] mb-2"></p>
+            <p
+               id="loginError"
+               class="text-xs text-red-400 min-h-[1.25rem] mb-1"
+               ></p>
+            <p
+               id="loginInfo"
+               class="text-xs text-emerald-400 min-h-[1.25rem] mb-3"
+               ></p>
             <button
                id="loginBtn"
-               class="w-full p-3 bg-blue-500 rounded hover:bg-blue-600"
+               class="btn-primary w-full p-3 bg-gradient-to-r from-sky-500 via-indigo-500 to-sky-500 rounded-xl font-medium hover:from-sky-400 hover:via-indigo-400 hover:to-sky-400 active:brightness-95"
                >
             Login
             </button>
-            <p class="mt-3 text-sm text-gray-400">
+            <p class="mt-4 text-xs text-gray-300 text-center">
                Don't have an account?
-               <a href="#" id="registerLink" class="text-blue-400">Register here</a>
+               <a
+                  href="#"
+                  id="registerLink"
+                  class="text-sky-300 hover:text-sky-200 underline underline-offset-4"
+                  >Register here</a
+                  >
             </p>
          </div>
       </div>
       <!-- Registration Form (hidden by default) -->
-      <div id="registerForm" class="flex-1 flex items-center justify-center hidden">
-         <div class="bg-gray-800 p-6 rounded-xl w-96">
-            <h2 class="text-xl font-bold mb-4 text-center">Register</h2>
+      <div
+         id="registerForm"
+         class="flex-1 flex items-center justify-center pb-6 px-4 hidden"
+         >
+         <div
+            class="glass-card w-full max-w-md p-8 rounded-2xl shadow-[0_25px_80px_rgba(15,23,42,0.95)]"
+            >
+            <div class="flex flex-col items-center mb-6">
+               <h2 class="text-2xl font-semibold text-center mb-2">Create account</h2>
+               <p class="text-sm text-slate-300 text-center">
+                  Pick a unique username
+               </p>
+            </div>
             <!-- Username -->
+            <label class="block text-xs font-medium text-slate-300 mb-1 ml-1"
+               >Username</label
+               >
             <input
                id="regUsername"
                type="text"
-               placeholder="Username"
-               class="mb-3 p-2 rounded w-full bg-gray-600"
+               placeholder="CoolName"
+               class="mb-3 p-3 rounded-xl w-full bg-slate-800/80 border border-slate-600/60 focus:border-sky-400 focus:ring-2 focus:ring-sky-500/60 outline-none transition-all shadow-inner shadow-slate-900/80"
                required
                />
             <!-- Password -->
+            <label class="block text-xs font-medium text-slate-300 mb-1 ml-1"
+               >Password</label
+               >
             <input
                id="regPassword"
                type="password"
-               placeholder="Password"
-               class="mb-3 p-2 rounded w-full bg-gray-600"
+               placeholder="••••••••"
+               class="mb-3 p-3 rounded-xl w-full bg-slate-800/80 border border-slate-600/60 focus:border-sky-400 focus:ring-2 focus:ring-sky-500/60 outline-none transition-all shadow-inner shadow-slate-900/80"
                required
                />
             <!-- Confirm Password -->
+            <label class="block text-xs font-medium text-slate-300 mb-1 ml-1"
+               >Confirm Password</label
+               >
             <input
                id="regPasswordConfirm"
                type="password"
-               placeholder="Confirm Password"
-               class="mb-3 p-2 rounded w-full bg-gray-600"
+               placeholder="••••••••"
+               class="mb-3 p-3 rounded-xl w-full bg-slate-800/80 border border-slate-600/60 focus:border-sky-400 focus:ring-2 focus:ring-sky-500/60 outline-none transition-all shadow-inner shadow-slate-900/80"
                required
                />
             <!-- Error / info messages -->
-            <p id="registerError" class="text-sm text-red-400 min-h-[1.25rem] mb-2"></p>
+            <p
+               id="registerError"
+               class="text-xs text-red-400 min-h-[1.25rem] mb-3"
+               ></p>
             <button
                id="registerBtn"
-               class="w-full p-3 bg-blue-500 rounded hover:bg-blue-600"
+               class="btn-primary w-full p-3 bg-gradient-to-r from-sky-500 via-indigo-500 to-pink-500 rounded-xl font-medium hover:from-sky-400 hover:via-indigo-400 hover:to-pink-400 active:brightness-95"
                >
             Register
             </button>
-            <p class="mt-3 text-sm text-gray-400">
+            <p class="mt-4 text-xs text-gray-300 text-center">
                Already have an account?
-               <a href="#" id="loginLink" class="text-blue-400">Login here</a>
+               <a
+                  href="#"
+                  id="loginLink"
+                  class="text-sky-300 hover:text-sky-200 underline underline-offset-4"
+                  >Login here</a
+                  >
             </p>
          </div>
       </div>
       <!-- Chat Interface (hidden by default) -->
-      <div id="chatInterface" class="hidden flex-1 min-h-0 flex flex-col">
-         <!-- Chat header with user + logout -->
-         <div class="flex items-center justify-between px-4 py-2 bg-gray-900 border-b border-gray-800">
-            <span id="chatUserLabel" class="text-sm text-gray-300"></span>
-            <button
-               id="logoutBtn"
-               class="text-sm px-3 py-1 rounded bg-red-500 hover:bg-red-600"
-               >
-            Logout
-            </button>
-         </div>
-         <!-- Chat Messages -->
+      <div
+         id="chatInterface"
+         class="hidden flex-1 min-h-0 flex flex-col px-4 pb-4"
+         >
          <div
-            id="messages"
-            class="flex-1 min-h-0 overflow-y-auto p-4 space-y-3 bg-gray-800"
-            ></div>
-         <!-- Rate limit / warning message (on-screen, not alert) -->
-         <p
-            id="sendWarning"
-            class="px-4 py-1 text-sm text-red-400 min-h-[1.25rem]"
-            ></p>
-         <!-- Message Input (wrapped in a form so Enter submits on any device) -->
-         <form id="messageForm" class="p-4 bg-gray-700 flex">
-            <input
-               id="msgInput"
-               class="flex-1 p-3 rounded bg-gray-600 outline-none"
-               placeholder="Type a message..."
-               autocomplete="off"
-               />
-            <button
-               id="sendBtn"
-               type="submit"
-               class="ml-3 px-4 py-2 bg-blue-500 rounded hover:bg-blue-600"
+            class="glass-card flex-1 min-h-0 flex flex-col w-full max-w-5xl mx-auto rounded-3xl overflow-hidden shadow-[0_30px_90px_rgba(15,23,42,1)]"
+            >
+            <!-- Chat header with user + logout -->
+            <div
+               class="flex items-center justify-between px-5 py-3 bg-gradient-to-r from-slate-900/90 via-slate-950/95 to-slate-900/90 border-b border-slate-800/80 shadow-lg shadow-slate-950/80"
                >
-            Send
-            </button>
-         </form>
+               <div class="flex flex-col">
+                  <span class="text-[11px] uppercase tracking-[0.18em] text-slate-400">
+                  Logged in
+                  </span>
+                  <span
+                     id="chatUserLabel"
+                     class="text-sm text-sky-200 font-medium drop-shadow-[0_0_10px_rgba(56,189,248,0.8)]"
+                     ></span>
+               </div>
+               <button
+                  id="logoutBtn"
+                  class="px-3 py-1.5 text-xs rounded-full bg-gradient-to-r from-rose-500 to-red-500 hover:from-rose-400 hover:to-red-400 active:brightness-95 shadow-xl shadow-rose-500/60 transition-all"
+                  >
+               Logout
+               </button>
+            </div>
+            <!-- Chat Messages -->
+            <div
+               id="messages"
+               class="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-3 bg-gradient-to-b from-slate-900/80 via-slate-950 to-black"
+               ></div>
+            <!-- Combined status bar (typing + warnings) -->
+            <div
+               class="px-4 py-1.5 text-xs bg-slate-900/80 border-t border-slate-800/70 flex items-center gap-2 text-slate-300 shadow-inner shadow-black/70"
+               >
+               <span
+                  class="h-1.5 w-1.5 rounded-full bg-sky-400 shadow-[0_0_10px_rgba(56,189,248,0.9)]"
+                  ></span>
+               <p
+                  id="typingIndicator"
+                  class="flex-1 min-h-[0.5rem]"
+                  style="padding: 0; margin: 0;"
+                  ></p>
+               <!-- Old warning element kept but visually empty (text controlled in JS) -->
+               <p
+                  id="sendWarning"
+                  class="hidden text-sm text-red-400 min-h-[0.5rem]"
+                  ></p>
+            </div>
+            <!-- Message Input (wrapped in a form so Enter submits on any device) -->
+            <form
+               id="messageForm"
+               class="p-4 bg-slate-950/95 border-t border-slate-800/80 shadow-[0_-18px_40px_rgba(15,23,42,0.9)]"
+               >
+               <div
+                  class="input-shell flex items-center gap-3 bg-slate-900/90 rounded-2xl px-3 py-2"
+                  >
+                  <input
+                     id="msgInput"
+                     class="flex-1 px-3 py-2.5 rounded-xl bg-transparent text-sm placeholder:text-slate-500 focus:outline-none focus:ring-0"
+                     placeholder="Type a message..."
+                     autocomplete="off"
+                     />
+                  <button
+                     id="sendBtn"
+                     type="submit"
+                     class="btn-primary flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-sky-500 via-indigo-500 to-sky-500 text-sm font-medium hover:from-sky-400 hover:via-indigo-400 hover:to-sky-400 active:brightness-95"
+                     >
+                  <span>Send</span>
+                  <span class="text-lg leading-none">➤</span>
+                  </button>
+               </div>
+            </form>
+         </div>
       </div>
       <script>
          // --- GLOBAL ERROR LOGGING ---
          window.addEventListener("error", (event) => {
-           console.error("[window error]", event.message, "at", event.filename + ":" + event.lineno, "details:", event.error);
+           console.error(
+             "[window error]",
+             event.message,
+             "at",
+             event.filename + ":" + event.lineno,
+             "details:",
+             event.error
+           );
          });
          
          window.addEventListener("unhandledrejection", (event) => {
@@ -159,7 +392,7 @@
            storageBucket: "chat-app-710f0.firebasestorage.app",
            messagingSenderId: "225892837672",
            appId: "1:225892837672:web:f190f3585c4ffbd0f1c81d",
-           databaseURL: "https://chat-app-710f0-default-rtdb.firebaseio.com"
+           databaseURL: "https://chat-app-710f0-default-rtdb.firebaseio.com",
          };
          
          console.log("[init] starting firebase init");
@@ -167,56 +400,81 @@
          // Initialize Firebase
          firebase.initializeApp(firebaseConfig);
          const auth = firebase.auth();
-         const db   = firebase.database();
+         const db = firebase.database();
          
          console.log("[init] firebase initialized");
          
          // DOM elements
-         const loginForm      = document.getElementById("loginForm");
-         const registerForm   = document.getElementById("registerForm");
-         const chatInterface  = document.getElementById("chatInterface");
+         const loginForm = document.getElementById("loginForm");
+         const registerForm = document.getElementById("registerForm");
+         const chatInterface = document.getElementById("chatInterface");
          
-         const loginUsernameInput  = document.getElementById("loginUsername");
-         const loginPasswordInput  = document.getElementById("loginPassword");
-         const rememberMeCheckbox  = document.getElementById("rememberMe");
-         const loginBtn            = document.getElementById("loginBtn");
-         const loginError          = document.getElementById("loginError");
-         const loginInfo           = document.getElementById("loginInfo");
+         const loginUsernameInput = document.getElementById("loginUsername");
+         const loginPasswordInput = document.getElementById("loginPassword");
+         const rememberMeCheckbox = document.getElementById("rememberMe");
+         const loginBtn = document.getElementById("loginBtn");
+         const loginError = document.getElementById("loginError");
+         const loginInfo = document.getElementById("loginInfo");
          
-         const regUsernameInput        = document.getElementById("regUsername");
-         const regPasswordInput        = document.getElementById("regPassword");
-         const regPasswordConfirmInput = document.getElementById("regPasswordConfirm");
-         const registerBtn             = document.getElementById("registerBtn");
-         const registerError           = document.getElementById("registerError");
+         const regUsernameInput = document.getElementById("regUsername");
+         const regPasswordInput = document.getElementById("regPassword");
+         const regPasswordConfirmInput =
+           document.getElementById("regPasswordConfirm");
+         const registerBtn = document.getElementById("registerBtn");
+         const registerError = document.getElementById("registerError");
          
-         const msgInput        = document.getElementById("msgInput");
-         const sendBtn         = document.getElementById("sendBtn");
-         const messagesDiv     = document.getElementById("messages");
-         const messageForm     = document.getElementById("messageForm");
-         const sendWarningEl   = document.getElementById("sendWarning");
+         const msgInput = document.getElementById("msgInput");
+         const sendBtn = document.getElementById("sendBtn");
+         const messagesDiv = document.getElementById("messages");
+         const messageForm = document.getElementById("messageForm");
+         const sendWarningEl = document.getElementById("sendWarning");
+         const typingIndicatorEl = document.getElementById("typingIndicator");
          
-         const registerLink  = document.getElementById("registerLink");
-         const loginLink     = document.getElementById("loginLink");
-         const logoutBtn     = document.getElementById("logoutBtn");
+         const registerLink = document.getElementById("registerLink");
+         const loginLink = document.getElementById("loginLink");
+         const logoutBtn = document.getElementById("logoutBtn");
          const chatUserLabel = document.getElementById("chatUserLabel");
          
          // Global state
-         let currentUsername = null;   // SINGLE SOURCE for username
-         let currentUserId   = null;
+         let currentUsername = null; // SINGLE SOURCE for username
+         let currentUserId = null;
          
          // Real-time messages
-         let messagesListener  = null;
-         let messagesRef       = null;
+         let messagesListener = null;
+         let messagesRef = null;
          const seenMessageKeys = new Set();
+         
+         // Typing status
+         let typingTimeoutId = null;
+         let typingListenerAttached = false;
          
          // Rate-limit warning timeout + local last-sent time
          let sendWarningTimeoutId = null;
          let lastSentTime = 0; // for local 500ms rate limit
          
+         // --- COMBINED STATUS BAR (typing + warning) ---
+         let lastTypingText = "";
+         let currentWarningText = "";
+         
+         function updateStatusBar() {
+           const parts = [];
+           if (lastTypingText) parts.push(lastTypingText);
+           if (currentWarningText) {
+             if (parts.length > 0) {
+               parts.push("• " + currentWarningText);
+             } else {
+               parts.push(currentWarningText);
+             }
+           }
+           typingIndicatorEl.textContent = parts.join(" ");
+           // keep the old warning element visually empty
+           if (sendWarningEl) sendWarningEl.textContent = "";
+         }
+         
          // Helper: clear messages
          function clearLoginMessages() {
            loginError.textContent = "";
-           loginInfo.textContent  = "";
+           loginInfo.textContent = "";
          }
          
          function clearRegisterMessages() {
@@ -225,19 +483,22 @@
          
          function updateChatUserLabel(username) {
            currentUsername = username || null;
-           chatUserLabel.textContent = username ? `Logged in as ${username}` : "";
+           chatUserLabel.textContent = username
+             ? `Logged in as ${username}`
+             : "";
            console.log("[ui] chat user label set to:", chatUserLabel.textContent);
          }
          
-         // On-screen warning (2 seconds)
+         // On-screen warning (2 seconds) — now combined with typing in one line
          function showRateLimitWarning() {
-           if (!sendWarningEl) return;
-           sendWarningEl.textContent = "Slow down — you're sending messages too fast.";
+           currentWarningText = "Slow down — you're sending messages too fast.";
            if (sendWarningTimeoutId) {
              clearTimeout(sendWarningTimeoutId);
            }
+           updateStatusBar();
            sendWarningTimeoutId = setTimeout(() => {
-             sendWarningEl.textContent = "";
+             currentWarningText = "";
+             updateStatusBar();
            }, 2000);
          }
          
@@ -260,12 +521,17 @@
          // On load: prefill username if "remember me" was used (ONLY for login form)
          (function initRememberMe() {
            try {
-             const remember      = localStorage.getItem("rememberMe") === "true";
+             const remember = localStorage.getItem("rememberMe") === "true";
              const savedUsername = localStorage.getItem("rememberedUsername");
-             console.log("[rememberMe] remember =", remember, "savedUsername =", savedUsername);
+             console.log(
+               "[rememberMe] remember =",
+               remember,
+               "savedUsername =",
+               savedUsername
+             );
              if (remember && savedUsername) {
                rememberMeCheckbox.checked = true;
-               loginUsernameInput.value   = savedUsername;
+               loginUsernameInput.value = savedUsername;
              }
            } catch (err) {
              console.error("[rememberMe] error reading localStorage", err);
@@ -316,8 +582,8 @@
          registerBtn.onclick = async () => {
            clearRegisterMessages();
          
-           const username        = regUsernameInput.value.trim();
-           const password        = regPasswordInput.value.trim();
+           const username = regUsernameInput.value.trim();
+           const password = regPasswordInput.value.trim();
            const passwordConfirm = regPasswordConfirmInput.value.trim();
          
            console.log("[register] submit", { username });
@@ -409,7 +675,10 @@
                ? firebase.auth.Auth.Persistence.LOCAL
                : firebase.auth.Auth.Persistence.SESSION;
          
-             console.log("[login] setting persistence", remember ? "LOCAL" : "SESSION");
+             console.log(
+               "[login] setting persistence",
+               remember ? "LOCAL" : "SESSION"
+             );
              await auth.setPersistence(persistence);
          
              console.log("[login] signing in with email", fakeEmail);
@@ -432,7 +701,10 @@
                  localStorage.removeItem("rememberedUsername");
                }
              } catch (err) {
-               console.error("[login] error writing rememberMe to localStorage", err);
+               console.error(
+                 "[login] error writing rememberMe to localStorage",
+                 err
+               );
              }
          
              // DO NOT show chat here. onAuthStateChanged will do it.
@@ -444,7 +716,8 @@
              ) {
                loginError.textContent = "Wrong username or password.";
              } else if (error.code === "auth/too-many-requests") {
-               loginError.textContent = "Too many attempts. Please wait and try again.";
+               loginError.textContent =
+                 "Too many attempts. Please wait and try again.";
              } else {
                loginError.textContent = "Could not log in. Try again.";
              }
@@ -457,7 +730,7 @@
            const isMine = myName && msg.user === myName;
          
            const row = document.createElement("div");
-           row.className = "w-full flex";
+           row.className = "w-full flex mb-1.5";
            row.classList.add(isMine ? "justify-end" : "justify-start");
          
            const column = document.createElement("div");
@@ -465,18 +738,32 @@
          
            if (!isMine) {
              const nameLabel = document.createElement("div");
-             nameLabel.className = "text-xs text-gray-300 mb-1 ml-1";
+             nameLabel.className = "text-[11px] text-slate-300 mb-1 ml-1";
              nameLabel.textContent = msg.user || "Unknown";
              column.appendChild(nameLabel);
            }
          
            const bubble = document.createElement("div");
-           bubble.className = "px-3 py-2 rounded-2xl text-sm break-words";
+           bubble.className =
+             "message-bubble-anim px-3 py-2 rounded-2xl text-sm break-words shadow-lg shadow-slate-950/80";
          
            if (isMine) {
-             bubble.classList.add("bg-blue-500", "text-white", "rounded-br-sm");
+             bubble.classList.add(
+               "bg-gradient-to-r",
+               "from-sky-500",
+               "via-indigo-500",
+               "to-sky-500",
+               "text-white",
+               "rounded-br-sm"
+             );
            } else {
-             bubble.classList.add("bg-gray-700", "text-gray-100", "rounded-bl-sm");
+             bubble.classList.add(
+               "bg-slate-800/95",
+               "text-slate-50",
+               "rounded-bl-sm",
+               "border",
+               "border-slate-700/90"
+             );
            }
          
            bubble.textContent = msg.text || "";
@@ -554,15 +841,91 @@
            seenMessageKeys.clear();
          }
          
+         // --- TYPING STATUS HELPERS ---
+         function setTyping(isTyping) {
+           if (!currentUserId) return;
+           const ref = db.ref("typingStatus/" + currentUserId);
+           const name = currentUsername || "User";
+           return ref.set({
+             username: name,
+             typing: isTyping,
+             ts: firebase.database.ServerValue.TIMESTAMP,
+           });
+         }
+         
+         function handleTypingSnapshot(snap) {
+           const data = snap.val() || {};
+           let text = "";
+         
+           for (const uid in data) {
+             if (!Object.prototype.hasOwnProperty.call(data, uid)) continue;
+             if (uid === currentUserId) continue; // don't show yourself
+         
+             const entry = data[uid];
+             if (entry && entry.typing) {
+               const name = entry.username || "Someone";
+               text = name + " is typing…";
+               break;
+             }
+           }
+         
+           lastTypingText = text;
+           updateStatusBar();
+         }
+         
+         function startTypingListener() {
+           if (typingListenerAttached) return;
+           console.log("[typing] attaching typingStatus listener");
+           db.ref("typingStatus").on(
+             "value",
+             handleTypingSnapshot,
+             (err) => {
+               console.error("[typing] listener error:", err);
+             }
+           );
+           typingListenerAttached = true;
+         }
+         
+         function stopTypingListener() {
+           if (!typingListenerAttached) return;
+           console.log("[typing] detaching typingStatus listener");
+           db.ref("typingStatus").off("value", handleTypingSnapshot);
+           typingListenerAttached = false;
+           lastTypingText = "";
+           updateStatusBar();
+         }
+         
+         // Typing on input
+         msgInput.addEventListener("input", () => {
+           if (!currentUserId) return;
+         
+           // Mark as typing
+           setTyping(true);
+         
+           // Auto stop after 1.5s of no input
+           if (typingTimeoutId) {
+             clearTimeout(typingTimeoutId);
+           }
+           typingTimeoutId = setTimeout(() => {
+             setTyping(false);
+           }, 1500);
+         });
+         
          // Auto-handle already logged-in users on page load
          auth.onAuthStateChanged(async (user) => {
-           console.log("[auth] onAuthStateChanged user =", user ? user.uid : null);
+           console.log(
+             "[auth] onAuthStateChanged user =",
+             user ? user.uid : null
+           );
          
            if (user) {
              currentUserId = user.uid;
          
              // Get username from DB (ONE PLACE)
-             currentUsername = await fetchUsername(user.uid, user.email || null);
+             currentUsername = await fetchUsername(
+               user.uid,
+               user.email || null
+             );
              updateChatUserLabel(currentUsername);
          
              loginForm.classList.add("hidden");
@@ -571,13 +934,17 @@
          
              console.log("[auth] starting messages listener from auth state change");
              startMessagesListener();
+             startTypingListener();
            } else {
-             console.log("[auth] user is null, stopping listeners and showing login");
+             console.log(
+               "[auth] user is null, stopping listeners and showing login"
+             );
          
              stopMessagesListener();
+             stopTypingListener();
          
-             currentUserId    = null;
-             currentUsername  = null;
+             currentUserId = null;
+             currentUsername = null;
              messagesDiv.innerHTML = "";
          
              chatInterface.classList.add("hidden");
@@ -589,6 +956,14 @@
          // Logout
          logoutBtn.onclick = async () => {
            console.log("[logout] clicked");
+         
+           // Try to clear typing status before leaving
+           try {
+             await setTyping(false);
+           } catch (e) {
+             console.warn("[logout] could not clear typing status", e);
+           }
+         
            try {
              await auth.signOut();
              console.log("[logout] signOut complete");
@@ -596,7 +971,7 @@
              console.error("[logout] Error signing out:", e);
            }
          
-           msgInput.value           = "";
+           msgInput.value = "";
            loginPasswordInput.value = "";
            clearLoginMessages();
          
@@ -636,7 +1011,11 @@
              username = "Unknown";
            }
          
-           console.log("[send] sending message", { username, text, userId: userObj.uid });
+           console.log("[send] sending message", {
+             username,
+             text,
+             userId: userObj.uid,
+           });
          
            const uid = userObj.uid;
          
@@ -645,7 +1024,7 @@
              .push({
                user: username,
                text: text,
-               time: firebase.database.ServerValue.TIMESTAMP
+               time: firebase.database.ServerValue.TIMESTAMP,
              })
              .then((ref) => {
                console.log("[send] message saved under key", ref.key);
@@ -658,6 +1037,8 @@
              .then(() => {
                // Only clear input when message + timestamp both succeed
                msgInput.value = "";
+               // Stop typing once message is sent
+               setTyping(false);
              })
              .catch((error) => {
                console.error("[send] error sending message:", error);
