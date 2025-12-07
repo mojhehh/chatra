@@ -1,1058 +1,1415 @@
+
 <!DOCTYPE html>
 <html lang="en">
-   <head>
-      <meta charset="UTF-8" />
-      <title>Chatra</title>
-      <!-- Tailwind CSS (optional, for looks) -->
-      <script src="https://cdn.tailwindcss.com"></script>
-      <!-- Firebase SDKs -->
-      <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
-      <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
-      <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
-      <!-- Hide scrollbar but keep scrolling + custom animations / glassmorphism -->
-      <style>
-         #messages {
-         scrollbar-width: none; /* Firefox */
-         }
-         #messages::-webkit-scrollbar {
-         display: none; /* Chrome, Edge, Safari */
-         }
-         /* Glass card style for panels */
-         .glass-card {
-         background: radial-gradient(circle at top left, rgba(56, 189, 248, 0.2), transparent 55%),
-         radial-gradient(circle at bottom right, rgba(129, 140, 248, 0.18), transparent 55%),
-         rgba(15, 23, 42, 0.92);
-         border: 1px solid rgba(148, 163, 184, 0.4);
-         backdrop-filter: blur(18px);
-         box-shadow: 0 24px 60px rgba(15, 23, 42, 0.95);
-         transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
-         }
-         .glass-card:hover {
-         transform: translateY(-3px);
-         box-shadow: 0 28px 80px rgba(59, 130, 246, 0.65);
-         border-color: rgba(96, 165, 250, 0.7);
-         }
-         /* Animated background blobs */
-         .bg-orb {
-         position: fixed;
-         border-radius: 9999px;
-         filter: blur(60px);
-         opacity: 0.75;
-         pointer-events: none;
-         z-index: -10;
-         }
-         .bg-orb-blue {
-         background: radial-gradient(circle, rgba(56, 189, 248, 0.7), transparent 60%);
-         animation: float-slow 16s ease-in-out infinite alternate;
-         }
-         .bg-orb-purple {
-         background: radial-gradient(circle, rgba(129, 140, 248, 0.7), transparent 60%);
-         animation: float-medium 20s ease-in-out infinite alternate;
-         }
-         .bg-orb-pink {
-         background: radial-gradient(circle, rgba(236, 72, 153, 0.7), transparent 60%);
-         animation: float-fast 22s ease-in-out infinite alternate;
-         }
-         @keyframes float-slow {
-         0% {
-         transform: translate3d(-10px, 0, 0) scale(1);
-         }
-         100% {
-         transform: translate3d(20px, 30px, 0) scale(1.08);
-         }
-         }
-         @keyframes float-medium {
-         0% {
-         transform: translate3d(10px, 20px, 0) scale(0.95);
-         }
-         100% {
-         transform: translate3d(-20px, -10px, 0) scale(1.05);
-         }
-         }
-         @keyframes float-fast {
-         0% {
-         transform: translate3d(-25px, 10px, 0) scale(1.05);
-         }
-         100% {
-         transform: translate3d(15px, -25px, 0) scale(0.98);
-         }
-         }
-         /* Message bubble animation */
-         @keyframes slide-up-fade {
-         0% {
-         opacity: 0;
-         transform: translateY(8px) scale(0.98);
-         }
-         100% {
-         opacity: 1;
-         transform: translateY(0) scale(1);
-         }
-         }
-         .message-bubble-anim {
-         animation: slide-up-fade 0.22s ease-out;
-         }
-         /* Subtle glowing border for input area */
-         .input-shell {
-         box-shadow:
-         0 0 0 1px rgba(148, 163, 184, 0.3),
-         0 0 25px rgba(37, 99, 235, 0.22);
-         }
-         /* Glow on primary buttons */
-         .btn-primary {
-         box-shadow:
-         0 14px 40px rgba(37, 99, 235, 0.7),
-         0 0 20px rgba(59, 130, 246, 0.7);
-         transition:
-         transform 0.15s ease,
-         box-shadow 0.15s ease,
-         background-color 0.15s ease;
-         }
-         .btn-primary:hover {
-         transform: translateY(-1px) scale(1.02);
-         box-shadow:
-         0 18px 60px rgba(37, 99, 235, 0.9),
-         0 0 30px rgba(59, 130, 246, 0.9);
-         }
-         .btn-primary:active {
-         transform: translateY(0) scale(0.98);
-         box-shadow:
-         0 10px 30px rgba(37, 99, 235, 0.7),
-         0 0 18px rgba(59, 130, 246, 0.7);
-         }
-      </style>
-   </head>
-   <body class="bg-slate-950 text-white h-screen flex flex-col relative overflow-hidden">
-      <!-- Glowing background blobs -->
-      <div class="bg-orb bg-orb-blue w-80 h-80 -top-24 -left-16"></div>
-      <div class="bg-orb bg-orb-purple w-96 h-96 -bottom-40 -right-10"></div>
-      <div class="bg-orb bg-orb-pink w-72 h-72 top-1/4 right-1/3"></div>
-      <!-- Top bar / logo -->
-      <header class="px-4 pt-4 pb-2 flex items-center justify-between z-10">
-         <div class="flex items-center gap-3">
-            <div
-               class="h-9 w-9 rounded-2xl bg-gradient-to-tr from-sky-500 via-indigo-500 to-pink-500 shadow-2xl shadow-sky-500/60 flex items-center justify-center text-xl font-black"
-               >
-               💬
-            </div>
-            <div class="flex flex-col">
-               <span class="text-sm tracking-[0.2em] uppercase text-sky-300/80">
-               Real-time
-               </span>
-               <h1 class="font-semibold text-lg text-slate-50 drop-shadow-[0_0_12px_rgba(59,130,246,0.75)]">
-                  Nebula Chat
-               </h1>
-            </div>
-         </div>
-         <div
-            class="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900/70 border border-sky-500/40 shadow-lg shadow-sky-500/40 text-[11px] uppercase tracking-widest"
-            >
-            <span class="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.9)]"></span>
-            <span class="text-slate-200">Online</span>
-         </div>
-      </header>
-      <!-- Login Form (visible by default) -->
+  <head>
+    <meta charset="UTF-8" />
+    <title>Chatra</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <!-- Tailwind CSS (optional, for looks) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+
+    <!-- Hide scrollbar but keep scrolling + custom animations / glassmorphism -->
+    <style>
+      #messages {
+        scrollbar-width: thin;
+        scrollbar-color: rgba(100, 116, 139, 0.6) rgba(15, 23, 42, 0.3);
+      }
+      #messages::-webkit-scrollbar {
+        width: 8px;
+      }
+      #messages::-webkit-scrollbar-track {
+        background: rgba(15, 23, 42, 0.3);
+      }
+      #messages::-webkit-scrollbar-thumb {
+        background: rgba(100, 116, 139, 0.6);
+        border-radius: 4px;
+      }
+      #messages::-webkit-scrollbar-thumb:hover {
+        background: rgba(100, 116, 139, 0.8);
+      }
+
+      /* Glass card style for panels (more subtle) */
+      .glass-card {
+        background: rgba(15, 23, 42, 0.8);
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        backdrop-filter: blur(8px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        transition: all 0.2s ease;
+      }
+      .glass-card:hover {
+        border-color: rgba(148, 163, 184, 0.3);
+        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+      }
+
+      /* Animated background blobs (much more subtle) */
+      .bg-orb {
+        position: fixed;
+        border-radius: 9999px;
+        filter: blur(80px);
+        opacity: 0.08;
+        pointer-events: none;
+        z-index: -10;
+      }
+      .bg-orb-blue {
+        background: radial-gradient(circle, rgba(56, 189, 248, 0.4), transparent 60%);
+        animation: float-slow 20s ease-in-out infinite alternate;
+      }
+      .bg-orb-purple {
+        background: radial-gradient(circle, rgba(129, 140, 248, 0.35), transparent 60%);
+        animation: float-medium 24s ease-in-out infinite alternate;
+      }
+      .bg-orb-pink {
+        background: radial-gradient(circle, rgba(236, 72, 153, 0.3), transparent 60%);
+        animation: float-fast 26s ease-in-out infinite alternate;
+      }
+
+      @keyframes float-slow {
+        0% {
+          transform: translate3d(-10px, 0, 0) scale(1);
+        }
+        100% {
+          transform: translate3d(20px, 30px, 0) scale(1.06);
+        }
+      }
+      @keyframes float-medium {
+        0% {
+          transform: translate3d(10px, 20px, 0) scale(0.96);
+        }
+        100% {
+          transform: translate3d(-20px, -10px, 0) scale(1.04);
+        }
+      }
+      @keyframes float-fast {
+        0% {
+          transform: translate3d(-25px, 10px, 0) scale(1.03);
+        }
+        100% {
+          transform: translate3d(15px, -25px, 0) scale(0.97);
+        }
+      }
+
+      /* Message bubble animations - optimized for speed */
+      @keyframes slide-up-fade {
+        0% {
+          opacity: 0;
+          transform: translateY(8px) scale(0.95);
+        }
+        100% {
+          opacity: 1;
+          transform: translateY(0) scale(1);
+        }
+      }
+      
+      @keyframes bounce-in {
+        0% {
+          opacity: 0;
+          transform: scale(0.8) translateY(12px);
+        }
+        70% {
+          opacity: 1;
+          transform: scale(1.02);
+        }
+        100% {
+          opacity: 1;
+          transform: scale(1) translateY(0);
+        }
+      }
+
+      @keyframes text-reveal {
+        0% {
+          opacity: 0;
+          clip-path: inset(0 100% 0 0);
+        }
+        100% {
+          opacity: 1;
+          clip-path: inset(0 0 0 0);
+        }
+      }
+
+      .message-bubble-anim {
+        animation: slide-up-fade 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+      }
+
+      .message-bubble-anim.mine {
+        animation: bounce-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+      }
+
+      .message-text-reveal {
+        animation: text-reveal 0.35s ease-out;
+      }
+
+      /* Subtle input styling */
+      .input-shell {
+        box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2);
+        border: 1px solid rgba(148, 163, 184, 0.15);
+        transition: all 0.2s ease;
+      }
+      .input-shell:focus-within {
+        border-color: rgba(148, 163, 184, 0.3);
+      }
+
+      /* Subtle button styles */
+      .btn-primary {
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        transition: all 0.15s ease;
+      }
+      .btn-primary:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      }
+      .btn-primary:active {
+        transform: translateY(0);
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+      }
+    </style>
+  </head>
+
+  <body class="bg-slate-950 text-white h-screen min-h-screen flex flex-col relative overflow-hidden">
+    <!-- Glowing background blobs -->
+    <div class="bg-orb bg-orb-blue w-72 h-72 -top-20 -left-10"></div>
+    <div class="bg-orb bg-orb-purple w-80 h-80 -bottom-32 -right-6"></div>
+    <div class="bg-orb bg-orb-pink w-64 h-64 top-1/4 right-1/4"></div>
+
+    <!-- Loading Screen -->
+    <div
+      id="loadingScreen"
+      class="fixed inset-0 z-50 bg-slate-950 flex items-center justify-center"
+    >
+      <div class="flex flex-col items-center gap-6">
+        <div class="relative w-20 h-20">
+          <!-- Outer rotating ring -->
+          <div class="absolute inset-0 rounded-full border-2 border-transparent border-t-sky-500 border-r-sky-400 animate-spin"></div>
+          <!-- Middle rotating ring (opposite direction) -->
+          <div class="absolute inset-2 rounded-full border-2 border-transparent border-b-indigo-500 border-l-indigo-400 animate-spin" style="animation-direction: reverse; animation-duration: 2s;"></div>
+          <!-- Inner pulsing circle -->
+          <div class="absolute inset-4 rounded-full bg-gradient-to-r from-sky-500 to-indigo-500 animate-pulse"></div>
+        </div>
+        <div class="text-center">
+          <h2 class="text-xl font-semibold text-slate-100 mb-2">Loading your messages</h2>
+          <p class="text-sm text-slate-400">Connecting to chat...</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Top bar / logo -->
+    <header class="px-4 pt-4 pb-2 flex items-center justify-between z-10">
+      <div class="flex items-center gap-3">
+        <div
+          class="h-9 w-9 rounded-lg bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center text-xl font-black relative shadow-lg shadow-blue-900/50 hover:shadow-blue-900/80 hover:from-blue-500 hover:to-blue-700 transition-all duration-200"
+          title="Chatra Chat"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <!-- Chat bubble with gradient -->
+            <path d="M20 2H4C2.9 2 2 2.9 2 4V22L6 18H20C21.1 18 22 17.1 22 16V4C22 2.9 21.1 2 20 2Z" fill="white" opacity="0.95"/>
+            <!-- Inner accent -->
+            <circle cx="7" cy="10" r="1.5" fill="#1e40af" opacity="0.9"/>
+            <circle cx="12" cy="10" r="1.5" fill="#1e40af" opacity="0.9"/>
+            <circle cx="17" cy="10" r="1.5" fill="#1e40af" opacity="0.9"/>
+          </svg>
+        </div>
+        <div class="flex flex-col">
+          <h1 class="font-semibold text-lg text-slate-100">
+            Chatra
+          </h1>
+        </div>
+      </div>
       <div
-         id="loginForm"
-         class="flex-1 flex items-center justify-center pb-6 px-4"
-         >
-         <div
-            class="glass-card w-full max-w-md p-8 rounded-2xl shadow-[0_25px_80px_rgba(15,23,42,0.95)]"
-            >
-            <div class="flex flex-col items-center mb-6">
-               <h2 class="text-2xl font-semibold text-center mb-2">Welcome back</h2>
-               <p class="text-sm text-slate-300 text-center">
-                  Log in to start chating
-               </p>
-            </div>
-            <!-- Username only -->
-            <label class="block text-xs font-medium text-slate-300 mb-1 ml-1"
-               >Username</label
-               >
+        class="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-slate-800/50 border border-slate-700/50 text-[11px] uppercase tracking-widest"
+      >
+        <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+        <span class="text-slate-300">Online</span>
+      </div>
+    </header>
+
+    <!-- Login Form (visible by default) -->
+    <div
+      id="loginForm"
+      class="flex-1 flex items-center justify-center pb-4 px-3 sm:px-4"
+    >
+      <div
+        class="glass-card w-full max-w-md p-6 sm:p-8 rounded-2xl"
+      >
+        <div class="flex flex-col items-center mb-6">
+          <h2 class="text-2xl font-semibold text-center mb-2">Welcome back</h2>
+          <p class="text-sm text-slate-300 text-center">
+            Log in to start chatting
+          </p>
+        </div>
+
+        <!-- Username only -->
+        <label class="block text-xs font-medium text-slate-300 mb-1 ml-1"
+          >Username</label
+        >
+        <input
+          id="loginUsername"
+          type="text"
+          placeholder="Your username"
+          class="mb-4 p-3 rounded-xl w-full bg-slate-800/80 border border-slate-600/60 focus:border-sky-400 focus:ring-2 focus:ring-sky-500/60 outline-none transition-all shadow-inner shadow-slate-900/80"
+          required
+        />
+
+        <!-- Password -->
+        <label class="block text-xs font-medium text-slate-300 mb-1 ml-1"
+          >Password</label
+        >
+        <input
+          id="loginPassword"
+          type="password"
+          placeholder="••••••••"
+          class="mb-3 p-3 rounded-xl w-full bg-slate-800/80 border border-slate-600/60 focus:border-sky-400 focus:ring-2 focus:ring-sky-500/60 outline-none transition-all shadow-inner shadow-slate-900/80"
+          required
+        />
+
+        <!-- Remember me -->
+        <label class="flex items-center gap-2 mb-3 text-xs text-gray-300">
+          <input
+            id="rememberMe"
+            type="checkbox"
+            class="h-4 w-4 rounded border-slate-500 bg-slate-800/90"
+          />
+          <span>Remember me on this device</span>
+        </label>
+
+        <!-- Error / info messages -->
+        <p
+          id="loginError"
+          class="text-xs text-red-400 min-h-[1.25rem] mb-1"
+        ></p>
+        <p
+          id="loginInfo"
+          class="text-xs text-emerald-400 min-h-[1.25rem] mb-3"
+        ></p>
+
+        <button
+          id="loginBtn"
+          class="btn-primary w-full p-3 bg-sky-600 hover:bg-sky-700 rounded-lg font-medium transition-colors"
+        >
+          Login
+        </button>
+
+        <p class="mt-4 text-xs text-gray-300 text-center">
+          Don't have an account?
+          <a
+            href="#"
+            id="registerLink"
+            class="text-sky-300 hover:text-sky-200 underline underline-offset-4"
+            >Register here</a
+          >
+        </p>
+      </div>
+    </div>
+
+    <!-- Registration Form (hidden by default) -->
+    <div
+      id="registerForm"
+      class="flex-1 flex items-center justify-center pb-4 px-3 sm:px-4 hidden"
+    >
+      <div
+        class="glass-card w-full max-w-md p-6 sm:p-8 rounded-2xl"
+      >
+        <div class="flex flex-col items-center mb-6">
+          <h2 class="text-2xl font-semibold text-center mb-2">Create account</h2>
+          <p class="text-sm text-slate-300 text-center">
+            Pick a unique username
+          </p>
+        </div>
+
+        <!-- Username -->
+        <label class="block text-xs font-medium text-slate-300 mb-1 ml-1"
+          >Username</label
+        >
+        <input
+          id="regUsername"
+          type="text"
+          placeholder="CoolName"
+          class="mb-3 p-3 rounded-xl w-full bg-slate-800/80 border border-slate-600/60 focus:border-sky-400 focus:ring-2 focus:ring-sky-500/60 outline-none transition-all shadow-inner shadow-slate-900/80"
+          required
+        />
+
+        <!-- Password -->
+        <label class="block text-xs font-medium text-slate-300 mb-1 ml-1"
+          >Password</label
+        >
+        <input
+          id="regPassword"
+          type="password"
+          placeholder="••••••••"
+          class="mb-3 p-3 rounded-xl w-full bg-slate-800/80 border border-slate-600/60 focus:border-sky-400 focus:ring-2 focus:ring-sky-500/60 outline-none transition-all shadow-inner shadow-slate-900/80"
+          required
+        />
+
+        <!-- Confirm Password -->
+        <label class="block text-xs font-medium text-slate-300 mb-1 ml-1"
+          >Confirm Password</label
+        >
+        <input
+          id="regPasswordConfirm"
+          type="password"
+          placeholder="••••••••"
+          class="mb-3 p-3 rounded-xl w-full bg-slate-800/80 border border-slate-600/60 focus:border-sky-400 focus:ring-2 focus:ring-sky-500/60 outline-none transition-all shadow-inner shadow-slate-900/80"
+          required
+        />
+
+        <!-- Error / info messages -->
+        <p
+          id="registerError"
+          class="text-xs text-red-400 min-h-[1.25rem] mb-3"
+        ></p>
+
+        <button
+          id="registerBtn"
+          class="btn-primary w-full p-3 bg-sky-600 hover:bg-sky-700 rounded-lg font-medium transition-colors"
+        >
+          Register
+        </button>
+
+        <p class="mt-4 text-xs text-gray-300 text-center">
+          Already have an account?
+          <a
+            href="#"
+            id="loginLink"
+            class="text-sky-300 hover:text-sky-200 underline underline-offset-4"
+            >Login here</a
+          >
+        </p>
+      </div>
+    </div>
+
+    <!-- Chat Interface (hidden by default) -->
+    <div
+      id="chatInterface"
+      class="hidden flex-1 min-h-0 flex flex-col"
+    >
+      <!-- FULLSCREEN chat container -->
+      <div
+        class="glass-card flex-1 min-h-0 flex flex-col w-full rounded-none overflow-hidden"
+      >
+        <!-- Chat header with user + logout -->
+        <div
+          class="flex items-center justify-between px-4 sm:px-5 py-3 bg-slate-900/70 border-b border-slate-800/50"
+        >
+          <span
+            id="chatUserLabel"
+            class="text-sm text-slate-200 font-medium"
+          ></span>
+          <button
+            id="logoutBtn"
+            class="px-3 py-1.5 text-xs rounded-lg bg-slate-700 hover:bg-slate-600 transition-colors"
+          >
+            Logout
+          </button>
+        </div>
+
+        <!-- Chat Messages -->
+        <div
+          id="messages"
+          class="flex-1 min-h-0 overflow-y-auto px-2 sm:px-3 py-2 sm:py-3 space-y-1 bg-slate-900"
+        ></div>
+
+        <!-- Combined status bar (typing + warnings) -->
+        <div
+          class="px-4 py-1.5 text-xs bg-slate-800 border-t border-slate-700 flex items-center gap-2 text-slate-300"
+        >
+          <span
+            class="h-1.5 w-1.5 rounded-full bg-emerald-500"
+          ></span>
+          <p
+            id="typingIndicator"
+            class="flex-1 min-h-[0.5rem]"
+            style="padding: 0; margin: 0;"
+          ></p>
+          <!-- Old warning element kept but visually empty (text controlled in JS) -->
+          <p
+            id="sendWarning"
+            class="hidden text-sm text-red-400 min-h-[0.5rem]"
+          ></p>
+        </div>
+
+        <!-- Message Input (wrapped in a form so Enter submits on any device) -->
+        <form
+          id="messageForm"
+          class="p-2 sm:p-3 bg-slate-900 border-t border-slate-800 w-full"
+        >
+          <div
+            class="input-shell flex items-center gap-1.5 sm:gap-2 bg-slate-800 rounded-lg px-2 sm:px-3 py-1.5 sm:py-2"
+          >
             <input
-               id="loginUsername"
-               type="text"
-               placeholder="Your username"
-               class="mb-4 p-3 rounded-xl w-full bg-slate-800/80 border border-slate-600/60 focus:border-sky-400 focus:ring-2 focus:ring-sky-500/60 outline-none transition-all shadow-inner shadow-slate-900/80"
-               required
-               />
-            <!-- Password -->
-            <label class="block text-xs font-medium text-slate-300 mb-1 ml-1"
-               >Password</label
-               >
-            <input
-               id="loginPassword"
-               type="password"
-               placeholder="••••••••"
-               class="mb-3 p-3 rounded-xl w-full bg-slate-800/80 border border-slate-600/60 focus:border-sky-400 focus:ring-2 focus:ring-sky-500/60 outline-none transition-all shadow-inner shadow-slate-900/80"
-               required
-               />
-            <!-- Remember me -->
-            <label class="flex items-center gap-2 mb-3 text-xs text-gray-300">
-            <input
-               id="rememberMe"
-               type="checkbox"
-               class="h-4 w-4 rounded border-slate-500 bg-slate-800/90"
-               />
-            <span>Remember me on this device</span>
-            </label>
-            <!-- Error / info messages -->
-            <p
-               id="loginError"
-               class="text-xs text-red-400 min-h-[1.25rem] mb-1"
-               ></p>
-            <p
-               id="loginInfo"
-               class="text-xs text-emerald-400 min-h-[1.25rem] mb-3"
-               ></p>
+              id="msgInput"
+              class="flex-1 px-3 py-2.5 rounded-lg bg-transparent text-sm sm:text-base placeholder:text-slate-500 focus:outline-none focus:ring-0"
+              placeholder="Type a message..."
+              autocomplete="off"
+            />
             <button
-               id="loginBtn"
-               class="btn-primary w-full p-3 bg-gradient-to-r from-sky-500 via-indigo-500 to-sky-500 rounded-xl font-medium hover:from-sky-400 hover:via-indigo-400 hover:to-sky-400 active:brightness-95"
-               >
-            Login
-            </button>
-            <p class="mt-4 text-xs text-gray-300 text-center">
-               Don't have an account?
-               <a
-                  href="#"
-                  id="registerLink"
-                  class="text-sky-300 hover:text-sky-200 underline underline-offset-4"
-                  >Register here</a
-                  >
-            </p>
-         </div>
-      </div>
-      <!-- Registration Form (hidden by default) -->
-      <div
-         id="registerForm"
-         class="flex-1 flex items-center justify-center pb-6 px-4 hidden"
-         >
-         <div
-            class="glass-card w-full max-w-md p-8 rounded-2xl shadow-[0_25px_80px_rgba(15,23,42,0.95)]"
+              id="sendBtn"
+              type="submit"
+              class="btn-primary flex items-center gap-2 px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-700 text-sm sm:text-[15px] font-medium transition-colors"
             >
-            <div class="flex flex-col items-center mb-6">
-               <h2 class="text-2xl font-semibold text-center mb-2">Create account</h2>
-               <p class="text-sm text-slate-300 text-center">
-                  Pick a unique username
-               </p>
-            </div>
-            <!-- Username -->
-            <label class="block text-xs font-medium text-slate-300 mb-1 ml-1"
-               >Username</label
-               >
-            <input
-               id="regUsername"
-               type="text"
-               placeholder="CoolName"
-               class="mb-3 p-3 rounded-xl w-full bg-slate-800/80 border border-slate-600/60 focus:border-sky-400 focus:ring-2 focus:ring-sky-500/60 outline-none transition-all shadow-inner shadow-slate-900/80"
-               required
-               />
-            <!-- Password -->
-            <label class="block text-xs font-medium text-slate-300 mb-1 ml-1"
-               >Password</label
-               >
-            <input
-               id="regPassword"
-               type="password"
-               placeholder="••••••••"
-               class="mb-3 p-3 rounded-xl w-full bg-slate-800/80 border border-slate-600/60 focus:border-sky-400 focus:ring-2 focus:ring-sky-500/60 outline-none transition-all shadow-inner shadow-slate-900/80"
-               required
-               />
-            <!-- Confirm Password -->
-            <label class="block text-xs font-medium text-slate-300 mb-1 ml-1"
-               >Confirm Password</label
-               >
-            <input
-               id="regPasswordConfirm"
-               type="password"
-               placeholder="••••••••"
-               class="mb-3 p-3 rounded-xl w-full bg-slate-800/80 border border-slate-600/60 focus:border-sky-400 focus:ring-2 focus:ring-sky-500/60 outline-none transition-all shadow-inner shadow-slate-900/80"
-               required
-               />
-            <!-- Error / info messages -->
-            <p
-               id="registerError"
-               class="text-xs text-red-400 min-h-[1.25rem] mb-3"
-               ></p>
-            <button
-               id="registerBtn"
-               class="btn-primary w-full p-3 bg-gradient-to-r from-sky-500 via-indigo-500 to-pink-500 rounded-xl font-medium hover:from-sky-400 hover:via-indigo-400 hover:to-pink-400 active:brightness-95"
-               >
-            Register
+              <span>Send</span>
+              <span class="text-lg leading-none">➤</span>
             </button>
-            <p class="mt-4 text-xs text-gray-300 text-center">
-               Already have an account?
-               <a
-                  href="#"
-                  id="loginLink"
-                  class="text-sky-300 hover:text-sky-200 underline underline-offset-4"
-                  >Login here</a
-                  >
-            </p>
-         </div>
+          </div>
+        </form>
       </div>
-      <!-- Chat Interface (hidden by default) -->
-      <div
-         id="chatInterface"
-         class="hidden flex-1 min-h-0 flex flex-col px-4 pb-4"
-         >
-         <div
-            class="glass-card flex-1 min-h-0 flex flex-col w-full max-w-5xl mx-auto rounded-3xl overflow-hidden shadow-[0_30px_90px_rgba(15,23,42,1)]"
-            >
-            <!-- Chat header with user + logout -->
-            <div
-               class="flex items-center justify-between px-5 py-3 bg-gradient-to-r from-slate-900/90 via-slate-950/95 to-slate-900/90 border-b border-slate-800/80 shadow-lg shadow-slate-950/80"
-               >
-               <div class="flex flex-col">
-                  <span class="text-[11px] uppercase tracking-[0.18em] text-slate-400">
-                  Logged in
-                  </span>
-                  <span
-                     id="chatUserLabel"
-                     class="text-sm text-sky-200 font-medium drop-shadow-[0_0_10px_rgba(56,189,248,0.8)]"
-                     ></span>
-               </div>
-               <button
-                  id="logoutBtn"
-                  class="px-3 py-1.5 text-xs rounded-full bg-gradient-to-r from-rose-500 to-red-500 hover:from-rose-400 hover:to-red-400 active:brightness-95 shadow-xl shadow-rose-500/60 transition-all"
-                  >
-               Logout
-               </button>
-            </div>
-            <!-- Chat Messages -->
-            <div
-               id="messages"
-               class="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-3 bg-gradient-to-b from-slate-900/80 via-slate-950 to-black"
-               ></div>
-            <!-- Combined status bar (typing + warnings) -->
-            <div
-               class="px-4 py-1.5 text-xs bg-slate-900/80 border-t border-slate-800/70 flex items-center gap-2 text-slate-300 shadow-inner shadow-black/70"
-               >
-               <span
-                  class="h-1.5 w-1.5 rounded-full bg-sky-400 shadow-[0_0_10px_rgba(56,189,248,0.9)]"
-                  ></span>
-               <p
-                  id="typingIndicator"
-                  class="flex-1 min-h-[0.5rem]"
-                  style="padding: 0; margin: 0;"
-                  ></p>
-               <!-- Old warning element kept but visually empty (text controlled in JS) -->
-               <p
-                  id="sendWarning"
-                  class="hidden text-sm text-red-400 min-h-[0.5rem]"
-                  ></p>
-            </div>
-            <!-- Message Input (wrapped in a form so Enter submits on any device) -->
-            <form
-               id="messageForm"
-               class="p-4 bg-slate-950/95 border-t border-slate-800/80 shadow-[0_-18px_40px_rgba(15,23,42,0.9)]"
-               >
-               <div
-                  class="input-shell flex items-center gap-3 bg-slate-900/90 rounded-2xl px-3 py-2"
-                  >
-                  <input
-                     id="msgInput"
-                     class="flex-1 px-3 py-2.5 rounded-xl bg-transparent text-sm placeholder:text-slate-500 focus:outline-none focus:ring-0"
-                     placeholder="Type a message..."
-                     autocomplete="off"
-                     />
-                  <button
-                     id="sendBtn"
-                     type="submit"
-                     class="btn-primary flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-sky-500 via-indigo-500 to-sky-500 text-sm font-medium hover:from-sky-400 hover:via-indigo-400 hover:to-sky-400 active:brightness-95"
-                     >
-                  <span>Send</span>
-                  <span class="text-lg leading-none">➤</span>
-                  </button>
-               </div>
-            </form>
-         </div>
-      </div>
-      <script>
-         // --- GLOBAL ERROR LOGGING ---
-         window.addEventListener("error", (event) => {
-           console.error(
-             "[window error]",
-             event.message,
-             "at",
-             event.filename + ":" + event.lineno,
-             "details:",
-             event.error
-           );
-         });
-         
-         window.addEventListener("unhandledrejection", (event) => {
-           console.error("[unhandled rejection]", event.reason);
-         });
-         
-         // Firebase configuration
-         const firebaseConfig = {
-           apiKey: "AIzaSyC945jY7UEh4sOOuuk7OMZVXeIh333kxVk",
-           authDomain: "chat-app-710f0.firebaseapp.com",
-           projectId: "chat-app-710f0",
-           storageBucket: "chat-app-710f0.firebasestorage.app",
-           messagingSenderId: "225892837672",
-           appId: "1:225892837672:web:f190f3585c4ffbd0f1c81d",
-           databaseURL: "https://chat-app-710f0-default-rtdb.firebaseio.com",
-         };
-         
-         console.log("[init] starting firebase init");
-         
-         // Initialize Firebase
-         firebase.initializeApp(firebaseConfig);
-         const auth = firebase.auth();
-         const db = firebase.database();
-         
-         console.log("[init] firebase initialized");
-         
-         // DOM elements
-         const loginForm = document.getElementById("loginForm");
-         const registerForm = document.getElementById("registerForm");
-         const chatInterface = document.getElementById("chatInterface");
-         
-         const loginUsernameInput = document.getElementById("loginUsername");
-         const loginPasswordInput = document.getElementById("loginPassword");
-         const rememberMeCheckbox = document.getElementById("rememberMe");
-         const loginBtn = document.getElementById("loginBtn");
-         const loginError = document.getElementById("loginError");
-         const loginInfo = document.getElementById("loginInfo");
-         
-         const regUsernameInput = document.getElementById("regUsername");
-         const regPasswordInput = document.getElementById("regPassword");
-         const regPasswordConfirmInput =
-           document.getElementById("regPasswordConfirm");
-         const registerBtn = document.getElementById("registerBtn");
-         const registerError = document.getElementById("registerError");
-         
-         const msgInput = document.getElementById("msgInput");
-         const sendBtn = document.getElementById("sendBtn");
-         const messagesDiv = document.getElementById("messages");
-         const messageForm = document.getElementById("messageForm");
-         const sendWarningEl = document.getElementById("sendWarning");
-         const typingIndicatorEl = document.getElementById("typingIndicator");
-         
-         const registerLink = document.getElementById("registerLink");
-         const loginLink = document.getElementById("loginLink");
-         const logoutBtn = document.getElementById("logoutBtn");
-         const chatUserLabel = document.getElementById("chatUserLabel");
-         
-         // Global state
-         let currentUsername = null; // SINGLE SOURCE for username
-         let currentUserId = null;
-         
-         // Real-time messages
-         let messagesListener = null;
-         let messagesRef = null;
-         const seenMessageKeys = new Set();
-         
-         // Typing status
-         let typingTimeoutId = null;
-         let typingListenerAttached = false;
-         
-         // Rate-limit warning timeout + local last-sent time
-         let sendWarningTimeoutId = null;
-         let lastSentTime = 0; // for local 500ms rate limit
-         
-         // --- COMBINED STATUS BAR (typing + warning) ---
-         let lastTypingText = "";
-         let currentWarningText = "";
-         
-         function updateStatusBar() {
-           const parts = [];
-           if (lastTypingText) parts.push(lastTypingText);
-           if (currentWarningText) {
-             if (parts.length > 0) {
-               parts.push("• " + currentWarningText);
-             } else {
-               parts.push(currentWarningText);
-             }
-           }
-           typingIndicatorEl.textContent = parts.join(" ");
-           // keep the old warning element visually empty
-           if (sendWarningEl) sendWarningEl.textContent = "";
-         }
-         
-         // Helper: clear messages
-         function clearLoginMessages() {
-           loginError.textContent = "";
-           loginInfo.textContent = "";
-         }
-         
-         function clearRegisterMessages() {
-           registerError.textContent = "";
-         }
-         
-         function updateChatUserLabel(username) {
-           currentUsername = username || null;
-           chatUserLabel.textContent = username
-             ? `Logged in as ${username}`
-             : "";
-           console.log("[ui] chat user label set to:", chatUserLabel.textContent);
-         }
-         
-         // On-screen warning (2 seconds) — now combined with typing in one line
-         function showRateLimitWarning() {
-           currentWarningText = "Slow down — you're sending messages too fast.";
-           if (sendWarningTimeoutId) {
-             clearTimeout(sendWarningTimeoutId);
-           }
-           updateStatusBar();
-           sendWarningTimeoutId = setTimeout(() => {
-             currentWarningText = "";
-             updateStatusBar();
-           }, 2000);
-         }
-         
-         // --- USERNAME FROM DB (ONE SOURCE OF TRUTH) ---
-         async function fetchUsername(uid, emailFallback) {
-           try {
-             const snap = await db.ref("users/" + uid + "/username").once("value");
-             let username = snap.val();
-             if (!username && emailFallback) {
-               username = emailFallback.split("@")[0];
-             }
-             return username || "User";
-           } catch (err) {
-             console.error("[username] error fetching from DB", err);
-             if (emailFallback) return emailFallback.split("@")[0];
-             return "User";
-           }
-         }
-         
-         // On load: prefill username if "remember me" was used (ONLY for login form)
-         (function initRememberMe() {
-           try {
-             const remember = localStorage.getItem("rememberMe") === "true";
-             const savedUsername = localStorage.getItem("rememberedUsername");
-             console.log(
-               "[rememberMe] remember =",
-               remember,
-               "savedUsername =",
-               savedUsername
-             );
-             if (remember && savedUsername) {
-               rememberMeCheckbox.checked = true;
-               loginUsernameInput.value = savedUsername;
-             }
-           } catch (err) {
-             console.error("[rememberMe] error reading localStorage", err);
-           }
-         })();
-         
-         // Switch to Register form
-         registerLink.onclick = () => {
-           clearLoginMessages();
-           loginForm.classList.add("hidden");
-           registerForm.classList.remove("hidden");
-           console.log("[ui] switched to register form");
-         };
-         
-         // Switch to Login form
-         loginLink.onclick = () => {
-           clearRegisterMessages();
-           registerForm.classList.add("hidden");
-           loginForm.classList.remove("hidden");
-           console.log("[ui] switched to login form");
-         };
-         
-         // Helper: make fake email from username
-         function makeEmailFromUsername(username) {
-           return username.toLowerCase() + "@gmail.com";
-         }
-         
-         // 🔍 Check if username is already taken in DB
-         async function isUsernameTaken(username) {
-           console.log("[users] checking if username taken:", username);
-           try {
-             const snapshot = await db
-               .ref("users")
-               .orderByChild("username")
-               .equalTo(username)
-               .once("value");
-             const exists = snapshot.exists();
-             console.log("[users] username taken =", exists);
-             return exists;
-           } catch (err) {
-             console.error("[users] error while checking username", err);
-             registerError.textContent = "Error checking username. Try again.";
-             return true;
-           }
-         }
-         
-         // Register User (username + password + confirm)
-         registerBtn.onclick = async () => {
-           clearRegisterMessages();
-         
-           const username = regUsernameInput.value.trim();
-           const password = regPasswordInput.value.trim();
-           const passwordConfirm = regPasswordConfirmInput.value.trim();
-         
-           console.log("[register] submit", { username });
-         
-           if (!username || !password || !passwordConfirm) {
-             registerError.textContent = "Please fill all fields.";
-             return;
-           }
-         
-           if (username.includes("@") || username.includes(" ")) {
-             registerError.textContent = "Username can't have spaces or '@'.";
-             return;
-           }
-         
-           if (password !== passwordConfirm) {
-             registerError.textContent = "Passwords do not match.";
-             return;
-           }
-         
-           // Check username in database
-           if (await isUsernameTaken(username)) {
-             if (!registerError.textContent) {
-               registerError.textContent = "That username is already taken.";
-             }
-             return;
-           }
-         
-           const fakeEmail = makeEmailFromUsername(username);
-           console.log("[register] creating auth user", fakeEmail);
-         
-           try {
-             const userCredential = await auth.createUserWithEmailAndPassword(
-               fakeEmail,
-               password
-             );
-             const user = userCredential.user;
-             console.log("[register] auth user created", user.uid);
-         
-             // Save the username in Firebase Database
-             const userRef = db.ref("users/" + user.uid);
-             await userRef.set({ username });
-             console.log("[register] username saved to /users", user.uid);
-         
-             // Log them out so they still go through login flow
-             await auth.signOut();
-             console.log("[register] signed out after registration");
-         
-             // Switch back to login, show success message
-             registerForm.classList.add("hidden");
-             loginForm.classList.remove("hidden");
-             clearLoginMessages();
-             loginInfo.textContent = "Account created! You can log in now.";
-           } catch (error) {
-             console.error("[register] Error registering:", error);
-             if (error.code === "auth/email-already-in-use") {
-               registerError.textContent = "That username is already taken.";
-             } else if (error.code === "auth/weak-password") {
-               registerError.textContent = "Password is too weak.";
-             } else {
-               registerError.textContent = "Could not register. Try again.";
-             }
-           }
-         };
-         
-         /// Sign In User (username + password only) with persistence
-         loginBtn.onclick = async () => {
-           clearLoginMessages();
-         
-           const username = loginUsernameInput.value.trim();
-           const password = loginPasswordInput.value.trim();
-           const remember = rememberMeCheckbox.checked;
-         
-           console.log("[login] submit", { username, remember });
-         
-           if (!username || !password) {
-             loginError.textContent = "Please fill username and password.";
-             return;
-           }
-         
-           if (username.includes("@") || username.includes(" ")) {
-             loginError.textContent = "Username can't have spaces or '@'.";
-             return;
-           }
-         
-           const fakeEmail = makeEmailFromUsername(username);
-         
-           try {
-             const persistence = remember
-               ? firebase.auth.Auth.Persistence.LOCAL
-               : firebase.auth.Auth.Persistence.SESSION;
-         
-             console.log(
-               "[login] setting persistence",
-               remember ? "LOCAL" : "SESSION"
-             );
-             await auth.setPersistence(persistence);
-         
-             console.log("[login] signing in with email", fakeEmail);
-         
-             const userCredential = await auth.signInWithEmailAndPassword(
-               fakeEmail,
-               password
-             );
-             const user = userCredential.user;
-         
-             console.log("[login] signed in as", user.uid);
-         
-             // Save "remember me" stuff ONLY for login form next time
-             try {
-               if (remember) {
-                 localStorage.setItem("rememberMe", "true");
-                 localStorage.setItem("rememberedUsername", username);
-               } else {
-                 localStorage.removeItem("rememberMe");
-                 localStorage.removeItem("rememberedUsername");
-               }
-             } catch (err) {
-               console.error(
-                 "[login] error writing rememberMe to localStorage",
-                 err
-               );
-             }
-         
-             // DO NOT show chat here. onAuthStateChanged will do it.
-           } catch (error) {
-             console.error("[login] Error signing in:", error);
-             if (
-               error.code === "auth/user-not-found" ||
-               error.code === "auth/wrong-password"
-             ) {
-               loginError.textContent = "Wrong username or password.";
-             } else if (error.code === "auth/too-many-requests") {
-               loginError.textContent =
-                 "Too many attempts. Please wait and try again.";
-             } else {
-               loginError.textContent = "Could not log in. Try again.";
-             }
-           }
-         };
-         
-         // --- MESSAGE RENDERING (iMessage style bubbles) ---
-         function renderMessage(msg) {
-           const myName = currentUsername || null;
-           const isMine = myName && msg.user === myName;
-         
-           const row = document.createElement("div");
-           row.className = "w-full flex mb-1.5";
-           row.classList.add(isMine ? "justify-end" : "justify-start");
-         
-           const column = document.createElement("div");
-           column.className = "flex flex-col max-w-[75%]";
-         
-           if (!isMine) {
-             const nameLabel = document.createElement("div");
-             nameLabel.className = "text-[11px] text-slate-300 mb-1 ml-1";
-             nameLabel.textContent = msg.user || "Unknown";
-             column.appendChild(nameLabel);
-           }
-         
-           const bubble = document.createElement("div");
-           bubble.className =
-             "message-bubble-anim px-3 py-2 rounded-2xl text-sm break-words shadow-lg shadow-slate-950/80";
-         
-           if (isMine) {
-             bubble.classList.add(
-               "bg-gradient-to-r",
-               "from-sky-500",
-               "via-indigo-500",
-               "to-sky-500",
-               "text-white",
-               "rounded-br-sm"
-             );
-           } else {
-             bubble.classList.add(
-               "bg-slate-800/95",
-               "text-slate-50",
-               "rounded-bl-sm",
-               "border",
-               "border-slate-700/90"
-             );
-           }
-         
-           bubble.textContent = msg.text || "";
-         
-           column.appendChild(bubble);
-           row.appendChild(column);
-         
-           messagesDiv.appendChild(row);
-           messagesDiv.scrollTop = messagesDiv.scrollHeight;
-         }
-         
-         function renderMessageOnce(key, msg) {
-           if (!key) {
-             console.warn("[messages] missing key for message", msg);
-             renderMessage(msg);
-             return;
-           }
-           if (seenMessageKeys.has(key)) return;
-           seenMessageKeys.add(key);
-           renderMessage(msg);
-         }
-         
-         function startMessagesListener() {
-           console.log("[messages] startMessagesListener called");
-           stopMessagesListener();
-           seenMessageKeys.clear();
-           messagesDiv.innerHTML = "";
-         
-           try {
-             messagesRef = db.ref("messages").orderByChild("time");
-         
-             messagesRef.once(
-               "value",
-               (snap) => {
-                 const count = snap.numChildren();
-                 console.log("[messages] initial load snapshot, count =", count);
-                 snap.forEach((child) => {
-                   renderMessageOnce(child.key, child.val() || {});
-                 });
-               },
-               (error) => {
-                 console.error("[messages] error during initial load:", error);
-               }
-             );
-         
-             messagesListener = (snap) => {
-               const msg = snap.val() || {};
-               console.log("[messages] child_added", { key: snap.key, msg });
-               renderMessageOnce(snap.key, msg);
-             };
-         
-             messagesRef.on(
-               "child_added",
-               messagesListener,
-               (error) => {
-                 console.error("[messages] listener error:", error);
-               }
-             );
-           } catch (err) {
-             console.error("[messages] startMessagesListener crashed:", err);
-           }
-         }
-         
-         function stopMessagesListener() {
-           console.log("[messages] stopMessagesListener called");
-           try {
-             if (messagesRef && messagesListener) {
-               messagesRef.off("child_added", messagesListener);
-             }
-           } catch (err) {
-             console.error("[messages] error while stopping listener:", err);
-           }
-           messagesRef = null;
-           messagesListener = null;
-           seenMessageKeys.clear();
-         }
-         
-         // --- TYPING STATUS HELPERS ---
-         function setTyping(isTyping) {
-           if (!currentUserId) return;
-           const ref = db.ref("typingStatus/" + currentUserId);
-           const name = currentUsername || "User";
-           return ref.set({
-             username: name,
-             typing: isTyping,
-             ts: firebase.database.ServerValue.TIMESTAMP,
-           });
-         }
-         
-         function handleTypingSnapshot(snap) {
-           const data = snap.val() || {};
-           let text = "";
-         
-           for (const uid in data) {
-             if (!Object.prototype.hasOwnProperty.call(data, uid)) continue;
-             if (uid === currentUserId) continue; // don't show yourself
-         
-             const entry = data[uid];
-             if (entry && entry.typing) {
-               const name = entry.username || "Someone";
-               text = name + " is typing…";
-               break;
-             }
-           }
-         
-           lastTypingText = text;
-           updateStatusBar();
-         }
-         
-         function startTypingListener() {
-           if (typingListenerAttached) return;
-           console.log("[typing] attaching typingStatus listener");
-           db.ref("typingStatus").on(
-             "value",
-             handleTypingSnapshot,
-             (err) => {
-               console.error("[typing] listener error:", err);
-             }
-           );
-           typingListenerAttached = true;
-         }
-         
-         function stopTypingListener() {
-           if (!typingListenerAttached) return;
-           console.log("[typing] detaching typingStatus listener");
-           db.ref("typingStatus").off("value", handleTypingSnapshot);
-           typingListenerAttached = false;
-           lastTypingText = "";
-           updateStatusBar();
-         }
-         
-         // Typing on input
-         msgInput.addEventListener("input", () => {
-           if (!currentUserId) return;
-         
-           // Mark as typing
-           setTyping(true);
-         
-           // Auto stop after 1.5s of no input
-           if (typingTimeoutId) {
-             clearTimeout(typingTimeoutId);
-           }
-           typingTimeoutId = setTimeout(() => {
-             setTyping(false);
-           }, 1500);
-         });
-         
-         // Auto-handle already logged-in users on page load
-         auth.onAuthStateChanged(async (user) => {
-           console.log(
-             "[auth] onAuthStateChanged user =",
-             user ? user.uid : null
-           );
-         
-           if (user) {
-             currentUserId = user.uid;
-         
-             // Get username from DB (ONE PLACE)
-             currentUsername = await fetchUsername(
-               user.uid,
-               user.email || null
-             );
-             updateChatUserLabel(currentUsername);
-         
-             loginForm.classList.add("hidden");
-             registerForm.classList.add("hidden");
-             chatInterface.classList.remove("hidden");
-         
-             console.log("[auth] starting messages listener from auth state change");
-             startMessagesListener();
-             startTypingListener();
-           } else {
-             console.log(
-               "[auth] user is null, stopping listeners and showing login"
-             );
-         
-             stopMessagesListener();
-             stopTypingListener();
-         
-             currentUserId = null;
-             currentUsername = null;
-             messagesDiv.innerHTML = "";
-         
-             chatInterface.classList.add("hidden");
-             loginForm.classList.remove("hidden");
-             updateChatUserLabel("");
-           }
-         });
-         
-         // Logout
-         logoutBtn.onclick = async () => {
-           console.log("[logout] clicked");
-         
-           // Try to clear typing status before leaving
-           try {
-             await setTyping(false);
-           } catch (e) {
-             console.warn("[logout] could not clear typing status", e);
-           }
-         
-           try {
-             await auth.signOut();
-             console.log("[logout] signOut complete");
-           } catch (e) {
-             console.error("[logout] Error signing out:", e);
-           }
-         
-           msgInput.value = "";
-           loginPasswordInput.value = "";
-           clearLoginMessages();
-         
-           const remember = localStorage.getItem("rememberMe") === "true";
-           if (!remember) {
-             localStorage.removeItem("rememberedUsername");
-             loginUsernameInput.value = "";
-           } else {
-             const savedUsername = localStorage.getItem("rememberedUsername");
-             loginUsernameInput.value = savedUsername || "";
-           }
-         };
-         
-         // Send a message (shared logic) + local rate-limit + server rules
-         function sendMessage() {
-           const text = msgInput.value.trim();
-           if (text === "") return;
-         
-           const userObj = auth.currentUser;
-           if (!userObj) {
-             console.warn("[send] tried to send while not logged in");
-             msgInput.value = "";
-             return;
-           }
-         
-           // ✅ Local 500ms rate limit
-           const now = Date.now();
-           if (now - lastSentTime < 500) {
-             showRateLimitWarning();
-             return;
-           }
-           lastSentTime = now;
-         
-           let username = currentUsername;
-           if (!username) {
-             console.warn("[send] no currentUsername; falling back to 'Unknown'");
-             username = "Unknown";
-           }
-         
-           console.log("[send] sending message", {
-             username,
-             text,
-             userId: userObj.uid,
-           });
-         
-           const uid = userObj.uid;
-         
-           // Push the message
-           db.ref("messages")
-             .push({
-               user: username,
-               text: text,
-               time: firebase.database.ServerValue.TIMESTAMP,
-             })
-             .then((ref) => {
-               console.log("[send] message saved under key", ref.key);
-         
-               // Update last message time so Firebase rules can block spam as backup
-               return db
-                 .ref("userLastMessageTime/" + uid)
-                 .set(firebase.database.ServerValue.TIMESTAMP);
-             })
-             .then(() => {
-               // Only clear input when message + timestamp both succeed
-               msgInput.value = "";
-               // Stop typing once message is sent
-               setTyping(false);
-             })
-             .catch((error) => {
-               console.error("[send] error sending message:", error);
-               if (error.code === "PERMISSION_DENIED") {
-                 showRateLimitWarning();
-               }
-             });
-         }
-         
-         // Form submit = send message (works with Enter / Return everywhere)
-         messageForm.addEventListener("submit", (e) => {
-           e.preventDefault();
-           sendMessage();
-         });
-      </script>
-   </body>
+    </div>
+
+    <script>
+      // --- GLOBAL ERROR LOGGING ---
+      window.addEventListener("error", (event) => {
+        console.error(
+          "[window error]",
+          event.message,
+          "at",
+          event.filename + ":" + event.lineno,
+          "details:",
+          event.error
+        );
+      });
+
+      window.addEventListener("unhandledrejection", (event) => {
+        console.error("[unhandled rejection]", event.reason);
+      });
+
+      // Firebase configuration
+      const firebaseConfig = {
+        apiKey: "AIzaSyC945jY7UEh4sOOuuk7OMZVXeIh333kxVk",
+        authDomain: "chat-app-710f0.firebaseapp.com",
+        projectId: "chat-app-710f0",
+        storageBucket: "chat-app-710f0.firebasestorage.app",
+        messagingSenderId: "225892837672",
+        appId: "1:225892837672:web:f190f3585c4ffbd0f1c81d",
+        databaseURL: "https://chat-app-710f0-default-rtdb.firebaseio.com",
+      };
+
+      console.log("[init] starting firebase init");
+
+      // Initialize Firebase
+      firebase.initializeApp(firebaseConfig);
+      const auth = firebase.auth();
+      const db = firebase.database();
+
+      console.log("[init] firebase initialized");
+
+      // DOM elements
+      const loginForm = document.getElementById("loginForm");
+      const registerForm = document.getElementById("registerForm");
+      const chatInterface = document.getElementById("chatInterface");
+      const loadingScreen = document.getElementById("loadingScreen");
+
+      const loginUsernameInput = document.getElementById("loginUsername");
+      const loginPasswordInput = document.getElementById("loginPassword");
+      const rememberMeCheckbox = document.getElementById("rememberMe");
+      const loginBtn = document.getElementById("loginBtn");
+      const loginError = document.getElementById("loginError");
+      const loginInfo = document.getElementById("loginInfo");
+
+      const regUsernameInput = document.getElementById("regUsername");
+      const regPasswordInput = document.getElementById("regPassword");
+      const regPasswordConfirmInput =
+        document.getElementById("regPasswordConfirm");
+      const registerBtn = document.getElementById("registerBtn");
+      const registerError = document.getElementById("registerError");
+
+      const msgInput = document.getElementById("msgInput");
+      const sendBtn = document.getElementById("sendBtn");
+      const messagesDiv = document.getElementById("messages");
+      const messageForm = document.getElementById("messageForm");
+      const sendWarningEl = document.getElementById("sendWarning");
+      const typingIndicatorEl = document.getElementById("typingIndicator");
+
+      const registerLink = document.getElementById("registerLink");
+      const loginLink = document.getElementById("loginLink");
+      const logoutBtn = document.getElementById("logoutBtn");
+      const chatUserLabel = document.getElementById("chatUserLabel");
+
+      // Global state
+      let currentUsername = null; // SINGLE SOURCE for username
+      let currentUserId = null;
+
+      // Real-time messages
+      let messagesRef = null;      // realtime ref for new messages
+      let messagesListener = null; // child_added listener
+      const seenMessageKeys = new Set();
+
+      // Pagination / infinite scroll
+      const PAGE_SIZE = 50; // Reduced for faster loading
+      let oldestTime = null;
+      let newestTime = null;
+      let isLoadingOlder = false;
+      let allHistoryLoaded = false;
+      let scrollListenerAttached = false;
+
+      // Typing status
+      let typingTimeoutId = null;
+      let typingListenerAttached = false;
+      const TYPING_CLEANUP_INTERVAL = 5000; // Clean up stale typing status every 5s
+      let typingCleanupInterval = null;
+
+      // Rate-limit warning timeout + local last-sent time
+      let sendWarningTimeoutId = null;
+      let lastSentTime = 0; // for local 500ms rate limit
+      
+      // Message rendering optimization
+      let messageRenderQueue = [];
+      let isRenderingMessages = false;
+
+      // --- COMBINED STATUS BAR (typing + warning) ---
+      let lastTypingText = "";
+      let currentWarningText = "";
+
+      function updateStatusBar() {
+        const parts = [];
+        if (lastTypingText) parts.push(lastTypingText);
+        if (currentWarningText) {
+          if (parts.length > 0) {
+            parts.push("• " + currentWarningText);
+          } else {
+            parts.push(currentWarningText);
+          }
+        }
+        typingIndicatorEl.textContent = parts.join(" ");
+        // keep the old warning element visually empty
+        if (sendWarningEl) sendWarningEl.textContent = "";
+      }
+
+      // Helper: clear messages
+      function clearLoginMessages() {
+        loginError.textContent = "";
+        loginInfo.textContent = "";
+      }
+
+      function clearRegisterMessages() {
+        registerError.textContent = "";
+      }
+
+      function updateChatUserLabel(username) {
+        currentUsername = username || null;
+        chatUserLabel.textContent = username || "";
+        console.log("[ui] chat user label set to:", chatUserLabel.textContent);
+      }
+
+      // On-screen warning (2 seconds) — now combined with typing in one line
+      function showRateLimitWarning() {
+        currentWarningText = "Slow down — you're sending messages too fast.";
+        if (sendWarningTimeoutId) {
+          clearTimeout(sendWarningTimeoutId);
+        }
+        updateStatusBar();
+        sendWarningTimeoutId = setTimeout(() => {
+          currentWarningText = "";
+          updateStatusBar();
+        }, 2000);
+      }
+
+      // --- USERNAME FROM DB (ONE SOURCE OF TRUTH) ---
+      async function fetchUsername(uid, emailFallback) {
+        try {
+          const snap = await db.ref("users/" + uid + "/username").once("value");
+          let username = snap.val();
+          if (!username && emailFallback) {
+            username = emailFallback.split("@")[0];
+          }
+          return username || "User";
+        } catch (err) {
+          console.error("[username] error fetching from DB", err);
+          if (emailFallback) return emailFallback.split("@")[0];
+          return "User";
+        }
+      }
+
+      // On load: prefill username if "remember me" was used (ONLY for login form)
+      (function initRememberMe() {
+        try {
+          const remember = localStorage.getItem("rememberMe") === "true";
+          const savedUsername = localStorage.getItem("rememberedUsername");
+          console.log(
+            "[rememberMe] remember =",
+            remember,
+            "savedUsername =",
+            savedUsername
+          );
+          if (remember && savedUsername) {
+            rememberMeCheckbox.checked = true;
+            loginUsernameInput.value = savedUsername;
+          }
+        } catch (err) {
+          console.error("[rememberMe] error reading localStorage", err);
+        }
+      })();
+
+      // Switch to Register form
+      registerLink.onclick = () => {
+        clearLoginMessages();
+        loginForm.classList.add("hidden");
+        registerForm.classList.remove("hidden");
+        console.log("[ui] switched to register form");
+      };
+
+      // Switch to Login form
+      loginLink.onclick = () => {
+        clearRegisterMessages();
+        registerForm.classList.add("hidden");
+        loginForm.classList.remove("hidden");
+        console.log("[ui] switched to login form");
+      };
+
+      // Helper: make fake email from username
+      function makeEmailFromUsername(username) {
+        return username.toLowerCase() + "@gmail.com";
+      }
+
+      // 🔍 Check if username is already taken in DB
+      async function isUsernameTaken(username) {
+        console.log("[users] checking if username taken:", username);
+        try {
+          const snapshot = await db
+            .ref("users")
+            .orderByChild("username")
+            .equalTo(username)
+            .once("value");
+          const exists = snapshot.exists();
+          console.log("[users] username taken =", exists);
+          return exists;
+        } catch (err) {
+          console.error("[users] error while checking username", err);
+          registerError.textContent = "Error checking username. Try again.";
+          return true;
+        }
+      }
+
+      // Register User (username + password + confirm)
+      registerBtn.onclick = async () => {
+        clearRegisterMessages();
+
+        const username = regUsernameInput.value.trim();
+        const password = regPasswordInput.value.trim();
+        const passwordConfirm = regPasswordConfirmInput.value.trim();
+
+        console.log("[register] submit", { username });
+
+        if (!username || !password || !passwordConfirm) {
+          registerError.textContent = "Please fill all fields.";
+          return;
+        }
+
+        if (username.includes("@") || username.includes(" ")) {
+          registerError.textContent = "Username can't have spaces or '@'.";
+          return;
+        }
+
+        if (password !== passwordConfirm) {
+          registerError.textContent = "Passwords do not match.";
+          return;
+        }
+
+        // Check username in database
+        if (await isUsernameTaken(username)) {
+          if (!registerError.textContent) {
+            registerError.textContent = "That username is already taken.";
+          }
+          return;
+        }
+
+        const fakeEmail = makeEmailFromUsername(username);
+        console.log("[register] creating auth user", fakeEmail);
+
+        try {
+          const userCredential = await auth.createUserWithEmailAndPassword(
+            fakeEmail,
+            password
+          );
+          const user = userCredential.user;
+          console.log("[register] auth user created", user.uid);
+
+          // Save the username in Firebase Database
+          const userRef = db.ref("users/" + user.uid);
+          await userRef.set({ username });
+          console.log("[register] username saved to /users", user.uid);
+
+          // Log them out so they still go through login flow
+          await auth.signOut();
+          console.log("[register] signed out after registration");
+
+          // Switch back to login, show success message
+          registerForm.classList.add("hidden");
+          loginForm.classList.remove("hidden");
+          clearLoginMessages();
+          loginInfo.textContent = "Account created! You can log in now.";
+        } catch (error) {
+          console.error("[register] Error registering:", error);
+          if (error.code === "auth/email-already-in-use") {
+            registerError.textContent = "That username is already taken.";
+          } else if (error.code === "auth/weak-password") {
+            registerError.textContent = "Password is too weak.";
+          } else {
+            registerError.textContent = "Could not register. Try again.";
+          }
+        }
+      };
+
+      /// Sign In User (username + password only) with persistence
+      loginBtn.onclick = async () => {
+        clearLoginMessages();
+
+        const username = loginUsernameInput.value.trim();
+        const password = loginPasswordInput.value.trim();
+        const remember = rememberMeCheckbox.checked;
+
+        console.log("[login] submit", { username, remember });
+
+        if (!username || !password) {
+          loginError.textContent = "Please fill username and password.";
+          return;
+        }
+
+        if (username.includes("@") || username.includes(" ")) {
+          loginError.textContent = "Username can't have spaces or '@'.";
+          return;
+        }
+
+        const fakeEmail = makeEmailFromUsername(username);
+
+        try {
+          const persistence = remember
+            ? firebase.auth.Auth.Persistence.LOCAL
+            : firebase.auth.Auth.Persistence.SESSION;
+
+          console.log(
+            "[login] setting persistence",
+            remember ? "LOCAL" : "SESSION"
+          );
+          await auth.setPersistence(persistence);
+
+          console.log("[login] signing in with email", fakeEmail);
+
+          const userCredential = await auth.signInWithEmailAndPassword(
+            fakeEmail,
+            password
+          );
+          const user = userCredential.user;
+
+          console.log("[login] signed in as", user.uid);
+
+          // Save "remember me" stuff ONLY for login form next time
+          try {
+            if (remember) {
+              localStorage.setItem("rememberMe", "true");
+              localStorage.setItem("rememberedUsername", username);
+            } else {
+              localStorage.removeItem("rememberMe");
+              localStorage.removeItem("rememberedUsername");
+            }
+          } catch (err) {
+            console.error(
+              "[login] error writing rememberMe to localStorage",
+              err
+            );
+          }
+
+          // DO NOT show chat here. onAuthStateChanged will do it.
+        } catch (error) {
+          console.error("[login] Error signing in:", error);
+          if (
+            error.code === "auth/user-not-found" ||
+            error.code === "auth/wrong-password"
+          ) {
+            loginError.textContent = "Wrong username or password.";
+          } else if (error.code === "auth/too-many-requests") {
+            loginError.textContent =
+              "Too many attempts. Please wait and try again.";
+          } else {
+            loginError.textContent = "Could not log in. Try again.";
+          }
+        }
+      };
+
+      // --- MESSAGE RENDERING (bigger iMessage-style bubbles) ---
+      function createMessageRow(msg) {
+        const myName = currentUsername || null;
+        const isMine = myName && msg.user === myName;
+
+        const row = document.createElement("div");
+        row.className = isMine 
+          ? "w-full flex mb-2 sm:mb-2 justify-end pr-1 sm:pr-3"
+          : "w-full flex mb-2 sm:mb-2 justify-start pl-1 sm:pl-3";
+
+        const column = document.createElement("div");
+        column.className =
+          "flex flex-col max-w-[80%] sm:max-w-[60%] gap-1";
+
+        if (!isMine) {
+          const nameLabel = document.createElement("div");
+          nameLabel.className =
+            "text-[10px] sm:text-xs text-slate-400 px-3 font-medium";
+          nameLabel.textContent = msg.user || "Unknown";
+          column.appendChild(nameLabel);
+        }
+
+        const bubble = document.createElement("div");
+        const textLength = (msg.text || "").length;
+        const isSmallMessage = textLength <= 2;
+        const padding = isSmallMessage ? "px-3 py-1.5" : "px-3 py-2";
+        
+        bubble.className = isMine
+          ? `message-bubble-anim mine ${padding} sm:px-3 sm:py-2 rounded-2xl text-xs sm:text-sm leading-relaxed break-words shadow-sm bg-gradient-to-br from-sky-500 to-sky-600 text-white rounded-br-md font-medium shadow-md shadow-sky-500/20`
+          : `message-bubble-anim ${padding} sm:px-3 sm:py-2 rounded-2xl text-xs sm:text-sm leading-relaxed break-words shadow-sm bg-slate-700/90 text-slate-50 rounded-bl-md border border-slate-600/50 backdrop-blur-sm`;
+
+        const textSpan = document.createElement("span");
+        textSpan.className = "message-text-reveal inline-block";
+        textSpan.textContent = msg.text || "";
+        
+        bubble.appendChild(textSpan);
+        column.appendChild(bubble);
+        row.appendChild(column);
+        return row;
+      }
+
+      function renderMessage(msg, options = {}) {
+        const { prepend = false, maintainScroll = false } = options;
+
+        const row = createMessageRow(msg);
+
+        if (prepend) {
+          if (messagesDiv.firstChild) {
+            messagesDiv.insertBefore(row, messagesDiv.firstChild);
+          } else {
+            messagesDiv.appendChild(row);
+          }
+        } else {
+          messagesDiv.appendChild(row);
+        }
+
+        if (!maintainScroll) {
+          messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+      }
+
+      function renderMessageOnce(key, msg, options = {}) {
+        if (!key) {
+          console.warn("[messages] missing key for message", msg);
+          renderMessage(msg, options);
+          return;
+        }
+        if (seenMessageKeys.has(key)) return;
+        seenMessageKeys.add(key);
+        renderMessage(msg, options);
+      }
+
+      // Batch render messages for better performance
+      function batchRenderMessages(messages, options = {}) {
+        const fragment = document.createDocumentFragment();
+        let newMessagesCount = 0;
+
+        messages.forEach(({ key, msg }) => {
+          if (key && seenMessageKeys.has(key)) return;
+          if (key) seenMessageKeys.add(key);
+
+          const row = createMessageRow(msg);
+          if (options.prepend) {
+            fragment.insertBefore(row, fragment.firstChild);
+          } else {
+            fragment.appendChild(row);
+          }
+          newMessagesCount++;
+        });
+
+        if (newMessagesCount > 0) {
+          if (options.prepend && messagesDiv.firstChild) {
+            messagesDiv.insertBefore(fragment, messagesDiv.firstChild);
+          } else {
+            messagesDiv.appendChild(fragment);
+          }
+
+          if (!options.maintainScroll) {
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+          }
+        }
+      }
+
+      // --- INFINITE SCROLL HELPERS ---
+      function onMessagesScroll() {
+        if (allHistoryLoaded || isLoadingOlder) return;
+        // When user is near top (~5 messages above), load older
+        const threshold = 120; // px from top, tweak if you want
+        if (messagesDiv.scrollTop <= threshold) {
+          loadOlderMessages();
+        }
+      }
+
+      function attachScrollListener() {
+        if (scrollListenerAttached) return;
+        messagesDiv.addEventListener("scroll", onMessagesScroll);
+        scrollListenerAttached = true;
+      }
+
+      function detachScrollListener() {
+        if (!scrollListenerAttached) return;
+        messagesDiv.removeEventListener("scroll", onMessagesScroll);
+        scrollListenerAttached = false;
+      }
+
+      function loadOlderMessages() {
+        if (isLoadingOlder) return;
+        if (oldestTime === null) return;
+        isLoadingOlder = true;
+        console.log("[messages] loading older messages before time =", oldestTime);
+
+        const prevScrollHeight = messagesDiv.scrollHeight;
+        const prevScrollTop = messagesDiv.scrollTop;
+
+        const baseRef = db.ref("messages").orderByChild("time");
+
+        baseRef
+          .endAt(oldestTime - 1)
+          .limitToLast(PAGE_SIZE)
+          .once(
+            "value",
+            (snap) => {
+              const msgs = [];
+              snap.forEach((child) => {
+                msgs.push({ key: child.key, msg: child.val() || {} });
+              });
+
+              if (msgs.length === 0) {
+                console.log("[messages] no older messages, all history loaded");
+                allHistoryLoaded = true;
+                isLoadingOlder = false;
+                return;
+              }
+
+              // Update time range
+              msgs.forEach(({ key, msg }) => {
+                const t = msg.time || 0;
+                if (oldestTime === null || t < oldestTime) {
+                  oldestTime = t;
+                }
+              });
+
+              // Batch render for performance
+              batchRenderMessages(msgs, {
+                prepend: true,
+                maintainScroll: true,
+              });
+
+              const newScrollHeight = messagesDiv.scrollHeight;
+              const addedHeight = newScrollHeight - prevScrollHeight;
+              messagesDiv.scrollTop = prevScrollTop + addedHeight;
+
+              console.log(
+                "[messages] loaded older page, count =",
+                msgs.length,
+                "oldestTime now =",
+                oldestTime
+              );
+
+              if (msgs.length < PAGE_SIZE) {
+                allHistoryLoaded = true;
+              }
+
+              isLoadingOlder = false;
+            },
+            (error) => {
+              console.error("[messages] error loading older:", error);
+              isLoadingOlder = false;
+            }
+          );
+      }
+
+      function startMessagesListener() {
+        console.log("[messages] startMessagesListener called");
+        stopMessagesListener();
+        seenMessageKeys.clear();
+        messagesDiv.innerHTML = "";
+
+        oldestTime = null;
+        newestTime = null;
+        allHistoryLoaded = false;
+        isLoadingOlder = false;
+
+        try {
+          const baseRef = db.ref("messages").orderByChild("time");
+          const initialQuery = baseRef.limitToLast(PAGE_SIZE);
+
+          initialQuery.once(
+            "value",
+            (snap) => {
+              const msgs = [];
+              snap.forEach((child) => {
+                msgs.push({ key: child.key, msg: child.val() || {} });
+              });
+
+              const count = msgs.length;
+              console.log("[messages] initial load snapshot, count =", count);
+
+              // Calculate time range
+              msgs.forEach(({ key, msg }) => {
+                const t = msg.time || 0;
+                if (oldestTime === null || t < oldestTime) {
+                  oldestTime = t;
+                }
+                if (newestTime === null || t > newestTime) {
+                  newestTime = t;
+                }
+              });
+
+              // Batch render all messages at once
+              batchRenderMessages(msgs, { maintainScroll: true });
+
+              // After initial render, jump to bottom
+              messagesDiv.scrollTop = messagesDiv.scrollHeight;
+
+              // Hide loading screen after messages are loaded
+              loadingScreen.classList.add("hidden");
+
+              if (count < PAGE_SIZE) {
+                allHistoryLoaded = true;
+              }
+
+              // Attach scroll listener only after we have some messages
+              attachScrollListener();
+
+              // --- REALTIME LISTENER FOR NEW MESSAGES ---
+              if (messagesRef && messagesListener) {
+                messagesRef.off("child_added", messagesListener);
+              }
+
+              if (newestTime !== null) {
+                messagesRef = baseRef.startAt(newestTime + 1);
+              } else {
+                messagesRef = baseRef;
+              }
+
+              messagesListener = (snap) => {
+                const msg = snap.val() || {};
+                const key = snap.key;
+                const t = msg.time || 0;
+
+                if (newestTime === null || t > newestTime) {
+                  newestTime = t;
+                }
+                renderMessageOnce(key, msg);
+              };
+
+              messagesRef.on(
+                "child_added",
+                messagesListener,
+                (error) => {
+                  console.error("[messages] listener error:", error);
+                }
+              );
+            },
+            (error) => {
+              console.error("[messages] error during initial load:", error);
+              loadingScreen.classList.add("hidden");
+            }
+          );
+        } catch (err) {
+          console.error("[messages] startMessagesListener crashed:", err);
+          loadingScreen.classList.add("hidden");
+        }
+      }
+
+      function stopMessagesListener() {
+        console.log("[messages] stopMessagesListener called");
+        try {
+          if (messagesRef && messagesListener) {
+            messagesRef.off("child_added", messagesListener);
+          }
+        } catch (err) {
+          console.error("[messages] error while stopping listener:", err);
+        }
+        messagesRef = null;
+        messagesListener = null;
+        seenMessageKeys.clear();
+
+        detachScrollListener();
+
+        oldestTime = null;
+        newestTime = null;
+        allHistoryLoaded = false;
+        isLoadingOlder = false;
+      }
+
+      // --- TYPING STATUS HELPERS ---
+      function setTyping(isTyping) {
+        if (!currentUserId) return;
+        const ref = db.ref("typingStatus/" + currentUserId);
+        const name = currentUsername || "User";
+        return ref.set({
+          username: name,
+          typing: isTyping,
+          ts: firebase.database.ServerValue.TIMESTAMP,
+        });
+      }
+
+      function handleTypingSnapshot(snap) {
+        const data = snap.val() || {};
+        const typingUsers = [];
+
+        for (const uid in data) {
+          if (!Object.prototype.hasOwnProperty.call(data, uid)) continue;
+          if (uid === currentUserId) continue; // don't show yourself
+
+          const entry = data[uid];
+          if (entry && entry.typing) {
+            const name = entry.username || "Someone";
+            typingUsers.push(name);
+          }
+        }
+
+        let text = "";
+        if (typingUsers.length === 1) {
+          text = typingUsers[0] + " is typing…";
+        } else if (typingUsers.length === 2) {
+          text = typingUsers[0] + " and " + typingUsers[1] + " are typing…";
+        } else if (typingUsers.length === 3) {
+          text = typingUsers[0] + ", " + typingUsers[1] + ", and " + typingUsers[2] + " are typing…";
+        } else if (typingUsers.length > 3) {
+          text = "Several people are typing…";
+        }
+
+        lastTypingText = text;
+        updateStatusBar();
+      }
+
+      function startTypingListener() {
+        if (typingListenerAttached) return;
+        console.log("[typing] attaching typingStatus listener");
+        
+        db.ref("typingStatus").on(
+          "value",
+          handleTypingSnapshot,
+          (err) => {
+            console.error("[typing] listener error:", err);
+          }
+        );
+        typingListenerAttached = true;
+
+        // Clean up stale typing status every 5 seconds
+        if (!typingCleanupInterval) {
+          typingCleanupInterval = setInterval(() => {
+            const now = Date.now();
+            db.ref("typingStatus").once("value", (snap) => {
+              const data = snap.val() || {};
+              const updates = {};
+              
+              for (const uid in data) {
+                if (!Object.prototype.hasOwnProperty.call(data, uid)) continue;
+                const entry = data[uid];
+                // Remove if older than 10 seconds
+                if (entry && entry.ts && (now - entry.ts) > 10000) {
+                  updates[uid] = null;
+                }
+              }
+              
+              if (Object.keys(updates).length > 0) {
+                db.ref("typingStatus").update(updates).catch(err => {
+                  console.warn("[typing] cleanup error:", err);
+                });
+              }
+            });
+          }, TYPING_CLEANUP_INTERVAL);
+        }
+      }
+
+      function stopTypingListener() {
+        if (!typingListenerAttached) return;
+        console.log("[typing] detaching typingStatus listener");
+        db.ref("typingStatus").off("value", handleTypingSnapshot);
+        typingListenerAttached = false;
+        lastTypingText = "";
+        updateStatusBar();
+
+        // Clear cleanup interval
+        if (typingCleanupInterval) {
+          clearInterval(typingCleanupInterval);
+          typingCleanupInterval = null;
+        }
+      }
+
+      // Typing on input
+      msgInput.addEventListener("input", () => {
+        if (!currentUserId) return;
+
+        // Mark as typing
+        setTyping(true);
+
+        // Auto stop after 1.5s of no input
+        if (typingTimeoutId) {
+          clearTimeout(typingTimeoutId);
+        }
+        typingTimeoutId = setTimeout(() => {
+          setTyping(false);
+        }, 1500);
+      });
+
+      // Auto-handle already logged-in users on page load
+      auth.onAuthStateChanged(async (user) => {
+        console.log(
+          "[auth] onAuthStateChanged user =",
+          user ? user.uid : null
+        );
+
+        if (user) {
+          currentUserId = user.uid;
+
+          // Get username from DB (ONE PLACE)
+          currentUsername = await fetchUsername(
+            user.uid,
+            user.email || null
+          );
+          updateChatUserLabel(currentUsername);
+
+          loginForm.classList.add("hidden");
+          registerForm.classList.add("hidden");
+          chatInterface.classList.remove("hidden");
+          // Show loading screen while fetching messages
+          loadingScreen.classList.remove("hidden");
+
+          console.log("[auth] starting messages listener from auth state change");
+          startMessagesListener();
+          startTypingListener();
+        } else {
+          console.log(
+            "[auth] user is null, stopping listeners and showing login"
+          );
+
+          stopMessagesListener();
+          stopTypingListener();
+
+          currentUserId = null;
+          currentUsername = null;
+          messagesDiv.innerHTML = "";
+
+          chatInterface.classList.add("hidden");
+          loginForm.classList.remove("hidden");
+          // Hide loading screen if not logged in
+          loadingScreen.classList.add("hidden");
+          updateChatUserLabel("");
+        }
+      });
+
+      // Logout
+      logoutBtn.onclick = async () => {
+        console.log("[logout] clicked");
+
+        // Try to clear typing status before leaving
+        try {
+          await setTyping(false);
+        } catch (e) {
+          console.warn("[logout] could not clear typing status", e);
+        }
+
+        try {
+          await auth.signOut();
+          console.log("[logout] signOut complete");
+        } catch (e) {
+          console.error("[logout] Error signing out:", e);
+        }
+
+        msgInput.value = "";
+        loginPasswordInput.value = "";
+        clearLoginMessages();
+
+        const remember = localStorage.getItem("rememberMe") === "true";
+        if (!remember) {
+          localStorage.removeItem("rememberedUsername");
+          loginUsernameInput.value = "";
+        } else {
+          const savedUsername = localStorage.getItem("rememberedUsername");
+          loginUsernameInput.value = savedUsername || "";
+        }
+      };
+
+      // Send a message (shared logic) + local rate-limit + server rules
+      function sendMessage() {
+        const text = msgInput.value.trim();
+        if (text === "") return;
+
+        const userObj = auth.currentUser;
+        if (!userObj) {
+          console.warn("[send] tried to send while not logged in");
+          msgInput.value = "";
+          return;
+        }
+
+        // ✅ Local 250ms rate limit (was 500ms)
+        const now = Date.now();
+        if (now - lastSentTime < 250) {
+          showRateLimitWarning();
+          return;
+        }
+        lastSentTime = now;
+
+        let username = currentUsername;
+        if (!username) {
+          console.warn("[send] no currentUsername; falling back to 'Unknown'");
+          username = "Unknown";
+        }
+
+        console.log("[send] sending message", {
+          username,
+          text,
+          userId: userObj.uid,
+        });
+
+        const uid = userObj.uid;
+
+        // Add visual feedback to send button
+        const originalBtnText = sendBtn.innerHTML;
+        sendBtn.innerHTML = '<span class="animate-pulse">✓</span>';
+        sendBtn.disabled = true;
+
+        // Push the message
+        db.ref("messages")
+          .push({
+            user: username,
+            text: text,
+            time: firebase.database.ServerValue.TIMESTAMP,
+          })
+          .then((ref) => {
+            console.log("[send] message saved under key", ref.key);
+
+            // Update last message time so Firebase rules can block spam as backup
+            return db
+              .ref("userLastMessageTime/" + uid)
+              .set(firebase.database.ServerValue.TIMESTAMP);
+          })
+          .then(() => {
+            // Only clear input when message + timestamp both succeed
+            msgInput.value = "";
+            // Stop typing once message is sent
+            setTyping(false);
+            
+            // Reset button after 300ms
+            setTimeout(() => {
+              sendBtn.innerHTML = originalBtnText;
+              sendBtn.disabled = false;
+            }, 300);
+          })
+          .catch((error) => {
+            console.error("[send] error sending message:", error);
+            if (error.code === "PERMISSION_DENIED") {
+              showRateLimitWarning();
+            }
+            // Reset button on error
+            setTimeout(() => {
+              sendBtn.innerHTML = originalBtnText;
+              sendBtn.disabled = false;
+            }, 300);
+          });
+      }
+
+      // Form submit = send message (works with Enter / Return everywhere)
+      messageForm.addEventListener("submit", (e) => {
+        e.preventDefault();
+        sendMessage();
+      });
+    </script>
+  </body>
 </html>
