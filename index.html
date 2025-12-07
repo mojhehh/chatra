@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -6,14 +7,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
 
     <!-- Tailwind CSS (optional, for looks) -->
-    <script src="https://cdn.tailwindcss.com"></script>
     <script>
-      // Suppress Tailwind CDN production warning
-      Object.defineProperty(window, '__TAILWIND_CONFIG__', {
-        value: {},
-        writable: false
-      });
+      // Suppress Tailwind CDN production warning BEFORE loading
+      window.tailwindConfig = {};
     </script>
+    <script src="https://cdn.tailwindcss.com"></script>
 
     <!-- Firebase SDKs -->
     <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
@@ -592,6 +590,13 @@
               Friend Requests
               <span id="friendRequestBadge" class="ml-auto bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center hidden">0</span>
             </button>
+            <button
+              id="friendsListBtn"
+              class="px-4 py-2.5 text-left text-sm text-slate-100 hover:bg-slate-700/50 transition-colors flex items-center gap-2"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" class="text-slate-300"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+              Friends
+            </button>
           </div>
         </div>
 
@@ -817,6 +822,19 @@
           <div
             class="input-shell flex items-center gap-1.5 sm:gap-2 bg-slate-800 rounded-lg px-2 sm:px-3 py-1.5 sm:py-2"
           >
+            <input type="file" id="mediaInput" accept="image/*,video/*" class="hidden" />
+            <button
+              type="button"
+              id="mediaUploadBtn"
+              class="p-2 hover:bg-slate-700 rounded-lg transition-colors"
+              title="Upload image or video"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-slate-400">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                <circle cx="8.5" cy="8.5" r="1.5"/>
+                <polyline points="21 15 16 10 5 21"/>
+              </svg>
+            </button>
             <input
               id="msgInput"
               class="flex-1 px-3 py-2.5 rounded-lg bg-transparent text-sm sm:text-base placeholder:text-slate-500 focus:outline-none focus:ring-0"
@@ -858,6 +876,32 @@
 
         <p id="noFriendRequestsMsg" class="text-center text-slate-400 text-sm mt-4">
           No pending requests
+        </p>
+      </div>
+    </div>
+
+    <!-- Friends List Modal -->
+    <div
+      id="friendsListModal"
+      class="modal-overlay fixed inset-0 z-50 modal-closed items-center justify-center px-4"
+    >
+      <div class="glass-card max-w-md w-full rounded-2xl p-6 max-h-[90vh] overflow-y-auto">
+        <div class="flex justify-between items-center mb-4">
+          <h3 class="text-lg font-semibold text-slate-100">Friends</h3>
+          <button
+            id="friendsListCloseBtn"
+            class="p-1 hover:bg-slate-700 rounded-lg transition-colors"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div id="friendsList" class="space-y-2">
+          <!-- Friends will be rendered here -->
+        </div>
+
+        <p id="noFriendsMsg" class="text-center text-slate-400 text-sm mt-4">
+          No friends yet
         </p>
       </div>
     </div>
@@ -1059,8 +1103,48 @@
         }
       }
 
+      // Try to ensure another user's incoming friendRequests path exists.
+      // This is best-effort: if rules prevent creating it, we'll log and continue.
+      async function ensureTargetFriendRequestsIncoming(targetUid) {
+        try {
+          // First ensure the parent /friendRequests/{uid} node exists
+          const parentRef = db.ref("friendRequests/" + targetUid);
+          const parentSnap = await parentRef.once("value");
+          if (!parentSnap.exists()) {
+            await parentRef.set({});
+            console.log("[init] auto-created friendRequests parent for target", targetUid);
+          }
+          
+          // Then ensure the /incoming child exists
+          const incomingRef = db.ref("friendRequests/" + targetUid + "/incoming");
+          const incomingSnap = await incomingRef.once("value");
+          if (!incomingSnap.exists()) {
+            await incomingRef.set({});
+            console.log("[init] auto-created friendRequests incoming for target", targetUid);
+          }
+        } catch (err) {
+          // Permission denied is common if rules disallow creating other users' nodes.
+          // Don't block the flow — just log details for debugging.
+          logDetailedError("ensureTargetFriendRequestsIncoming", err, { targetUid });
+        }
+      }
+
       function clearRegisterMessages() {
         registerError.textContent = "";
+      }
+
+      // Ensure another user's /friends/{uid} path exists
+      async function ensureTargetFriendsList(targetUid) {
+        try {
+          const ref = db.ref("friends/" + targetUid);
+          const snap = await ref.once("value");
+          if (!snap.exists()) {
+            await ref.set({});
+            console.log("[init] auto-created friends list for target", targetUid);
+          }
+        } catch (err) {
+          logDetailedError("ensureTargetFriendsList", err, { targetUid });
+        }
       }
 
       function updateChatUserLabel(username) {
@@ -2228,19 +2312,58 @@
         profilePicInput.click();
       });
 
-      profilePicInput.addEventListener("change", (e) => {
+      // Cloudinary upload function
+      async function uploadToCloudinary(file) {
+        const data = new FormData();
+        data.append("file", file);
+        data.append("upload_preset", "chat_upload");
+
+        const res = await fetch("https://api.cloudinary.com/v1_1/dyi0oy0ce/upload", {
+          method: "POST",
+          body: data
+        });
+
+        const json = await res.json();
+        return json;
+      }
+
+      async function deleteFromCloudinary(token) {
+        await fetch("https://api.cloudinary.com/v1_1/dyi0oy0ce/delete_by_token", {
+          method: "POST",
+          body: new URLSearchParams({ token })
+        });
+      }
+
+      profilePicInput.addEventListener("change", async (e) => {
         const file = e.target.files[0];
         if (file) {
-          const reader = new FileReader();
-          reader.onload = (event) => {
+          try {
+            uploadPicBtn.disabled = true;
+            uploadPicBtn.textContent = "Uploading...";
+
+            // Upload to Cloudinary
+            const upload = await uploadToCloudinary(file);
+            const mediaUrl = upload.secure_url;
+            const deleteToken = upload.delete_token;
+
+            // Show preview
             profilePicPreview.innerHTML = "";
             const img = document.createElement("img");
-            img.src = event.target.result;
+            img.src = mediaUrl;
             img.className = "h-full w-full object-cover";
             profilePicPreview.appendChild(img);
-            currentUserData.profilePic = event.target.result;
-          };
-          reader.readAsDataURL(file);
+            
+            currentUserData.profilePic = mediaUrl;
+            currentUserData.profilePicDeleteToken = deleteToken;
+
+            uploadPicBtn.disabled = false;
+            uploadPicBtn.textContent = "Upload Picture";
+          } catch (err) {
+            console.error("[profile] error uploading to cloudinary:", err);
+            alert("Error uploading image: " + err.message);
+            uploadPicBtn.disabled = false;
+            uploadPicBtn.textContent = "Upload Picture";
+          }
         }
       });
 
@@ -2335,8 +2458,65 @@
           });
         }, 0);
 
+        // Check friendship status and update button
+        checkFriendshipStatus(username);
+
         viewProfileModal.classList.remove("modal-closed");
         viewProfileModal.classList.add("modal-open");
+      }
+
+      // Check if you're already friends and update the button
+      async function checkFriendshipStatus(targetUsername) {
+        const uid = auth.currentUser?.uid;
+        if (!uid) return;
+
+        try {
+          // Lookup target UID
+          const snap = await db.ref("users").orderByChild("username").equalTo(targetUsername).once("value");
+          if (!snap.exists()) {
+            sendFriendRequestBtn.disabled = false;
+            sendFriendRequestBtn.textContent = "Add Friend";
+            return;
+          }
+
+          const targetUid = Object.keys(snap.val())[0];
+
+          // Check if already friends
+          const friendsSnap = await db.ref("friends/" + uid + "/" + targetUid).once("value");
+          if (friendsSnap.exists()) {
+            sendFriendRequestBtn.disabled = true;
+            sendFriendRequestBtn.style.background = "rgb(100, 116, 139)";
+            sendFriendRequestBtn.textContent = "✓ Friends";
+            return;
+          }
+
+          // Check if request already sent
+          const sentReqSnap = await db.ref("friendRequests/" + targetUid + "/incoming/" + uid).once("value");
+          if (sentReqSnap.exists()) {
+            sendFriendRequestBtn.disabled = true;
+            sendFriendRequestBtn.style.background = "rgb(100, 116, 139)";
+            sendFriendRequestBtn.textContent = "⏳ Pending";
+            return;
+          }
+
+          // Check if they sent you a request
+          const reverseReqSnap = await db.ref("friendRequests/" + uid + "/incoming/" + targetUid).once("value");
+          if (reverseReqSnap.exists()) {
+            sendFriendRequestBtn.disabled = true;
+            sendFriendRequestBtn.style.background = "rgb(100, 116, 139)";
+            sendFriendRequestBtn.textContent = "↩ Incoming";
+            return;
+          }
+
+          // Not friends - enable add button
+          sendFriendRequestBtn.disabled = false;
+          sendFriendRequestBtn.style.background = "";
+          sendFriendRequestBtn.textContent = "Add Friend";
+        } catch (err) {
+          console.error("[profile] error checking friendship status:", err);
+          sendFriendRequestBtn.disabled = false;
+          sendFriendRequestBtn.textContent = "Add Friend";
+        }
       }
 
       // Generate default avatar with initials
@@ -2701,11 +2881,34 @@
           const targetUid = Object.keys(snap.val())[0];
           console.log("[friends] found target uid:", targetUid);
 
-          // Check if already sent or friends
+          // Try to ensure target's incoming path exists (best-effort)
+          await ensureTargetFriendRequestsIncoming(targetUid);
+
+          // Check if already friends
+          console.log("[friends] checking if already friends");
+          const alreadyFriends = await db.ref("friends/" + uid + "/" + targetUid).once("value");
+          if (alreadyFriends.exists()) {
+            alert("You're already friends!");
+            sendFriendRequestBtn.disabled = false;
+            sendFriendRequestBtn.textContent = "Add Friend";
+            return;
+          }
+
+          // Check if already sent request
           console.log("[friends] checking for existing request at: friendRequests/" + targetUid + "/incoming/" + uid);
           const existingReq = await db.ref("friendRequests/" + targetUid + "/incoming/" + uid).once("value");
           if (existingReq.exists()) {
             alert("Friend request already sent!");
+            sendFriendRequestBtn.disabled = false;
+            sendFriendRequestBtn.textContent = "Add Friend";
+            return;
+          }
+
+          // Check if they already sent you a request (reverse request)
+          console.log("[friends] checking for reverse request at: friendRequests/" + uid + "/incoming/" + targetUid);
+          const reverseReq = await db.ref("friendRequests/" + uid + "/incoming/" + targetUid).once("value");
+          if (reverseReq.exists()) {
+            alert("They already sent you a friend request! Check your requests.");
             sendFriendRequestBtn.disabled = false;
             sendFriendRequestBtn.textContent = "Add Friend";
             return;
@@ -2767,6 +2970,11 @@
             throw new Error("Could not find fromUsername in request");
           }
 
+          // Auto-create both users' /friends paths
+          console.log("[friends] ensuring /friends paths exist");
+          await ensureTargetFriendsList(uid);
+          await ensureTargetFriendsList(fromUid);
+
           console.log("[friends] removing request from:", fromUid);
           // Remove request
           await db.ref("friendRequests/" + uid + "/incoming/" + fromUid).remove();
@@ -2816,6 +3024,94 @@
         currentViewingUsername = username;
         originalViewUserProfile.call(this, username);
       };
+
+      // Load and display friends list
+      async function loadFriendsList() {
+        const uid = auth.currentUser?.uid;
+        if (!uid) {
+          logDetailedError("loadFriendsList", new Error("Not logged in"));
+          return;
+        }
+
+        try {
+          console.log("[friends] loading friends for uid:", uid);
+          const snap = await db.ref("friends/" + uid).once("value");
+          
+          const friendsList = document.getElementById("friendsList");
+          const noFriendsMsg = document.getElementById("noFriendsMsg");
+          friendsList.innerHTML = "";
+
+          if (!snap.exists()) {
+            console.log("[friends] no friends found");
+            noFriendsMsg.style.display = "block";
+            return;
+          }
+
+          const friends = snap.val();
+          const friendCount = Object.keys(friends).length;
+          console.log("[friends] loaded", friendCount, "friends");
+
+          if (friendCount === 0) {
+            noFriendsMsg.style.display = "block";
+            return;
+          }
+
+          noFriendsMsg.style.display = "none";
+
+          for (const [friendUid, friendData] of Object.entries(friends)) {
+            const friendUsername = friendData.username || "Unknown";
+            const addedAt = new Date(friendData.addedAt).toLocaleDateString();
+
+            const div = document.createElement("div");
+            div.className = "p-3 bg-slate-800/60 hover:bg-slate-800 rounded-lg flex items-center justify-between transition-colors cursor-pointer border border-slate-700/50";
+            div.innerHTML = `
+              <div class="flex items-center gap-3">
+                <div class="h-8 w-8 rounded-full bg-gradient-to-br from-sky-500 to-sky-600 flex items-center justify-center text-white text-xs font-bold">
+                  ${friendUsername.charAt(0).toUpperCase()}
+                </div>
+                <div class="flex flex-col">
+                  <span class="text-sm font-medium text-slate-100">${friendUsername}</span>
+                  <span class="text-xs text-slate-400">Added ${addedAt}</span>
+                </div>
+              </div>
+            `;
+            div.addEventListener("click", () => {
+              friendsListModal.classList.remove("modal-open");
+              friendsListModal.classList.add("modal-closed");
+              viewUserProfile(friendUsername);
+            });
+            friendsList.appendChild(div);
+          }
+        } catch (err) {
+          logDetailedError("loadFriendsList", err, { uid });
+          alert("Error loading friends: " + err.message);
+        }
+      }
+
+      // Friends list button event listeners
+      const friendsListBtn = document.getElementById("friendsListBtn");
+      const friendsListModal = document.getElementById("friendsListModal");
+      const friendsListCloseBtn = document.getElementById("friendsListCloseBtn");
+
+      friendsListBtn.addEventListener("click", () => {
+        settingsMenu.classList.remove("menu-open");
+        settingsMenu.classList.add("menu-closed");
+        friendsListModal.classList.remove("modal-closed");
+        friendsListModal.classList.add("modal-open");
+        loadFriendsList();
+      });
+
+      friendsListCloseBtn.addEventListener("click", () => {
+        friendsListModal.classList.remove("modal-open");
+        friendsListModal.classList.add("modal-closed");
+      });
+
+      friendsListModal.addEventListener("click", (e) => {
+        if (e.target === friendsListModal) {
+          friendsListModal.classList.remove("modal-open");
+          friendsListModal.classList.add("modal-closed");
+        }
+      });
     </script>
   </body>
 </html>
