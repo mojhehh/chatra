@@ -1,648 +1,677 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <title>Simple Chat App</title>
-
-  <!-- Tailwind CSS (optional, for looks) -->
-  <script src="https://cdn.tailwindcss.com"></script>
-
-  <!-- Firebase SDKs -->
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
-</head>
-
-<body class="bg-gray-900 text-white h-screen flex flex-col">
-
-  <!-- Login Form (visible by default) -->
-  <div id="loginForm" class="flex-1 flex items-center justify-center">
-    <div class="bg-gray-800 p-6 rounded-xl w-96">
-      <h2 class="text-xl font-bold mb-4 text-center">Login</h2>
-
-      <!-- Username only -->
-      <input
-        id="loginUsername"
-        type="text"
-        placeholder="Username"
-        class="mb-3 p-2 rounded w-full bg-gray-600"
-        required
-      />
-
-      <!-- Password -->
-      <input
-        id="loginPassword"
-        type="password"
-        placeholder="Password"
-        class="mb-3 p-2 rounded w-full bg-gray-600"
-        required
-      />
-
-      <!-- Remember me -->
-      <label class="flex items-center gap-2 mb-3 text-sm text-gray-300">
-        <input id="rememberMe" type="checkbox" class="h-4 w-4">
-        <span>Remember me on this device</span>
-      </label>
-
-      <!-- Error / info messages -->
-      <p id="loginError" class="text-sm text-red-400 min-h-[1.25rem] mb-1"></p>
-      <p id="loginInfo" class="text-sm text-emerald-400 min-h-[1.25rem] mb-2"></p>
-
-      <button
-        id="loginBtn"
-        class="w-full p-3 bg-blue-500 rounded hover:bg-blue-600"
-      >
-        Login
-      </button>
-
-      <p class="mt-3 text-sm text-gray-400">
-        Don't have an account?
-        <a href="#" id="registerLink" class="text-blue-400">Register here</a>
-      </p>
-    </div>
-  </div>
-
-  <!-- Registration Form (hidden by default) -->
-  <div id="registerForm" class="flex-1 flex items-center justify-center hidden">
-    <div class="bg-gray-800 p-6 rounded-xl w-96">
-      <h2 class="text-xl font-bold mb-4 text-center">Register</h2>
-
-      <!-- Username -->
-      <input
-        id="regUsername"
-        type="text"
-        placeholder="Username"
-        class="mb-3 p-2 rounded w-full bg-gray-600"
-        required
-      />
-
-      <!-- Password -->
-      <input
-        id="regPassword"
-        type="password"
-        placeholder="Password"
-        class="mb-3 p-2 rounded w-full bg-gray-600"
-        required
-      />
-
-      <!-- Confirm Password -->
-      <input
-        id="regPasswordConfirm"
-        type="password"
-        placeholder="Confirm Password"
-        class="mb-3 p-2 rounded w-full bg-gray-600"
-        required
-      />
-
-      <!-- Error / info messages -->
-      <p id="registerError" class="text-sm text-red-400 min-h-[1.25rem] mb-2"></p>
-
-      <button
-        id="registerBtn"
-        class="w-full p-3 bg-blue-500 rounded hover:bg-blue-600"
-      >
-        Register
-      </button>
-
-      <p class="mt-3 text-sm text-gray-400">
-        Already have an account?
-        <a href="#" id="loginLink" class="text-blue-400">Login here</a>
-      </p>
-    </div>
-  </div>
-
-  <!-- Chat Interface (hidden by default) -->
-  <div id="chatInterface" class="hidden flex-1 min-h-0 flex flex-col">
-
-    <!-- Chat header with user + logout -->
-    <div class="flex items-center justify-between px-4 py-2 bg-gray-900 border-b border-gray-800">
-      <span id="chatUserLabel" class="text-sm text-gray-300"></span>
-      <button
-        id="logoutBtn"
-        class="text-sm px-3 py-1 rounded bg-red-500 hover:bg-red-600"
-      >
-        Logout
-      </button>
-    </div>
-
-    <!-- Chat Messages -->
-    <div
-      id="messages"
-      class="flex-1 min-h-0 overflow-y-auto p-4 space-y-3 bg-gray-800"
-    ></div>
-
-    <!-- Message Input (wrapped in a form so Enter submits on any device) -->
-    <form id="messageForm" class="p-4 bg-gray-700 flex">
-      <input
-        id="msgInput"
-        class="flex-1 p-3 rounded bg-gray-600 outline-none"
-        placeholder="Type a message..."
-        autocomplete="off"
-      />
-      <button
-        id="sendBtn"
-        type="submit"
-        class="ml-3 px-4 py-2 bg-blue-500 rounded hover:bg-blue-600"
-      >
-        Send
-      </button>
-    </form>
-  </div>
-
-  <script>
-    // --- GLOBAL ERROR LOGGING ---
-    window.addEventListener("error", (event) => {
-      console.error("[window error]", event.message, "at", event.filename + ":" + event.lineno, "details:", event.error);
-    });
-
-    window.addEventListener("unhandledrejection", (event) => {
-      console.error("[unhandled rejection]", event.reason);
-    });
-
-    // Firebase configuration
-    const firebaseConfig = {
-      apiKey: "AIzaSyC945jY7UEh4sOOuuk7OMZVXeIh333kxVk",
-      authDomain: "chat-app-710f0.firebaseapp.com",
-      projectId: "chat-app-710f0",
-      storageBucket: "chat-app-710f0.firebasestorage.app",
-      messagingSenderId: "225892837672",
-      appId: "1:225892837672:web:f190f3585c4ffbd0f1c81d",
-      databaseURL: "https://chat-app-710f0-default-rtdb.firebaseio.com"
-    };
-
-    console.log("[init] starting firebase init");
-
-    // Initialize Firebase
-    firebase.initializeApp(firebaseConfig);
-    const auth = firebase.auth();
-    const db   = firebase.database();
-
-    console.log("[init] firebase initialized");
-
-    // DOM elements
-    const loginForm      = document.getElementById("loginForm");
-    const registerForm   = document.getElementById("registerForm");
-    const chatInterface  = document.getElementById("chatInterface");
-
-    const loginUsernameInput  = document.getElementById("loginUsername");
-    const loginPasswordInput  = document.getElementById("loginPassword");
-    const rememberMeCheckbox  = document.getElementById("rememberMe");
-    const loginBtn            = document.getElementById("loginBtn");
-    const loginError          = document.getElementById("loginError");
-    const loginInfo           = document.getElementById("loginInfo");
-
-    const regUsernameInput        = document.getElementById("regUsername");
-    const regPasswordInput        = document.getElementById("regPassword");
-    const regPasswordConfirmInput = document.getElementById("regPasswordConfirm");
-    const registerBtn             = document.getElementById("registerBtn");
-    const registerError           = document.getElementById("registerError");
-
-    const msgInput        = document.getElementById("msgInput");
-    const sendBtn         = document.getElementById("sendBtn");
-    const messagesDiv     = document.getElementById("messages");
-    const messageForm     = document.getElementById("messageForm");
-
-    const registerLink  = document.getElementById("registerLink");
-    const loginLink     = document.getElementById("loginLink");
-    const logoutBtn     = document.getElementById("logoutBtn");
-    const chatUserLabel = document.getElementById("chatUserLabel");
-
-    // Global state
-    let currentUsername = null;   // SINGLE SOURCE for username
-    let currentUserId   = null;
-
-    // Real-time messages
-    let messagesListener  = null;
-    let messagesRef       = null;
-    const seenMessageKeys = new Set();
-
-    // Helper: clear messages
-    function clearLoginMessages() {
-      loginError.textContent = "";
-      loginInfo.textContent  = "";
-    }
-
-    function clearRegisterMessages() {
-      registerError.textContent = "";
-    }
-
-    function updateChatUserLabel(username) {
-      currentUsername = username || null;
-      chatUserLabel.textContent = username ? `Logged in as ${username}` : "";
-      console.log("[ui] chat user label set to:", chatUserLabel.textContent);
-    }
-
-    // --- USERNAME FROM DB (ONE SOURCE OF TRUTH) ---
-    async function fetchUsername(uid, emailFallback) {
-      try {
-        const snap = await db.ref("users/" + uid + "/username").once("value");
-        let username = snap.val();
-        if (!username && emailFallback) {
-          username = emailFallback.split("@")[0];
-        }
-        return username || "User";
-      } catch (err) {
-        console.error("[username] error fetching from DB", err);
-        if (emailFallback) return emailFallback.split("@")[0];
-        return "User";
-      }
-    }
-
-    // On load: prefill username if "remember me" was used (ONLY for login form)
-    (function initRememberMe() {
-      try {
-        const remember      = localStorage.getItem("rememberMe") === "true";
-        const savedUsername = localStorage.getItem("rememberedUsername");
-        console.log("[rememberMe] remember =", remember, "savedUsername =", savedUsername);
-        if (remember && savedUsername) {
-          rememberMeCheckbox.checked = true;
-          loginUsernameInput.value   = savedUsername;
-        }
-      } catch (err) {
-        console.error("[rememberMe] error reading localStorage", err);
-      }
-    })();
-
-    // Switch to Register form
-    registerLink.onclick = () => {
-      clearLoginMessages();
-      loginForm.classList.add("hidden");
-      registerForm.classList.remove("hidden");
-      console.log("[ui] switched to register form");
-    };
-
-    // Switch to Login form
-    loginLink.onclick = () => {
-      clearRegisterMessages();
-      registerForm.classList.add("hidden");
-      loginForm.classList.remove("hidden");
-      console.log("[ui] switched to login form");
-    };
-
-    // Helper: make fake email from username
-    function makeEmailFromUsername(username) {
-      return username.toLowerCase() + "@gmail.com";
-    }
-
-    // 🔍 Check if username is already taken in DB
-    async function isUsernameTaken(username) {
-      console.log("[users] checking if username taken:", username);
-      try {
-        const snapshot = await db
-          .ref("users")
-          .orderByChild("username")
-          .equalTo(username)
-          .once("value");
-        const exists = snapshot.exists();
-        console.log("[users] username taken =", exists);
-        return exists;
-      } catch (err) {
-        console.error("[users] error while checking username", err);
-        registerError.textContent = "Error checking username. Try again.";
-        return true;
-      }
-    }
-
-    // Register User (username + password + confirm)
-    registerBtn.onclick = async () => {
-      clearRegisterMessages();
-
-      const username        = regUsernameInput.value.trim();
-      const password        = regPasswordInput.value.trim();
-      const passwordConfirm = regPasswordConfirmInput.value.trim();
-
-      console.log("[register] submit", { username });
-
-      if (!username || !password || !passwordConfirm) {
-        registerError.textContent = "Please fill all fields.";
-        return;
-      }
-
-      if (username.includes("@") || username.includes(" ")) {
-        registerError.textContent = "Username can't have spaces or '@'.";
-        return;
-      }
-
-      if (password !== passwordConfirm) {
-        registerError.textContent = "Passwords do not match.";
-        return;
-      }
-
-      // Check username in database
-      if (await isUsernameTaken(username)) {
-        if (!registerError.textContent) {
-          registerError.textContent = "That username is already taken.";
-        }
-        return;
-      }
-
-      const fakeEmail = makeEmailFromUsername(username);
-      console.log("[register] creating auth user", fakeEmail);
-
-      try {
-        const userCredential = await auth.createUserWithEmailAndPassword(
-          fakeEmail,
-          password
-        );
-        const user = userCredential.user;
-        console.log("[register] auth user created", user.uid);
-
-        // Save the username in Firebase Database
-        const userRef = db.ref("users/" + user.uid);
-        await userRef.set({ username });
-        console.log("[register] username saved to /users", user.uid);
-
-        // Log them out so they still go through login flow
-        await auth.signOut();
-        console.log("[register] signed out after registration");
-
-        // Switch back to login, show success message
-        registerForm.classList.add("hidden");
-        loginForm.classList.remove("hidden");
-        clearLoginMessages();
-        loginInfo.textContent = "Account created! You can log in now.";
-      } catch (error) {
-        console.error("[register] Error registering:", error);
-        if (error.code === "auth/email-already-in-use") {
-          registerError.textContent = "That username is already taken.";
-        } else if (error.code === "auth/weak-password") {
-          registerError.textContent = "Password is too weak.";
-        } else {
-          registerError.textContent = "Could not register. Try again.";
-        }
-      }
-    };
-
-    /// Sign In User (username + password only) with persistence
-    loginBtn.onclick = async () => {
-      clearLoginMessages();
-
-      const username = loginUsernameInput.value.trim();
-      const password = loginPasswordInput.value.trim();
-      const remember = rememberMeCheckbox.checked;
-
-      console.log("[login] submit", { username, remember });
-
-      if (!username || !password) {
-        loginError.textContent = "Please fill username and password.";
-        return;
-      }
-
-      if (username.includes("@") || username.includes(" ")) {
-        loginError.textContent = "Username can't have spaces or '@'.";
-        return;
-      }
-
-      const fakeEmail = makeEmailFromUsername(username);
-
-      try {
-        const persistence = remember
-          ? firebase.auth.Auth.Persistence.LOCAL
-          : firebase.auth.Auth.Persistence.SESSION;
-
-        console.log("[login] setting persistence", remember ? "LOCAL" : "SESSION");
-        await auth.setPersistence(persistence);
-
-        console.log("[login] signing in with email", fakeEmail);
-
-        const userCredential = await auth.signInWithEmailAndPassword(
-          fakeEmail,
-          password
-        );
-        const user = userCredential.user;
-
-        console.log("[login] signed in as", user.uid);
-
-        // Save "remember me" stuff ONLY for login form next time
-        try {
-          if (remember) {
-            localStorage.setItem("rememberMe", "true");
-            localStorage.setItem("rememberedUsername", username);
-          } else {
-            localStorage.removeItem("rememberMe");
-            localStorage.removeItem("rememberedUsername");
-          }
-        } catch (err) {
-          console.error("[login] error writing rememberMe to localStorage", err);
-        }
-
-        // DO NOT show chat here. onAuthStateChanged will do it.
-      } catch (error) {
-        console.error("[login] Error signing in:", error);
-        if (
-          error.code === "auth/user-not-found" ||
-          error.code === "auth/wrong-password"
-        ) {
-          loginError.textContent = "Wrong username or password.";
-        } else if (error.code === "auth/too-many-requests") {
-          loginError.textContent = "Too many attempts. Please wait and try again.";
-        } else {
-          loginError.textContent = "Could not log in. Try again.";
-        }
-      }
-    };
-
-    // --- MESSAGE RENDERING (iMessage style bubbles) ---
-    function renderMessage(msg) {
-      const myName = currentUsername || null;
-      const isMine = myName && msg.user === myName;
-
-      const row = document.createElement("div");
-      row.className = "w-full flex";
-      row.classList.add(isMine ? "justify-end" : "justify-start");
-
-      const column = document.createElement("div");
-      column.className = "flex flex-col max-w-[75%]";
-
-      if (!isMine) {
-        const nameLabel = document.createElement("div");
-        nameLabel.className = "text-xs text-gray-300 mb-1 ml-1";
-        nameLabel.textContent = msg.user || "Unknown";
-        column.appendChild(nameLabel);
-      }
-
-      const bubble = document.createElement("div");
-      bubble.className = "px-3 py-2 rounded-2xl text-sm break-words";
-
-      if (isMine) {
-        bubble.classList.add("bg-blue-500", "text-white", "rounded-br-sm");
-      } else {
-        bubble.classList.add("bg-gray-700", "text-gray-100", "rounded-bl-sm");
-      }
-
-      bubble.textContent = msg.text || "";
-
-      column.appendChild(bubble);
-      row.appendChild(column);
-
-      messagesDiv.appendChild(row);
-      messagesDiv.scrollTop = messagesDiv.scrollHeight;
-    }
-
-    function renderMessageOnce(key, msg) {
-      if (!key) {
-        console.warn("[messages] missing key for message", msg);
-        renderMessage(msg);
-        return;
-      }
-      if (seenMessageKeys.has(key)) return;
-      seenMessageKeys.add(key);
-      renderMessage(msg);
-    }
-
-    function startMessagesListener() {
-      console.log("[messages] startMessagesListener called");
-      stopMessagesListener();
-      seenMessageKeys.clear();
-      messagesDiv.innerHTML = "";
-
-      try {
-        messagesRef = db.ref("messages").orderByChild("time");
-
-        messagesRef.once(
-          "value",
-          (snap) => {
-            const count = snap.numChildren();
-            console.log("[messages] initial load snapshot, count =", count);
-            snap.forEach((child) => {
-              renderMessageOnce(child.key, child.val() || {});
-            });
-          },
-          (error) => {
-            console.error("[messages] error during initial load:", error);
-          }
-        );
-
-        messagesListener = (snap) => {
-          const msg = snap.val() || {};
-          console.log("[messages] child_added", { key: snap.key, msg });
-          renderMessageOnce(snap.key, msg);
-        };
-
-        messagesRef.on(
-          "child_added",
-          messagesListener,
-          (error) => {
-            console.error("[messages] listener error:", error);
-          }
-        );
-      } catch (err) {
-        console.error("[messages] startMessagesListener crashed:", err);
-      }
-    }
-
-    function stopMessagesListener() {
-      console.log("[messages] stopMessagesListener called");
-      try {
-        if (messagesRef && messagesListener) {
-          messagesRef.off("child_added", messagesListener);
-        }
-      } catch (err) {
-        console.error("[messages] error while stopping listener:", err);
-      }
-      messagesRef = null;
-      messagesListener = null;
-      seenMessageKeys.clear();
-    }
-
-    // Auto-handle already logged-in users on page load
-    auth.onAuthStateChanged(async (user) => {
-      console.log("[auth] onAuthStateChanged user =", user ? user.uid : null);
-
-      if (user) {
-        currentUserId = user.uid;
-
-        // Get username from DB (ONE PLACE)
-        currentUsername = await fetchUsername(user.uid, user.email || null);
-        updateChatUserLabel(currentUsername);
-
-        loginForm.classList.add("hidden");
-        registerForm.classList.add("hidden");
-        chatInterface.classList.remove("hidden");
-
-        console.log("[auth] starting messages listener from auth state change");
-        startMessagesListener();
-      } else {
-        console.log("[auth] user is null, stopping listeners and showing login");
-
-        stopMessagesListener();
-
-        currentUserId    = null;
-        currentUsername  = null;
-        messagesDiv.innerHTML = "";
-
-        chatInterface.classList.add("hidden");
-        loginForm.classList.remove("hidden");
-        updateChatUserLabel("");
-      }
-    });
-
-    // Logout
-    logoutBtn.onclick = async () => {
-      console.log("[logout] clicked");
-      try {
-        await auth.signOut();
-        console.log("[logout] signOut complete");
-      } catch (e) {
-        console.error("[logout] Error signing out:", e);
-      }
-
-      msgInput.value           = "";
-      loginPasswordInput.value = "";
-      clearLoginMessages();
-
-      const remember = localStorage.getItem("rememberMe") === "true";
-      if (!remember) {
-        localStorage.removeItem("rememberedUsername");
-        loginUsernameInput.value = "";
-      } else {
-        const savedUsername = localStorage.getItem("rememberedUsername");
-        loginUsernameInput.value = savedUsername || "";
-      }
-    };
-
-    // Send a message (shared logic)
-    function sendMessage() {
-      const text = msgInput.value.trim();
-      if (text === "") return;
-
-      const userObj = auth.currentUser;
-      if (!userObj) {
-        console.warn("[send] tried to send while not logged in");
-        msgInput.value = "";
-        return;
-      }
-
-      let username = currentUsername;
-      if (!username) {
-        console.warn("[send] no currentUsername; falling back to 'Unknown'");
-        username = "Unknown";
-      }
-
-      console.log("[send] sending message", { username, text, userId: userObj.uid });
-
-      db.ref("messages")
-        .push({
-          user: username,
-          text: text,
-          time: firebase.database.ServerValue.TIMESTAMP
-        })
-        .then((ref) => {
-          console.log("[send] message saved under key", ref.key);
-        })
-        .catch((error) => {
-          console.error("[send] error sending message:", error);
-        });
-
-      msgInput.value = "";
-    }
-
-    // Form submit = send message (works with Enter / Return everywhere)
-    messageForm.addEventListener("submit", (e) => {
-      e.preventDefault();
-      sendMessage();
-    });
-  </script>
-
-</body>
+   <head>
+      <meta charset="UTF-8" />
+      <title>Simple Chat App</title>
+      <!-- Tailwind CSS (optional, for looks) -->
+      <script src="https://cdn.tailwindcss.com"></script>
+      <!-- Firebase SDKs -->
+      <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+      <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+      <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+      <!-- Hide scrollbar but keep scrolling -->
+      <style>
+         #messages {
+         scrollbar-width: none;          /* Firefox */
+         }
+         #messages::-webkit-scrollbar {
+         display: none;                  /* Chrome, Edge, Safari */
+         }
+      </style>
+   </head>
+   <body class="bg-gray-900 text-white h-screen flex flex-col">
+      <!-- Login Form (visible by default) -->
+      <div id="loginForm" class="flex-1 flex items-center justify-center">
+         <div class="bg-gray-800 p-6 rounded-xl w-96">
+            <h2 class="text-xl font-bold mb-4 text-center">Login</h2>
+            <!-- Username only -->
+            <input
+               id="loginUsername"
+               type="text"
+               placeholder="Username"
+               class="mb-3 p-2 rounded w-full bg-gray-600"
+               required
+               />
+            <!-- Password -->
+            <input
+               id="loginPassword"
+               type="password"
+               placeholder="Password"
+               class="mb-3 p-2 rounded w-full bg-gray-600"
+               required
+               />
+            <!-- Remember me -->
+            <label class="flex items-center gap-2 mb-3 text-sm text-gray-300">
+            <input id="rememberMe" type="checkbox" class="h-4 w-4">
+            <span>Remember me on this device</span>
+            </label>
+            <!-- Error / info messages -->
+            <p id="loginError" class="text-sm text-red-400 min-h-[1.25rem] mb-1"></p>
+            <p id="loginInfo" class="text-sm text-emerald-400 min-h-[1.25rem] mb-2"></p>
+            <button
+               id="loginBtn"
+               class="w-full p-3 bg-blue-500 rounded hover:bg-blue-600"
+               >
+            Login
+            </button>
+            <p class="mt-3 text-sm text-gray-400">
+               Don't have an account?
+               <a href="#" id="registerLink" class="text-blue-400">Register here</a>
+            </p>
+         </div>
+      </div>
+      <!-- Registration Form (hidden by default) -->
+      <div id="registerForm" class="flex-1 flex items-center justify-center hidden">
+         <div class="bg-gray-800 p-6 rounded-xl w-96">
+            <h2 class="text-xl font-bold mb-4 text-center">Register</h2>
+            <!-- Username -->
+            <input
+               id="regUsername"
+               type="text"
+               placeholder="Username"
+               class="mb-3 p-2 rounded w-full bg-gray-600"
+               required
+               />
+            <!-- Password -->
+            <input
+               id="regPassword"
+               type="password"
+               placeholder="Password"
+               class="mb-3 p-2 rounded w-full bg-gray-600"
+               required
+               />
+            <!-- Confirm Password -->
+            <input
+               id="regPasswordConfirm"
+               type="password"
+               placeholder="Confirm Password"
+               class="mb-3 p-2 rounded w-full bg-gray-600"
+               required
+               />
+            <!-- Error / info messages -->
+            <p id="registerError" class="text-sm text-red-400 min-h-[1.25rem] mb-2"></p>
+            <button
+               id="registerBtn"
+               class="w-full p-3 bg-blue-500 rounded hover:bg-blue-600"
+               >
+            Register
+            </button>
+            <p class="mt-3 text-sm text-gray-400">
+               Already have an account?
+               <a href="#" id="loginLink" class="text-blue-400">Login here</a>
+            </p>
+         </div>
+      </div>
+      <!-- Chat Interface (hidden by default) -->
+      <div id="chatInterface" class="hidden flex-1 min-h-0 flex flex-col">
+         <!-- Chat header with user + logout -->
+         <div class="flex items-center justify-between px-4 py-2 bg-gray-900 border-b border-gray-800">
+            <span id="chatUserLabel" class="text-sm text-gray-300"></span>
+            <button
+               id="logoutBtn"
+               class="text-sm px-3 py-1 rounded bg-red-500 hover:bg-red-600"
+               >
+            Logout
+            </button>
+         </div>
+         <!-- Chat Messages -->
+         <div
+            id="messages"
+            class="flex-1 min-h-0 overflow-y-auto p-4 space-y-3 bg-gray-800"
+            ></div>
+         <!-- Rate limit / warning message (on-screen, not alert) -->
+         <p
+            id="sendWarning"
+            class="px-4 py-1 text-sm text-red-400 min-h-[1.25rem]"
+            ></p>
+         <!-- Message Input (wrapped in a form so Enter submits on any device) -->
+         <form id="messageForm" class="p-4 bg-gray-700 flex">
+            <input
+               id="msgInput"
+               class="flex-1 p-3 rounded bg-gray-600 outline-none"
+               placeholder="Type a message..."
+               autocomplete="off"
+               />
+            <button
+               id="sendBtn"
+               type="submit"
+               class="ml-3 px-4 py-2 bg-blue-500 rounded hover:bg-blue-600"
+               >
+            Send
+            </button>
+         </form>
+      </div>
+      <script>
+         // --- GLOBAL ERROR LOGGING ---
+         window.addEventListener("error", (event) => {
+           console.error("[window error]", event.message, "at", event.filename + ":" + event.lineno, "details:", event.error);
+         });
+         
+         window.addEventListener("unhandledrejection", (event) => {
+           console.error("[unhandled rejection]", event.reason);
+         });
+         
+         // Firebase configuration
+         const firebaseConfig = {
+           apiKey: "AIzaSyC945jY7UEh4sOOuuk7OMZVXeIh333kxVk",
+           authDomain: "chat-app-710f0.firebaseapp.com",
+           projectId: "chat-app-710f0",
+           storageBucket: "chat-app-710f0.firebasestorage.app",
+           messagingSenderId: "225892837672",
+           appId: "1:225892837672:web:f190f3585c4ffbd0f1c81d",
+           databaseURL: "https://chat-app-710f0-default-rtdb.firebaseio.com"
+         };
+         
+         console.log("[init] starting firebase init");
+         
+         // Initialize Firebase
+         firebase.initializeApp(firebaseConfig);
+         const auth = firebase.auth();
+         const db   = firebase.database();
+         
+         console.log("[init] firebase initialized");
+         
+         // DOM elements
+         const loginForm      = document.getElementById("loginForm");
+         const registerForm   = document.getElementById("registerForm");
+         const chatInterface  = document.getElementById("chatInterface");
+         
+         const loginUsernameInput  = document.getElementById("loginUsername");
+         const loginPasswordInput  = document.getElementById("loginPassword");
+         const rememberMeCheckbox  = document.getElementById("rememberMe");
+         const loginBtn            = document.getElementById("loginBtn");
+         const loginError          = document.getElementById("loginError");
+         const loginInfo           = document.getElementById("loginInfo");
+         
+         const regUsernameInput        = document.getElementById("regUsername");
+         const regPasswordInput        = document.getElementById("regPassword");
+         const regPasswordConfirmInput = document.getElementById("regPasswordConfirm");
+         const registerBtn             = document.getElementById("registerBtn");
+         const registerError           = document.getElementById("registerError");
+         
+         const msgInput        = document.getElementById("msgInput");
+         const sendBtn         = document.getElementById("sendBtn");
+         const messagesDiv     = document.getElementById("messages");
+         const messageForm     = document.getElementById("messageForm");
+         const sendWarningEl   = document.getElementById("sendWarning");
+         
+         const registerLink  = document.getElementById("registerLink");
+         const loginLink     = document.getElementById("loginLink");
+         const logoutBtn     = document.getElementById("logoutBtn");
+         const chatUserLabel = document.getElementById("chatUserLabel");
+         
+         // Global state
+         let currentUsername = null;   // SINGLE SOURCE for username
+         let currentUserId   = null;
+         
+         // Real-time messages
+         let messagesListener  = null;
+         let messagesRef       = null;
+         const seenMessageKeys = new Set();
+         
+         // Rate-limit warning timeout + local last-sent time
+         let sendWarningTimeoutId = null;
+         let lastSentTime = 0; // for local 500ms rate limit
+         
+         // Helper: clear messages
+         function clearLoginMessages() {
+           loginError.textContent = "";
+           loginInfo.textContent  = "";
+         }
+         
+         function clearRegisterMessages() {
+           registerError.textContent = "";
+         }
+         
+         function updateChatUserLabel(username) {
+           currentUsername = username || null;
+           chatUserLabel.textContent = username ? `Logged in as ${username}` : "";
+           console.log("[ui] chat user label set to:", chatUserLabel.textContent);
+         }
+         
+         // On-screen warning (2 seconds)
+         function showRateLimitWarning() {
+           if (!sendWarningEl) return;
+           sendWarningEl.textContent = "Slow down — you're sending messages too fast.";
+           if (sendWarningTimeoutId) {
+             clearTimeout(sendWarningTimeoutId);
+           }
+           sendWarningTimeoutId = setTimeout(() => {
+             sendWarningEl.textContent = "";
+           }, 2000);
+         }
+         
+         // --- USERNAME FROM DB (ONE SOURCE OF TRUTH) ---
+         async function fetchUsername(uid, emailFallback) {
+           try {
+             const snap = await db.ref("users/" + uid + "/username").once("value");
+             let username = snap.val();
+             if (!username && emailFallback) {
+               username = emailFallback.split("@")[0];
+             }
+             return username || "User";
+           } catch (err) {
+             console.error("[username] error fetching from DB", err);
+             if (emailFallback) return emailFallback.split("@")[0];
+             return "User";
+           }
+         }
+         
+         // On load: prefill username if "remember me" was used (ONLY for login form)
+         (function initRememberMe() {
+           try {
+             const remember      = localStorage.getItem("rememberMe") === "true";
+             const savedUsername = localStorage.getItem("rememberedUsername");
+             console.log("[rememberMe] remember =", remember, "savedUsername =", savedUsername);
+             if (remember && savedUsername) {
+               rememberMeCheckbox.checked = true;
+               loginUsernameInput.value   = savedUsername;
+             }
+           } catch (err) {
+             console.error("[rememberMe] error reading localStorage", err);
+           }
+         })();
+         
+         // Switch to Register form
+         registerLink.onclick = () => {
+           clearLoginMessages();
+           loginForm.classList.add("hidden");
+           registerForm.classList.remove("hidden");
+           console.log("[ui] switched to register form");
+         };
+         
+         // Switch to Login form
+         loginLink.onclick = () => {
+           clearRegisterMessages();
+           registerForm.classList.add("hidden");
+           loginForm.classList.remove("hidden");
+           console.log("[ui] switched to login form");
+         };
+         
+         // Helper: make fake email from username
+         function makeEmailFromUsername(username) {
+           return username.toLowerCase() + "@gmail.com";
+         }
+         
+         // 🔍 Check if username is already taken in DB
+         async function isUsernameTaken(username) {
+           console.log("[users] checking if username taken:", username);
+           try {
+             const snapshot = await db
+               .ref("users")
+               .orderByChild("username")
+               .equalTo(username)
+               .once("value");
+             const exists = snapshot.exists();
+             console.log("[users] username taken =", exists);
+             return exists;
+           } catch (err) {
+             console.error("[users] error while checking username", err);
+             registerError.textContent = "Error checking username. Try again.";
+             return true;
+           }
+         }
+         
+         // Register User (username + password + confirm)
+         registerBtn.onclick = async () => {
+           clearRegisterMessages();
+         
+           const username        = regUsernameInput.value.trim();
+           const password        = regPasswordInput.value.trim();
+           const passwordConfirm = regPasswordConfirmInput.value.trim();
+         
+           console.log("[register] submit", { username });
+         
+           if (!username || !password || !passwordConfirm) {
+             registerError.textContent = "Please fill all fields.";
+             return;
+           }
+         
+           if (username.includes("@") || username.includes(" ")) {
+             registerError.textContent = "Username can't have spaces or '@'.";
+             return;
+           }
+         
+           if (password !== passwordConfirm) {
+             registerError.textContent = "Passwords do not match.";
+             return;
+           }
+         
+           // Check username in database
+           if (await isUsernameTaken(username)) {
+             if (!registerError.textContent) {
+               registerError.textContent = "That username is already taken.";
+             }
+             return;
+           }
+         
+           const fakeEmail = makeEmailFromUsername(username);
+           console.log("[register] creating auth user", fakeEmail);
+         
+           try {
+             const userCredential = await auth.createUserWithEmailAndPassword(
+               fakeEmail,
+               password
+             );
+             const user = userCredential.user;
+             console.log("[register] auth user created", user.uid);
+         
+             // Save the username in Firebase Database
+             const userRef = db.ref("users/" + user.uid);
+             await userRef.set({ username });
+             console.log("[register] username saved to /users", user.uid);
+         
+             // Log them out so they still go through login flow
+             await auth.signOut();
+             console.log("[register] signed out after registration");
+         
+             // Switch back to login, show success message
+             registerForm.classList.add("hidden");
+             loginForm.classList.remove("hidden");
+             clearLoginMessages();
+             loginInfo.textContent = "Account created! You can log in now.";
+           } catch (error) {
+             console.error("[register] Error registering:", error);
+             if (error.code === "auth/email-already-in-use") {
+               registerError.textContent = "That username is already taken.";
+             } else if (error.code === "auth/weak-password") {
+               registerError.textContent = "Password is too weak.";
+             } else {
+               registerError.textContent = "Could not register. Try again.";
+             }
+           }
+         };
+         
+         /// Sign In User (username + password only) with persistence
+         loginBtn.onclick = async () => {
+           clearLoginMessages();
+         
+           const username = loginUsernameInput.value.trim();
+           const password = loginPasswordInput.value.trim();
+           const remember = rememberMeCheckbox.checked;
+         
+           console.log("[login] submit", { username, remember });
+         
+           if (!username || !password) {
+             loginError.textContent = "Please fill username and password.";
+             return;
+           }
+         
+           if (username.includes("@") || username.includes(" ")) {
+             loginError.textContent = "Username can't have spaces or '@'.";
+             return;
+           }
+         
+           const fakeEmail = makeEmailFromUsername(username);
+         
+           try {
+             const persistence = remember
+               ? firebase.auth.Auth.Persistence.LOCAL
+               : firebase.auth.Auth.Persistence.SESSION;
+         
+             console.log("[login] setting persistence", remember ? "LOCAL" : "SESSION");
+             await auth.setPersistence(persistence);
+         
+             console.log("[login] signing in with email", fakeEmail);
+         
+             const userCredential = await auth.signInWithEmailAndPassword(
+               fakeEmail,
+               password
+             );
+             const user = userCredential.user;
+         
+             console.log("[login] signed in as", user.uid);
+         
+             // Save "remember me" stuff ONLY for login form next time
+             try {
+               if (remember) {
+                 localStorage.setItem("rememberMe", "true");
+                 localStorage.setItem("rememberedUsername", username);
+               } else {
+                 localStorage.removeItem("rememberMe");
+                 localStorage.removeItem("rememberedUsername");
+               }
+             } catch (err) {
+               console.error("[login] error writing rememberMe to localStorage", err);
+             }
+         
+             // DO NOT show chat here. onAuthStateChanged will do it.
+           } catch (error) {
+             console.error("[login] Error signing in:", error);
+             if (
+               error.code === "auth/user-not-found" ||
+               error.code === "auth/wrong-password"
+             ) {
+               loginError.textContent = "Wrong username or password.";
+             } else if (error.code === "auth/too-many-requests") {
+               loginError.textContent = "Too many attempts. Please wait and try again.";
+             } else {
+               loginError.textContent = "Could not log in. Try again.";
+             }
+           }
+         };
+         
+         // --- MESSAGE RENDERING (iMessage style bubbles) ---
+         function renderMessage(msg) {
+           const myName = currentUsername || null;
+           const isMine = myName && msg.user === myName;
+         
+           const row = document.createElement("div");
+           row.className = "w-full flex";
+           row.classList.add(isMine ? "justify-end" : "justify-start");
+         
+           const column = document.createElement("div");
+           column.className = "flex flex-col max-w-[75%]";
+         
+           if (!isMine) {
+             const nameLabel = document.createElement("div");
+             nameLabel.className = "text-xs text-gray-300 mb-1 ml-1";
+             nameLabel.textContent = msg.user || "Unknown";
+             column.appendChild(nameLabel);
+           }
+         
+           const bubble = document.createElement("div");
+           bubble.className = "px-3 py-2 rounded-2xl text-sm break-words";
+         
+           if (isMine) {
+             bubble.classList.add("bg-blue-500", "text-white", "rounded-br-sm");
+           } else {
+             bubble.classList.add("bg-gray-700", "text-gray-100", "rounded-bl-sm");
+           }
+         
+           bubble.textContent = msg.text || "";
+         
+           column.appendChild(bubble);
+           row.appendChild(column);
+         
+           messagesDiv.appendChild(row);
+           messagesDiv.scrollTop = messagesDiv.scrollHeight;
+         }
+         
+         function renderMessageOnce(key, msg) {
+           if (!key) {
+             console.warn("[messages] missing key for message", msg);
+             renderMessage(msg);
+             return;
+           }
+           if (seenMessageKeys.has(key)) return;
+           seenMessageKeys.add(key);
+           renderMessage(msg);
+         }
+         
+         function startMessagesListener() {
+           console.log("[messages] startMessagesListener called");
+           stopMessagesListener();
+           seenMessageKeys.clear();
+           messagesDiv.innerHTML = "";
+         
+           try {
+             messagesRef = db.ref("messages").orderByChild("time");
+         
+             messagesRef.once(
+               "value",
+               (snap) => {
+                 const count = snap.numChildren();
+                 console.log("[messages] initial load snapshot, count =", count);
+                 snap.forEach((child) => {
+                   renderMessageOnce(child.key, child.val() || {});
+                 });
+               },
+               (error) => {
+                 console.error("[messages] error during initial load:", error);
+               }
+             );
+         
+             messagesListener = (snap) => {
+               const msg = snap.val() || {};
+               console.log("[messages] child_added", { key: snap.key, msg });
+               renderMessageOnce(snap.key, msg);
+             };
+         
+             messagesRef.on(
+               "child_added",
+               messagesListener,
+               (error) => {
+                 console.error("[messages] listener error:", error);
+               }
+             );
+           } catch (err) {
+             console.error("[messages] startMessagesListener crashed:", err);
+           }
+         }
+         
+         function stopMessagesListener() {
+           console.log("[messages] stopMessagesListener called");
+           try {
+             if (messagesRef && messagesListener) {
+               messagesRef.off("child_added", messagesListener);
+             }
+           } catch (err) {
+             console.error("[messages] error while stopping listener:", err);
+           }
+           messagesRef = null;
+           messagesListener = null;
+           seenMessageKeys.clear();
+         }
+         
+         // Auto-handle already logged-in users on page load
+         auth.onAuthStateChanged(async (user) => {
+           console.log("[auth] onAuthStateChanged user =", user ? user.uid : null);
+         
+           if (user) {
+             currentUserId = user.uid;
+         
+             // Get username from DB (ONE PLACE)
+             currentUsername = await fetchUsername(user.uid, user.email || null);
+             updateChatUserLabel(currentUsername);
+         
+             loginForm.classList.add("hidden");
+             registerForm.classList.add("hidden");
+             chatInterface.classList.remove("hidden");
+         
+             console.log("[auth] starting messages listener from auth state change");
+             startMessagesListener();
+           } else {
+             console.log("[auth] user is null, stopping listeners and showing login");
+         
+             stopMessagesListener();
+         
+             currentUserId    = null;
+             currentUsername  = null;
+             messagesDiv.innerHTML = "";
+         
+             chatInterface.classList.add("hidden");
+             loginForm.classList.remove("hidden");
+             updateChatUserLabel("");
+           }
+         });
+         
+         // Logout
+         logoutBtn.onclick = async () => {
+           console.log("[logout] clicked");
+           try {
+             await auth.signOut();
+             console.log("[logout] signOut complete");
+           } catch (e) {
+             console.error("[logout] Error signing out:", e);
+           }
+         
+           msgInput.value           = "";
+           loginPasswordInput.value = "";
+           clearLoginMessages();
+         
+           const remember = localStorage.getItem("rememberMe") === "true";
+           if (!remember) {
+             localStorage.removeItem("rememberedUsername");
+             loginUsernameInput.value = "";
+           } else {
+             const savedUsername = localStorage.getItem("rememberedUsername");
+             loginUsernameInput.value = savedUsername || "";
+           }
+         };
+         
+         // Send a message (shared logic) + local rate-limit + server rules
+         function sendMessage() {
+           const text = msgInput.value.trim();
+           if (text === "") return;
+         
+           const userObj = auth.currentUser;
+           if (!userObj) {
+             console.warn("[send] tried to send while not logged in");
+             msgInput.value = "";
+             return;
+           }
+         
+           // ✅ Local 500ms rate limit
+           const now = Date.now();
+           if (now - lastSentTime < 500) {
+             showRateLimitWarning();
+             return;
+           }
+           lastSentTime = now;
+         
+           let username = currentUsername;
+           if (!username) {
+             console.warn("[send] no currentUsername; falling back to 'Unknown'");
+             username = "Unknown";
+           }
+         
+           console.log("[send] sending message", { username, text, userId: userObj.uid });
+         
+           const uid = userObj.uid;
+         
+           // Push the message
+           db.ref("messages")
+             .push({
+               user: username,
+               text: text,
+               time: firebase.database.ServerValue.TIMESTAMP
+             })
+             .then((ref) => {
+               console.log("[send] message saved under key", ref.key);
+         
+               // Update last message time so Firebase rules can block spam as backup
+               return db
+                 .ref("userLastMessageTime/" + uid)
+                 .set(firebase.database.ServerValue.TIMESTAMP);
+             })
+             .then(() => {
+               // Only clear input when message + timestamp both succeed
+               msgInput.value = "";
+             })
+             .catch((error) => {
+               console.error("[send] error sending message:", error);
+               if (error.code === "PERMISSION_DENIED") {
+                 showRateLimitWarning();
+               }
+             });
+         }
+         
+         // Form submit = send message (works with Enter / Return everywhere)
+         messageForm.addEventListener("submit", (e) => {
+           e.preventDefault();
+           sendMessage();
+         });
+      </script>
+   </body>
 </html>
