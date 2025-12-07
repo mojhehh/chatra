@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -1541,11 +1540,78 @@
           ? `message-bubble-anim mine ${padding} sm:px-3 sm:py-2 rounded-2xl text-xs sm:text-sm leading-relaxed break-words shadow-sm bg-gradient-to-br from-sky-500 to-sky-600 text-white rounded-br-md font-medium shadow-md shadow-sky-500/20`
           : `message-bubble-anim ${padding} sm:px-3 sm:py-2 rounded-2xl text-xs sm:text-sm leading-relaxed break-words shadow-sm bg-slate-700/90 text-slate-50 rounded-bl-md border border-slate-600/50 backdrop-blur-sm`;
 
-        const textSpan = document.createElement("span");
-        textSpan.className = "message-text-reveal inline-block";
-        textSpan.textContent = msg.text || "";
+        // Add media if present (image or video)
+        if (msg.media) {
+          const mediaUrl = msg.media;
+          const isVideo = mediaUrl.includes('.mp4') || mediaUrl.includes('video') || mediaUrl.includes('.mov') || mediaUrl.includes('.webm');
+          const isGif = mediaUrl.toLowerCase().includes('.gif');
+          
+          if (isVideo) {
+            const videoContainer = document.createElement("div");
+            videoContainer.className = "relative rounded-lg overflow-hidden mb-2";
+            videoContainer.style.maxWidth = "400px";
+            
+            const video = document.createElement("video");
+            video.src = mediaUrl;
+            video.controls = true;
+            video.preload = "metadata";
+            video.className = "w-full rounded-lg";
+            video.style.maxHeight = "300px";
+            video.style.display = "block";
+            
+            videoContainer.appendChild(video);
+            bubble.appendChild(videoContainer);
+          } else if (isGif) {
+            const gifContainer = document.createElement("div");
+            gifContainer.className = "relative rounded-lg overflow-hidden mb-2";
+            gifContainer.style.maxWidth = "400px";
+            
+            const img = document.createElement("img");
+            img.src = mediaUrl;
+            img.className = "w-full rounded-lg cursor-pointer hover:opacity-90 transition-opacity";
+            img.style.maxHeight = "300px";
+            img.style.display = "block";
+            img.style.objectFit = "contain";
+            
+            // GIF controls: loop continuously
+            img.onload = () => {
+              // Force loop by reloading src when ended (for animated GIFs)
+              setInterval(() => {
+                const tempSrc = img.src;
+                img.src = '';
+                img.src = tempSrc;
+              }, 10000); // Reload every 10 seconds to ensure loop
+            };
+            
+            img.onclick = () => window.open(mediaUrl, '_blank');
+            gifContainer.appendChild(img);
+            bubble.appendChild(gifContainer);
+          } else {
+            const imgContainer = document.createElement("div");
+            imgContainer.className = "relative rounded-lg overflow-hidden mb-2";
+            imgContainer.style.maxWidth = "400px";
+            
+            const img = document.createElement("img");
+            img.src = mediaUrl;
+            img.className = "w-full rounded-lg cursor-pointer hover:opacity-90 transition-opacity";
+            img.style.maxHeight = "300px";
+            img.style.display = "block";
+            img.style.objectFit = "contain";
+            img.onclick = () => window.open(mediaUrl, '_blank');
+            
+            imgContainer.appendChild(img);
+            bubble.appendChild(imgContainer);
+          }
+        }
+
+        // Add text if present
+        if (msg.text) {
+          const textSpan = document.createElement("span");
+          textSpan.className = "message-text-reveal inline-block";
+          textSpan.textContent = msg.text;
+          bubble.appendChild(textSpan);
+        }
         
-        bubble.appendChild(textSpan);
         column.appendChild(bubble);
         row.appendChild(column);
         return row;
@@ -2173,6 +2239,65 @@
       messageForm.addEventListener("submit", (e) => {
         e.preventDefault();
         sendMessage();
+      });
+
+      // Media upload handlers
+      const mediaUploadBtn = document.getElementById("mediaUploadBtn");
+      const mediaInput = document.getElementById("mediaInput");
+
+      mediaUploadBtn.addEventListener("click", () => {
+        mediaInput.click();
+      });
+
+      mediaInput.addEventListener("change", async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const userObj = auth.currentUser;
+        if (!userObj) {
+          alert("Please log in to send media");
+          return;
+        }
+
+        const uid = userObj.uid;
+        const username = currentUsername;
+
+        try {
+          // Show uploading state
+          mediaUploadBtn.disabled = true;
+          mediaUploadBtn.innerHTML = '<svg class="animate-spin" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" stroke-opacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10" stroke-opacity="0.75"/></svg>';
+
+          // Upload to Cloudinary
+          const upload = await uploadToCloudinary(file);
+          const mediaUrl = upload.secure_url;
+          const deleteToken = upload.delete_token;
+
+          // Send message with media
+          await db.ref("messages").push({
+            user: username,
+            text: "",
+            media: mediaUrl,
+            deleteToken: deleteToken,
+            time: firebase.database.ServerValue.TIMESTAMP
+          });
+
+          console.log("[media] uploaded and sent:", mediaUrl);
+
+          // Reset button
+          mediaUploadBtn.disabled = false;
+          mediaUploadBtn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-slate-400"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>';
+          
+          // Clear input
+          mediaInput.value = "";
+        } catch (err) {
+          console.error("[media] error uploading:", err);
+          alert("Error uploading media: " + err.message);
+          
+          // Reset button
+          mediaUploadBtn.disabled = false;
+          mediaUploadBtn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-slate-400"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>';
+          mediaInput.value = "";
+        }
       });
 
       // ===== SETTINGS MENU & MODALS =====
