@@ -1,2079 +1,2821 @@
 <!DOCTYPE html>
 <html lang="en">
-   <head>
-      <meta charset="UTF-8" />
-      <title>Chatra</title>
-      <meta name="viewport" content="width=device-width, initial-scale=1" />
-      <!-- Tailwind CSS (optional, for looks) -->
-      <script src="https://cdn.tailwindcss.com"></script>
-      <script>
-         // Suppress Tailwind CDN production warning
-         Object.defineProperty(window, '__TAILWIND_CONFIG__', {
-           value: {},
-           writable: false
-         });
-      </script>
-      <!-- Firebase SDKs -->
-      <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
-      <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
-      <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
-      <!-- Hide scrollbar but keep scrolling + custom animations / glassmorphism -->
-      <style>
-         #messages {
-         scrollbar-width: thin;
-         scrollbar-color: rgba(100, 116, 139, 0.6) rgba(15, 23, 42, 0.3);
-         }
-         #messages::-webkit-scrollbar {
-         width: 8px;
-         }
-         #messages::-webkit-scrollbar-track {
-         background: rgba(15, 23, 42, 0.3);
-         }
-         #messages::-webkit-scrollbar-thumb {
-         background: rgba(100, 116, 139, 0.6);
-         border-radius: 4px;
-         }
-         #messages::-webkit-scrollbar-thumb:hover {
-         background: rgba(100, 116, 139, 0.8);
-         }
-         /* Modal and menu styles */
-         .modal-overlay {
-         background: rgba(0, 0, 0, 0.5);
-         backdrop-filter: blur(4px);
-         }
-         .modal-open {
-         display: flex !important;
-         }
-         .modal-closed {
-         display: none !important;
-         }
-         .menu-open {
-         display: block !important;
-         }
-         .menu-closed {
-         display: none !important;
-         }
-         /* Light mode styles */
-         body.light-mode {
-         background-color: #f8fafc;
-         color: #1e293b;
-         }
-         body.light-mode .glass-card {
-         background: rgba(248, 250, 252, 0.8);
-         border-color: rgba(30, 41, 59, 0.15);
-         }
-         body.light-mode .glass-card:hover {
-         border-color: rgba(30, 41, 59, 0.25);
-         }
-         body.light-mode #chatInterface .glass-card {
-         background: rgba(248, 250, 252, 0.95);
-         color: #1e293b;
-         }
-         body.light-mode #messages {
-         background-color: #f1f5f9;
-         color: #1e293b;
-         }
-         body.light-mode .message-bubble-anim:not(.mine) {
-         background-color: #e2e8f0 !important;
-         color: #1e293b !important;
-         border-color: #cbd5e1 !important;
-         }
-         body.light-mode .message-bubble-anim.mine {
-         background: linear-gradient(to bottom right, #0ea5e9, #0284c7) !important;
-         color: white !important;
-         }
-         body.light-mode .text-slate-100,
-         body.light-mode .text-slate-200,
-         body.light-mode .text-slate-300 {
-         color: #1e293b !important;
-         }
-         body.light-mode .text-slate-400 {
-         color: #64748b !important;
-         }
-         body.light-mode .bg-slate-950,
-         body.light-mode .bg-slate-900 {
-         background-color: #f1f5f9 !important;
-         }
-         body.light-mode .bg-slate-800,
-         body.light-mode .bg-slate-800\/80 {
-         background-color: #e2e8f0 !important;
-         }
-         body.light-mode .bg-slate-700 {
-         background-color: #cbd5e1 !important;
-         }
-         body.light-mode .bg-slate-700\/50 {
-         background-color: rgba(203, 213, 225, 0.5) !important;
-         }
-         body.light-mode .hover\:bg-slate-700:hover,
-         body.light-mode .hover\:bg-slate-600:hover {
-         background-color: #cbd5e1 !important;
-         }
-         body.light-mode .border-slate-600\/60,
-         body.light-mode .border-slate-700,
-         body.light-mode .border-slate-800\/50 {
-         border-color: #cbd5e1 !important;
-         }
-         body.light-mode input,
-         body.light-mode textarea {
-         background-color: #f1f5f9 !important;
-         color: #1e293b !important;
-         border-color: #cbd5e1 !important;
-         }
-         body.light-mode input::placeholder,
-         body.light-mode textarea::placeholder {
-         color: #94a3b8 !important;
-         }
-         body.light-mode input:focus,
-         body.light-mode textarea:focus {
-         border-color: #0ea5e9 !important;
-         }
-         body.light-mode .shadow-inner {
-         box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1) !important;
-         }
-         body.light-mode #settingsMenu,
-         body.light-mode #settingsModal,
-         body.light-mode #profileModal {
-         background: rgba(248, 250, 252, 0.95);
-         border-color: rgba(30, 41, 59, 0.2);
-         }
-         body.light-mode .input-shell {
-         background-color: #e2e8f0 !important;
-         border-color: #cbd5e1 !important;
-         }
-         body.light-mode .input-shell:focus-within {
-         border-color: #0ea5e9 !important;
-         }
-         /* Message size classes */
-         .msg-small .message-bubble-anim {
-         font-size: 0.65rem;
-         padding: 0.4rem 0.6rem !important;
-         }
-         .msg-large .message-bubble-anim {
-         font-size: 0.95rem;
-         padding: 0.6rem 1rem !important;
-         }
-         /* Glass card style for panels (more subtle) */
-         .glass-card {
-         background: rgba(15, 23, 42, 0.8);
-         border: 1px solid rgba(148, 163, 184, 0.2);
-         backdrop-filter: blur(8px);
-         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-         transition: all 0.2s ease;
-         }
-         .glass-card:hover {
-         border-color: rgba(148, 163, 184, 0.3);
-         box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
-         }
-         /* Animated background blobs (much more subtle) */
-         .bg-orb {
-         position: fixed;
-         border-radius: 9999px;
-         filter: blur(80px);
-         opacity: 0.08;
-         pointer-events: none;
-         z-index: -10;
-         }
-         .bg-orb-blue {
-         background: radial-gradient(circle, rgba(56, 189, 248, 0.4), transparent 60%);
-         animation: float-slow 20s ease-in-out infinite alternate;
-         }
-         .bg-orb-purple {
-         background: radial-gradient(circle, rgba(129, 140, 248, 0.35), transparent 60%);
-         animation: float-medium 24s ease-in-out infinite alternate;
-         }
-         .bg-orb-pink {
-         background: radial-gradient(circle, rgba(236, 72, 153, 0.3), transparent 60%);
-         animation: float-fast 26s ease-in-out infinite alternate;
-         }
-         @keyframes float-slow {
-         0% {
-         transform: translate3d(-10px, 0, 0) scale(1);
-         }
-         100% {
-         transform: translate3d(20px, 30px, 0) scale(1.06);
-         }
-         }
-         @keyframes float-medium {
-         0% {
-         transform: translate3d(10px, 20px, 0) scale(0.96);
-         }
-         100% {
-         transform: translate3d(-20px, -10px, 0) scale(1.04);
-         }
-         }
-         @keyframes float-fast {
-         0% {
-         transform: translate3d(-25px, 10px, 0) scale(1.03);
-         }
-         100% {
-         transform: translate3d(15px, -25px, 0) scale(0.97);
-         }
-         }
-         /* Message bubble animations - optimized for speed */
-         @keyframes slide-up-fade {
-         0% {
-         opacity: 0;
-         transform: translateY(8px) scale(0.95);
-         }
-         100% {
-         opacity: 1;
-         transform: translateY(0) scale(1);
-         }
-         }
-         @keyframes bounce-in {
-         0% {
-         opacity: 0;
-         transform: scale(0.8) translateY(12px);
-         }
-         70% {
-         opacity: 1;
-         transform: scale(1.02);
-         }
-         100% {
-         opacity: 1;
-         transform: scale(1) translateY(0);
-         }
-         }
-         @keyframes text-reveal {
-         0% {
-         opacity: 0;
-         clip-path: inset(0 100% 0 0);
-         }
-         100% {
-         opacity: 1;
-         clip-path: inset(0 0 0 0);
-         }
-         }
-         .message-bubble-anim {
-         animation: slide-up-fade 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-         }
-         .message-bubble-anim.mine {
-         animation: bounce-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-         }
-         .message-text-reveal {
-         animation: text-reveal 0.35s ease-out;
-         }
-         /* Subtle input styling */
-         .input-shell {
-         box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2);
-         border: 1px solid rgba(148, 163, 184, 0.15);
-         transition: all 0.2s ease;
-         }
-         .input-shell:focus-within {
-         border-color: rgba(148, 163, 184, 0.3);
-         }
-         /* Subtle button styles */
-         .btn-primary {
-         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-         transition: all 0.15s ease;
-         }
-         .btn-primary:hover {
-         transform: translateY(-1px);
-         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-         }
-         .btn-primary:active {
-         transform: translateY(0);
-         box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
-         }
-      </style>
-   </head>
-   <body class="bg-slate-950 text-white h-screen min-h-screen flex flex-col relative overflow-hidden">
-      <!-- Glowing background blobs -->
-      <div class="bg-orb bg-orb-blue w-72 h-72 -top-20 -left-10"></div>
-      <div class="bg-orb bg-orb-purple w-80 h-80 -bottom-32 -right-6"></div>
-      <div class="bg-orb bg-orb-pink w-64 h-64 top-1/4 right-1/4"></div>
-      <!-- Loading Screen -->
-      <div
-         id="loadingScreen"
-         class="fixed inset-0 z-50 bg-slate-950 flex items-center justify-center"
-         >
-         <div class="flex flex-col items-center gap-6">
-            <div class="relative w-20 h-20">
-               <!-- Outer rotating ring -->
-               <div class="absolute inset-0 rounded-full border-2 border-transparent border-t-sky-500 border-r-sky-400 animate-spin"></div>
-               <!-- Middle rotating ring (opposite direction) -->
-               <div class="absolute inset-2 rounded-full border-2 border-transparent border-b-indigo-500 border-l-indigo-400 animate-spin" style="animation-direction: reverse; animation-duration: 2s;"></div>
-               <!-- Inner pulsing circle -->
-               <div class="absolute inset-4 rounded-full bg-gradient-to-r from-sky-500 to-indigo-500 animate-pulse"></div>
-            </div>
-            <div class="text-center">
-               <h2 class="text-xl font-semibold text-slate-100 mb-2">Loading your messages</h2>
-               <p class="text-sm text-slate-400">Connecting to chat...</p>
-            </div>
-         </div>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Chatra</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <!-- Tailwind CSS (optional, for looks) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      // Suppress Tailwind CDN production warning
+      Object.defineProperty(window, '__TAILWIND_CONFIG__', {
+        value: {},
+        writable: false
+      });
+    </script>
+
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+
+    <!-- Hide scrollbar but keep scrolling + custom animations / glassmorphism -->
+    <style>
+      #messages {
+        scrollbar-width: thin;
+        scrollbar-color: rgba(100, 116, 139, 0.6) rgba(15, 23, 42, 0.3);
+      }
+      #messages::-webkit-scrollbar {
+        width: 8px;
+      }
+      #messages::-webkit-scrollbar-track {
+        background: rgba(15, 23, 42, 0.3);
+      }
+      #messages::-webkit-scrollbar-thumb {
+        background: rgba(100, 116, 139, 0.6);
+        border-radius: 4px;
+      }
+      #messages::-webkit-scrollbar-thumb:hover {
+        background: rgba(100, 116, 139, 0.8);
+      }
+
+      /* Modal and menu styles */
+      .modal-overlay {
+        background: rgba(0, 0, 0, 0.5);
+        backdrop-filter: blur(4px);
+      }
+      .modal-open {
+        display: flex !important;
+      }
+      .modal-closed {
+        display: none !important;
+      }
+      .menu-open {
+        display: block !important;
+      }
+      .menu-closed {
+        display: none !important;
+      }
+
+      /* Light mode styles */
+      body.light-mode {
+        background-color: #f8fafc;
+        color: #1e293b;
+      }
+
+      body.light-mode .glass-card {
+        background: rgba(248, 250, 252, 0.8);
+        border-color: rgba(30, 41, 59, 0.15);
+      }
+
+      body.light-mode .glass-card:hover {
+        border-color: rgba(30, 41, 59, 0.25);
+      }
+
+      body.light-mode #chatInterface .glass-card {
+        background: rgba(248, 250, 252, 0.95);
+        color: #1e293b;
+      }
+
+      body.light-mode #messages {
+        background-color: #f1f5f9;
+        color: #1e293b;
+      }
+
+      body.light-mode .message-bubble-anim:not(.mine) {
+        background-color: #e2e8f0 !important;
+        color: #1e293b !important;
+        border-color: #cbd5e1 !important;
+      }
+
+      body.light-mode .message-bubble-anim.mine {
+        background: linear-gradient(to bottom right, #0ea5e9, #0284c7) !important;
+        color: white !important;
+      }
+
+      body.light-mode .text-slate-100,
+      body.light-mode .text-slate-200,
+      body.light-mode .text-slate-300 {
+        color: #1e293b !important;
+      }
+
+      body.light-mode .text-slate-400 {
+        color: #64748b !important;
+      }
+
+      body.light-mode .bg-slate-950,
+      body.light-mode .bg-slate-900 {
+        background-color: #f1f5f9 !important;
+      }
+
+      body.light-mode .bg-slate-800,
+      body.light-mode .bg-slate-800\/80 {
+        background-color: #e2e8f0 !important;
+      }
+
+      body.light-mode .bg-slate-700 {
+        background-color: #cbd5e1 !important;
+      }
+
+      body.light-mode .bg-slate-700\/50 {
+        background-color: rgba(203, 213, 225, 0.5) !important;
+      }
+
+      body.light-mode .hover\:bg-slate-700:hover,
+      body.light-mode .hover\:bg-slate-600:hover {
+        background-color: #cbd5e1 !important;
+      }
+
+      body.light-mode .border-slate-600\/60,
+      body.light-mode .border-slate-700,
+      body.light-mode .border-slate-800\/50 {
+        border-color: #cbd5e1 !important;
+      }
+
+      body.light-mode input,
+      body.light-mode textarea {
+        background-color: #f1f5f9 !important;
+        color: #1e293b !important;
+        border-color: #cbd5e1 !important;
+      }
+
+      body.light-mode input::placeholder,
+      body.light-mode textarea::placeholder {
+        color: #94a3b8 !important;
+      }
+
+      body.light-mode input:focus,
+      body.light-mode textarea:focus {
+        border-color: #0ea5e9 !important;
+      }
+
+      body.light-mode .shadow-inner {
+        box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1) !important;
+      }
+
+      body.light-mode #settingsMenu,
+      body.light-mode #settingsModal,
+      body.light-mode #profileModal {
+        background: rgba(248, 250, 252, 0.95);
+        border-color: rgba(30, 41, 59, 0.2);
+      }
+
+      body.light-mode .input-shell {
+        background-color: #e2e8f0 !important;
+        border-color: #cbd5e1 !important;
+      }
+
+      body.light-mode .input-shell:focus-within {
+        border-color: #0ea5e9 !important;
+      }
+
+      /* Message size classes */
+      .msg-small .message-bubble-anim {
+        font-size: 0.65rem;
+        padding: 0.4rem 0.6rem !important;
+      }
+      .msg-large .message-bubble-anim {
+        font-size: 0.95rem;
+        padding: 0.6rem 1rem !important;
+      }
+
+      /* Glass card style for panels (more subtle) */
+      .glass-card {
+        background: rgba(15, 23, 42, 0.8);
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        backdrop-filter: blur(8px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        transition: all 0.2s ease;
+      }
+      .glass-card:hover {
+        border-color: rgba(148, 163, 184, 0.3);
+        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+      }
+
+      /* Animated background blobs (much more subtle) */
+      .bg-orb {
+        position: fixed;
+        border-radius: 9999px;
+        filter: blur(80px);
+        opacity: 0.08;
+        pointer-events: none;
+        z-index: -10;
+      }
+      .bg-orb-blue {
+        background: radial-gradient(circle, rgba(56, 189, 248, 0.4), transparent 60%);
+        animation: float-slow 20s ease-in-out infinite alternate;
+      }
+      .bg-orb-purple {
+        background: radial-gradient(circle, rgba(129, 140, 248, 0.35), transparent 60%);
+        animation: float-medium 24s ease-in-out infinite alternate;
+      }
+      .bg-orb-pink {
+        background: radial-gradient(circle, rgba(236, 72, 153, 0.3), transparent 60%);
+        animation: float-fast 26s ease-in-out infinite alternate;
+      }
+
+      @keyframes float-slow {
+        0% {
+          transform: translate3d(-10px, 0, 0) scale(1);
+        }
+        100% {
+          transform: translate3d(20px, 30px, 0) scale(1.06);
+        }
+      }
+      @keyframes float-medium {
+        0% {
+          transform: translate3d(10px, 20px, 0) scale(0.96);
+        }
+        100% {
+          transform: translate3d(-20px, -10px, 0) scale(1.04);
+        }
+      }
+      @keyframes float-fast {
+        0% {
+          transform: translate3d(-25px, 10px, 0) scale(1.03);
+        }
+        100% {
+          transform: translate3d(15px, -25px, 0) scale(0.97);
+        }
+      }
+
+      /* Message bubble animations - optimized for speed */
+      @keyframes slide-up-fade {
+        0% {
+          opacity: 0;
+          transform: translateY(8px) scale(0.95);
+        }
+        100% {
+          opacity: 1;
+          transform: translateY(0) scale(1);
+        }
+      }
+      
+      @keyframes bounce-in {
+        0% {
+          opacity: 0;
+          transform: scale(0.8) translateY(12px);
+        }
+        70% {
+          opacity: 1;
+          transform: scale(1.02);
+        }
+        100% {
+          opacity: 1;
+          transform: scale(1) translateY(0);
+        }
+      }
+
+      @keyframes text-reveal {
+        0% {
+          opacity: 0;
+          clip-path: inset(0 100% 0 0);
+        }
+        100% {
+          opacity: 1;
+          clip-path: inset(0 0 0 0);
+        }
+      }
+
+      .message-bubble-anim {
+        animation: slide-up-fade 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+      }
+
+      .message-bubble-anim.mine {
+        animation: bounce-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+      }
+
+      .message-text-reveal {
+        animation: text-reveal 0.35s ease-out;
+      }
+
+      /* Subtle input styling */
+      .input-shell {
+        box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2);
+        border: 1px solid rgba(148, 163, 184, 0.15);
+        transition: all 0.2s ease;
+      }
+      .input-shell:focus-within {
+        border-color: rgba(148, 163, 184, 0.3);
+      }
+
+      /* Subtle button styles */
+      .btn-primary {
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        transition: all 0.15s ease;
+      }
+      .btn-primary:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      }
+      .btn-primary:active {
+        transform: translateY(0);
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+      }
+    </style>
+  </head>
+
+  <body class="bg-slate-950 text-white h-screen min-h-screen flex flex-col relative overflow-hidden">
+    <!-- Glowing background blobs -->
+    <div class="bg-orb bg-orb-blue w-72 h-72 -top-20 -left-10"></div>
+    <div class="bg-orb bg-orb-purple w-80 h-80 -bottom-32 -right-6"></div>
+    <div class="bg-orb bg-orb-pink w-64 h-64 top-1/4 right-1/4"></div>
+
+    <!-- Loading Screen -->
+    <div
+      id="loadingScreen"
+      class="fixed inset-0 z-50 bg-slate-950 flex items-center justify-center"
+    >
+      <div class="flex flex-col items-center gap-6">
+        <div class="relative w-20 h-20">
+          <!-- Outer rotating ring -->
+          <div class="absolute inset-0 rounded-full border-2 border-transparent border-t-sky-500 border-r-sky-400 animate-spin"></div>
+          <!-- Middle rotating ring (opposite direction) -->
+          <div class="absolute inset-2 rounded-full border-2 border-transparent border-b-indigo-500 border-l-indigo-400 animate-spin" style="animation-direction: reverse; animation-duration: 2s;"></div>
+          <!-- Inner pulsing circle -->
+          <div class="absolute inset-4 rounded-full bg-gradient-to-r from-sky-500 to-indigo-500 animate-pulse"></div>
+        </div>
+        <div class="text-center">
+          <h2 class="text-xl font-semibold text-slate-100 mb-2">Loading your messages</h2>
+          <p class="text-sm text-slate-400">Connecting to chat...</p>
+        </div>
       </div>
-      <!-- Top bar / logo -->
-      <header class="px-4 pt-4 pb-2 flex items-center justify-between z-10">
-         <div class="flex items-center gap-3">
-            <div
-               class="h-9 w-9 rounded-lg bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center text-xl font-black relative shadow-lg shadow-blue-900/50 hover:shadow-blue-900/80 hover:from-blue-500 hover:to-blue-700 transition-all duration-200"
-               title="Chatra Chat"
-               >
-               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <!-- Chat bubble with gradient -->
-                  <path d="M20 2H4C2.9 2 2 2.9 2 4V22L6 18H20C21.1 18 22 17.1 22 16V4C22 2.9 21.1 2 20 2Z" fill="white" opacity="0.95"/>
-                  <!-- Inner accent -->
-                  <circle cx="7" cy="10" r="1.5" fill="#1e40af" opacity="0.9"/>
-                  <circle cx="12" cy="10" r="1.5" fill="#1e40af" opacity="0.9"/>
-                  <circle cx="17" cy="10" r="1.5" fill="#1e40af" opacity="0.9"/>
-               </svg>
-            </div>
-            <div class="flex flex-col">
-               <h1 class="font-semibold text-lg text-slate-100">
-                  Chatra
-               </h1>
-            </div>
-         </div>
-         <div
-            class="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-slate-800/50 border border-slate-700/50 text-[11px] uppercase tracking-widest"
-            >
-            <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
-            <span class="text-slate-300">Online</span>
-         </div>
-      </header>
-      <!-- Login Form (visible by default) -->
+    </div>
+
+    <!-- Top bar / logo -->
+    <header class="px-4 pt-4 pb-2 flex items-center justify-between z-10">
+      <div class="flex items-center gap-3">
+        <div
+          class="h-9 w-9 rounded-lg bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center text-xl font-black relative shadow-lg shadow-blue-900/50 hover:shadow-blue-900/80 hover:from-blue-500 hover:to-blue-700 transition-all duration-200"
+          title="Chatra Chat"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <!-- Chat bubble with gradient -->
+            <path d="M20 2H4C2.9 2 2 2.9 2 4V22L6 18H20C21.1 18 22 17.1 22 16V4C22 2.9 21.1 2 20 2Z" fill="white" opacity="0.95"/>
+            <!-- Inner accent -->
+            <circle cx="7" cy="10" r="1.5" fill="#1e40af" opacity="0.9"/>
+            <circle cx="12" cy="10" r="1.5" fill="#1e40af" opacity="0.9"/>
+            <circle cx="17" cy="10" r="1.5" fill="#1e40af" opacity="0.9"/>
+          </svg>
+        </div>
+        <div class="flex flex-col">
+          <h1 class="font-semibold text-lg text-slate-100">
+            Chatra
+          </h1>
+        </div>
+      </div>
       <div
-         id="loginForm"
-         class="flex-1 flex items-center justify-center pb-4 px-3 sm:px-4"
-         >
-         <div
-            class="glass-card w-full max-w-md p-6 sm:p-8 rounded-2xl"
-            >
-            <div class="flex flex-col items-center mb-6">
-               <h2 class="text-2xl font-semibold text-center mb-2">Welcome back</h2>
-               <p class="text-sm text-slate-300 text-center">
-                  Log in to start chatting
-               </p>
-            </div>
-            <!-- Username only -->
-            <label class="block text-xs font-medium text-slate-300 mb-1 ml-1"
-               >Username</label
-               >
-            <input
-               id="loginUsername"
-               type="text"
-               placeholder="Your username"
-               class="mb-4 p-3 rounded-xl w-full bg-slate-800/80 border border-slate-600/60 focus:border-sky-400 focus:ring-2 focus:ring-sky-500/60 outline-none transition-all shadow-inner shadow-slate-900/80"
-               required
-               />
-            <!-- Password -->
-            <label class="block text-xs font-medium text-slate-300 mb-1 ml-1"
-               >Password</label
-               >
-            <input
-               id="loginPassword"
-               type="password"
-               placeholder="••••••••"
-               class="mb-3 p-3 rounded-xl w-full bg-slate-800/80 border border-slate-600/60 focus:border-sky-400 focus:ring-2 focus:ring-sky-500/60 outline-none transition-all shadow-inner shadow-slate-900/80"
-               required
-               />
-            <!-- Remember me -->
-            <label class="flex items-center gap-2 mb-3 text-xs text-gray-300">
-            <input
-               id="rememberMe"
-               type="checkbox"
-               class="h-4 w-4 rounded border-slate-500 bg-slate-800/90"
-               />
-            <span>Remember me on this device</span>
-            </label>
-            <!-- Error / info messages -->
-            <p
-               id="loginError"
-               class="text-xs text-red-400 min-h-[1.25rem] mb-1"
-               ></p>
-            <p
-               id="loginInfo"
-               class="text-xs text-emerald-400 min-h-[1.25rem] mb-3"
-               ></p>
+        class="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-slate-800/50 border border-slate-700/50 text-[11px] uppercase tracking-widest"
+      >
+        <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+        <span class="text-slate-300">Online</span>
+      </div>
+    </header>
+
+    <!-- Login Form (visible by default) -->
+    <div
+      id="loginForm"
+      class="flex-1 flex items-center justify-center pb-4 px-3 sm:px-4"
+    >
+      <div
+        class="glass-card w-full max-w-md p-6 sm:p-8 rounded-2xl"
+      >
+        <div class="flex flex-col items-center mb-6">
+          <h2 class="text-2xl font-semibold text-center mb-2">Welcome back</h2>
+          <p class="text-sm text-slate-300 text-center">
+            Log in to start chatting
+          </p>
+        </div>
+
+        <!-- Username only -->
+        <label class="block text-xs font-medium text-slate-300 mb-1 ml-1"
+          >Username</label
+        >
+        <input
+          id="loginUsername"
+          type="text"
+          placeholder="Your username"
+          class="mb-4 p-3 rounded-xl w-full bg-slate-800/80 border border-slate-600/60 focus:border-sky-400 focus:ring-2 focus:ring-sky-500/60 outline-none transition-all shadow-inner shadow-slate-900/80"
+          required
+        />
+
+        <!-- Password -->
+        <label class="block text-xs font-medium text-slate-300 mb-1 ml-1"
+          >Password</label
+        >
+        <input
+          id="loginPassword"
+          type="password"
+          placeholder="••••••••"
+          class="mb-3 p-3 rounded-xl w-full bg-slate-800/80 border border-slate-600/60 focus:border-sky-400 focus:ring-2 focus:ring-sky-500/60 outline-none transition-all shadow-inner shadow-slate-900/80"
+          required
+        />
+
+        <!-- Remember me -->
+        <label class="flex items-center gap-2 mb-3 text-xs text-gray-300">
+          <input
+            id="rememberMe"
+            type="checkbox"
+            class="h-4 w-4 rounded border-slate-500 bg-slate-800/90"
+          />
+          <span>Remember me on this device</span>
+        </label>
+
+        <!-- Error / info messages -->
+        <p
+          id="loginError"
+          class="text-xs text-red-400 min-h-[1.25rem] mb-1"
+        ></p>
+        <p
+          id="loginInfo"
+          class="text-xs text-emerald-400 min-h-[1.25rem] mb-3"
+        ></p>
+
+        <button
+          id="loginBtn"
+          class="btn-primary w-full p-3 bg-sky-600 hover:bg-sky-700 rounded-lg font-medium transition-colors"
+        >
+          Login
+        </button>
+
+        <p class="mt-4 text-xs text-gray-300 text-center">
+          Don't have an account?
+          <a
+            href="#"
+            id="registerLink"
+            class="text-sky-300 hover:text-sky-200 underline underline-offset-4"
+            >Register here</a
+          >
+        </p>
+      </div>
+    </div>
+
+    <!-- Registration Form (hidden by default) -->
+    <div
+      id="registerForm"
+      class="flex-1 flex items-center justify-center pb-4 px-3 sm:px-4 hidden"
+    >
+      <div
+        class="glass-card w-full max-w-md p-6 sm:p-8 rounded-2xl"
+      >
+        <div class="flex flex-col items-center mb-6">
+          <h2 class="text-2xl font-semibold text-center mb-2">Create account</h2>
+          <p class="text-sm text-slate-300 text-center">
+            Pick a unique username
+          </p>
+        </div>
+
+        <!-- Username -->
+        <label class="block text-xs font-medium text-slate-300 mb-1 ml-1"
+          >Username</label
+        >
+        <input
+          id="regUsername"
+          type="text"
+          placeholder="CoolName"
+          class="mb-3 p-3 rounded-xl w-full bg-slate-800/80 border border-slate-600/60 focus:border-sky-400 focus:ring-2 focus:ring-sky-500/60 outline-none transition-all shadow-inner shadow-slate-900/80"
+          required
+        />
+
+        <!-- Password -->
+        <label class="block text-xs font-medium text-slate-300 mb-1 ml-1"
+          >Password</label
+        >
+        <input
+          id="regPassword"
+          type="password"
+          placeholder="••••••••"
+          class="mb-3 p-3 rounded-xl w-full bg-slate-800/80 border border-slate-600/60 focus:border-sky-400 focus:ring-2 focus:ring-sky-500/60 outline-none transition-all shadow-inner shadow-slate-900/80"
+          required
+        />
+
+        <!-- Confirm Password -->
+        <label class="block text-xs font-medium text-slate-300 mb-1 ml-1"
+          >Confirm Password</label
+        >
+        <input
+          id="regPasswordConfirm"
+          type="password"
+          placeholder="••••••••"
+          class="mb-3 p-3 rounded-xl w-full bg-slate-800/80 border border-slate-600/60 focus:border-sky-400 focus:ring-2 focus:ring-sky-500/60 outline-none transition-all shadow-inner shadow-slate-900/80"
+          required
+        />
+
+        <!-- Error / info messages -->
+        <p
+          id="registerError"
+          class="text-xs text-red-400 min-h-[1.25rem] mb-3"
+        ></p>
+
+        <button
+          id="registerBtn"
+          class="btn-primary w-full p-3 bg-sky-600 hover:bg-sky-700 rounded-lg font-medium transition-colors"
+        >
+          Register
+        </button>
+
+        <p class="mt-4 text-xs text-gray-300 text-center">
+          Already have an account?
+          <a
+            href="#"
+            id="loginLink"
+            class="text-sky-300 hover:text-sky-200 underline underline-offset-4"
+            >Login here</a
+          >
+        </p>
+      </div>
+    </div>
+
+    <!-- Chat Interface (hidden by default) -->
+    <div
+      id="chatInterface"
+      class="hidden flex-1 min-h-0 flex flex-col"
+    >
+      <!-- FULLSCREEN chat container -->
+      <div
+        class="glass-card flex-1 min-h-0 flex flex-col w-full rounded-none overflow-hidden"
+      >
+        <!-- Chat header with menu + logout -->
+        <div
+          class="relative flex items-center justify-between px-4 sm:px-5 py-3 bg-slate-900/70 border-b border-slate-800/50"
+        >
+          <div class="flex items-center gap-3">
+            <!-- Hamburger Menu Button -->
             <button
-               id="loginBtn"
-               class="btn-primary w-full p-3 bg-sky-600 hover:bg-sky-700 rounded-lg font-medium transition-colors"
-               >
-            Login
-            </button>
-            <p class="mt-4 text-xs text-gray-300 text-center">
-               Don't have an account?
-               <a
-                  href="#"
-                  id="registerLink"
-                  class="text-sky-300 hover:text-sky-200 underline underline-offset-4"
-                  >Register here</a
-                  >
-            </p>
-         </div>
-      </div>
-      <!-- Registration Form (hidden by default) -->
-      <div
-         id="registerForm"
-         class="flex-1 flex items-center justify-center pb-4 px-3 sm:px-4 hidden"
-         >
-         <div
-            class="glass-card w-full max-w-md p-6 sm:p-8 rounded-2xl"
+              id="menuToggle"
+              class="p-1.5 hover:bg-slate-700 rounded-lg transition-colors"
+              title="Menu"
             >
-            <div class="flex flex-col items-center mb-6">
-               <h2 class="text-2xl font-semibold text-center mb-2">Create account</h2>
-               <p class="text-sm text-slate-300 text-center">
-                  Pick a unique username
-               </p>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-slate-300">
+                <line x1="3" y1="6" x2="21" y2="6"></line>
+                <line x1="3" y1="12" x2="21" y2="12"></line>
+                <line x1="3" y1="18" x2="21" y2="18"></line>
+              </svg>
+            </button>
+            <span
+              id="chatUserLabel"
+              class="text-sm text-slate-200 font-medium"
+            ></span>
+          </div>
+          <button
+            id="logoutBtn"
+            class="px-3 py-1.5 text-xs rounded-lg bg-slate-700 hover:bg-slate-600 transition-colors"
+          >
+            Logout
+          </button>
+
+          <!-- Dropdown Menu -->
+          <div
+            id="settingsMenu"
+            class="absolute top-14 left-4 w-48 glass-card rounded-xl z-50 menu-closed flex flex-col overflow-hidden" style="display: none;"
+          >
+            <button
+              id="settingsOpenBtn"
+              class="px-4 py-2.5 text-left text-sm text-slate-100 hover:bg-slate-700/50 transition-colors border-b border-slate-700/50 flex items-center gap-2"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-slate-300"><circle cx="12" cy="12" r="1"/><path d="M12 1v6m0 6v4M4.22 4.22l4.24 4.24m3.08 3.08l4.24 4.24M1 12h6m6 0h4M4.22 19.78l4.24-4.24m-3.08-3.08l-4.24-4.24M19.78 19.78l-4.24-4.24m-3.08-3.08l-4.24-4.24"/></svg>
+              Settings
+            </button>
+            <button
+              id="profileOpenBtn"
+              class="px-4 py-2.5 text-left text-sm text-slate-100 hover:bg-slate-700/50 transition-colors flex items-center gap-2"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" class="text-slate-300"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+              My Profile
+            </button>
+            <button
+              id="friendsRequestsBtn"
+              class="px-4 py-2.5 text-left text-sm text-slate-100 hover:bg-slate-700/50 transition-colors border-t border-slate-700/50 flex items-center gap-2 relative"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-slate-300"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              Friend Requests
+              <span id="friendRequestBadge" class="ml-auto bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center hidden">0</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Settings Modal -->
+        <div
+          id="settingsModal"
+          class="modal-overlay fixed inset-0 z-50 modal-closed items-center justify-center px-4"
+        >
+          <div class="glass-card max-w-md w-full rounded-2xl p-6 max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-4">
+              <h3 class="text-lg font-semibold text-slate-100">Settings</h3>
+              <button
+                id="settingsCloseBtn"
+                class="p-1 hover:bg-slate-700 rounded-lg transition-colors"
+              >
+                ✕
+              </button>
             </div>
+
+            <!-- Message Size Control -->
+            <div class="mb-5 pb-5 border-b border-slate-700">
+              <label class="text-sm font-medium text-slate-200 block mb-2">Message Size</label>
+              <div class="flex gap-2">
+                <button
+                  data-size="small"
+                  class="size-btn flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-colors bg-slate-700 hover:bg-slate-600 text-slate-200"
+                >
+                  Small
+                </button>
+                <button
+                  data-size="medium"
+                  class="size-btn flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-colors bg-sky-600 hover:bg-sky-700 text-white active"
+                >
+                  Medium
+                </button>
+                <button
+                  data-size="large"
+                  class="size-btn flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-colors bg-slate-700 hover:bg-slate-600 text-slate-200"
+                >
+                  Large
+                </button>
+              </div>
+            </div>
+
+            <!-- Theme Control -->
+            <div class="mb-5 pb-5 border-b border-slate-700">
+              <label class="text-sm font-medium text-slate-200 block mb-2">Theme</label>
+              <div class="flex gap-2">
+                <button
+                  data-theme="dark"
+                  class="theme-btn flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-colors bg-sky-600 hover:bg-sky-700 text-white active flex items-center justify-center gap-1"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                  Dark
+                </button>
+                <button
+                  data-theme="light"
+                  class="theme-btn flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-colors bg-slate-700 hover:bg-slate-600 text-slate-200 flex items-center justify-center gap-1"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+                  Light
+                </button>
+              </div>
+            </div>
+
+            <div class="text-xs text-slate-400 text-center">
+              <p>Chatra v1.0</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- User Profile Modal -->
+        <div
+          id="profileModal"
+          class="modal-overlay fixed inset-0 z-50 modal-closed items-center justify-center px-4"
+        >
+          <div class="glass-card max-w-sm w-full rounded-2xl p-6 max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-4">
+              <h3 class="text-lg font-semibold text-slate-100">My Profile</h3>
+              <button
+                id="profileCloseBtn"
+                class="p-1 hover:bg-slate-700 rounded-lg transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+
+            <!-- Profile Picture -->
+            <div class="mb-5 flex flex-col items-center">
+              <div
+                id="profilePicPreview"
+                class="h-20 w-20 rounded-full bg-gradient-to-br from-sky-500 to-sky-600 flex items-center justify-center text-white text-2xl font-bold mb-2 shadow-lg"
+              >
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+              </div>
+              <input
+                id="profilePicInput"
+                type="file"
+                accept="image/*"
+                class="hidden"
+              />
+              <button
+                id="uploadPicBtn"
+                class="px-3 py-1.5 text-xs rounded-lg bg-slate-700 hover:bg-slate-600 transition-colors"
+              >
+                Upload Photo
+              </button>
+            </div>
+
+            <!-- Username Input (Editable) -->
+            <div class="mb-4">
+              <label class="text-xs font-medium text-slate-300 block mb-1">Username</label>
+              <input
+                id="profileUsername"
+                type="text"
+                placeholder="Your username"
+                class="w-full p-2 rounded-lg bg-slate-800/80 border border-slate-600/60 focus:border-sky-400 focus:ring-2 focus:ring-sky-500/60 outline-none transition-all text-sm text-slate-100 placeholder-slate-500"
+              />
+            </div>
+
+            <!-- Bio -->
+            <div class="mb-4">
+              <label class="text-xs font-medium text-slate-300 block mb-1">Bio (max 150 chars)</label>
+              <textarea
+                id="profileBio"
+                placeholder="Tell us about yourself..."
+                maxlength="150"
+                class="w-full p-2 rounded-lg bg-slate-800/80 border border-slate-600/60 focus:border-sky-400 focus:ring-2 focus:ring-sky-500/60 outline-none transition-all text-sm text-slate-100 placeholder-slate-500 resize-none"
+                rows="3"
+              ></textarea>
+            </div>
+
+            <!-- Save Button -->
+            <button
+              id="saveProfileBtn"
+              class="w-full px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-700 transition-colors font-medium text-sm text-white"
+            >
+              Save Profile
+            </button>
+          </div>
+        </div>
+
+        <!-- View User Profile Modal (Read-Only) -->
+        <div
+          id="viewProfileModal"
+          class="modal-overlay fixed inset-0 z-50 modal-closed items-center justify-center px-4"
+        >
+          <div class="glass-card max-w-sm w-full rounded-3xl p-8 max-h-[90vh] overflow-y-auto text-center">
+            <!-- Close Button -->
+            <button
+              id="viewProfileCloseBtn"
+              class="absolute top-4 right-4 p-1 hover:bg-slate-700 rounded-lg transition-colors"
+            >
+              ✕
+            </button>
+
+            <!-- Large Profile Picture -->
+            <div
+              id="viewProfilePic"
+              class="h-32 w-32 rounded-full bg-gradient-to-br from-sky-500 to-sky-600 flex items-center justify-center text-white text-5xl font-bold mb-6 shadow-lg mx-auto"
+            >
+              <svg width="64" height="64" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+            </div>
+
             <!-- Username -->
-            <label class="block text-xs font-medium text-slate-300 mb-1 ml-1"
-               >Username</label
-               >
-            <input
-               id="regUsername"
-               type="text"
-               placeholder="CoolName"
-               class="mb-3 p-3 rounded-xl w-full bg-slate-800/80 border border-slate-600/60 focus:border-sky-400 focus:ring-2 focus:ring-sky-500/60 outline-none transition-all shadow-inner shadow-slate-900/80"
-               required
-               />
-            <!-- Password -->
-            <label class="block text-xs font-medium text-slate-300 mb-1 ml-1"
-               >Password</label
-               >
-            <input
-               id="regPassword"
-               type="password"
-               placeholder="••••••••"
-               class="mb-3 p-3 rounded-xl w-full bg-slate-800/80 border border-slate-600/60 focus:border-sky-400 focus:ring-2 focus:ring-sky-500/60 outline-none transition-all shadow-inner shadow-slate-900/80"
-               required
-               />
-            <!-- Confirm Password -->
-            <label class="block text-xs font-medium text-slate-300 mb-1 ml-1"
-               >Confirm Password</label
-               >
-            <input
-               id="regPasswordConfirm"
-               type="password"
-               placeholder="••••••••"
-               class="mb-3 p-3 rounded-xl w-full bg-slate-800/80 border border-slate-600/60 focus:border-sky-400 focus:ring-2 focus:ring-sky-500/60 outline-none transition-all shadow-inner shadow-slate-900/80"
-               required
-               />
-            <!-- Error / info messages -->
-            <p
-               id="registerError"
-               class="text-xs text-red-400 min-h-[1.25rem] mb-3"
-               ></p>
-            <button
-               id="registerBtn"
-               class="btn-primary w-full p-3 bg-sky-600 hover:bg-sky-700 rounded-lg font-medium transition-colors"
-               >
-            Register
-            </button>
-            <p class="mt-4 text-xs text-gray-300 text-center">
-               Already have an account?
-               <a
-                  href="#"
-                  id="loginLink"
-                  class="text-sky-300 hover:text-sky-200 underline underline-offset-4"
-                  >Login here</a
-                  >
+            <h2 id="viewProfileName" class="text-2xl font-bold text-slate-100 mb-2">
+              Username
+            </h2>
+
+            <!-- Bio -->
+            <p id="viewProfileBio" class="text-sm text-slate-300 mb-6 leading-relaxed">
+              No bio yet
             </p>
-         </div>
-      </div>
-      <!-- Chat Interface (hidden by default) -->
-      <div
-         id="chatInterface"
-         class="hidden flex-1 min-h-0 flex flex-col"
-         >
-         <!-- FULLSCREEN chat container -->
-         <div
-            class="glass-card flex-1 min-h-0 flex flex-col w-full rounded-none overflow-hidden"
+
+            <!-- Friend Request Button -->
+            <button
+              id="sendFriendRequestBtn"
+              class="w-full px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-700 transition-colors font-medium text-sm text-white mb-2"
             >
-            <!-- Chat header with menu + logout -->
-            <div
-               class="relative flex items-center justify-between px-4 sm:px-5 py-3 bg-slate-900/70 border-b border-slate-800/50"
-               >
-               <div class="flex items-center gap-3">
-                  <!-- Hamburger Menu Button -->
-                  <button
-                     id="menuToggle"
-                     class="p-1.5 hover:bg-slate-700 rounded-lg transition-colors"
-                     title="Menu"
-                     >
-                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-slate-300">
-                        <line x1="3" y1="6" x2="21" y2="6"></line>
-                        <line x1="3" y1="12" x2="21" y2="12"></line>
-                        <line x1="3" y1="18" x2="21" y2="18"></line>
-                     </svg>
-                  </button>
-                  <span
-                     id="chatUserLabel"
-                     class="text-sm text-slate-200 font-medium"
-                     ></span>
-               </div>
-               <button
-                  id="logoutBtn"
-                  class="px-3 py-1.5 text-xs rounded-lg bg-slate-700 hover:bg-slate-600 transition-colors"
-                  >
-               Logout
-               </button>
-               <!-- Dropdown Menu -->
-               <div
-                  id="settingsMenu"
-                  class="absolute top-14 left-4 w-48 glass-card rounded-xl z-50 menu-closed flex flex-col overflow-hidden" style="display: none;"
-                  >
-                  <button
-                     id="settingsOpenBtn"
-                     class="px-4 py-2.5 text-left text-sm text-slate-100 hover:bg-slate-700/50 transition-colors border-b border-slate-700/50 flex items-center gap-2"
-                     >
-                  ⚙️ Settings
-                  </button>
-                  <button
-                     id="profileOpenBtn"
-                     class="px-4 py-2.5 text-left text-sm text-slate-100 hover:bg-slate-700/50 transition-colors flex items-center gap-2"
-                     >
-                  👤 My Profile
-                  </button>
-               </div>
-            </div>
-            <!-- Settings Modal -->
-            <div
-               id="settingsModal"
-               class="modal-overlay fixed inset-0 z-50 modal-closed items-center justify-center px-4"
-               >
-               <div class="glass-card max-w-md w-full rounded-2xl p-6 max-h-[90vh] overflow-y-auto">
-                  <div class="flex justify-between items-center mb-4">
-                     <h3 class="text-lg font-semibold text-slate-100">Settings</h3>
-                     <button
-                        id="settingsCloseBtn"
-                        class="p-1 hover:bg-slate-700 rounded-lg transition-colors"
-                        >
-                     ✕
-                     </button>
-                  </div>
-                  <!-- Message Size Control -->
-                  <div class="mb-5 pb-5 border-b border-slate-700">
-                     <label class="text-sm font-medium text-slate-200 block mb-2">Message Size</label>
-                     <div class="flex gap-2">
-                        <button
-                           data-size="small"
-                           class="size-btn flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-colors bg-slate-700 hover:bg-slate-600 text-slate-200"
-                           >
-                        Small
-                        </button>
-                        <button
-                           data-size="medium"
-                           class="size-btn flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-colors bg-sky-600 hover:bg-sky-700 text-white active"
-                           >
-                        Medium
-                        </button>
-                        <button
-                           data-size="large"
-                           class="size-btn flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-colors bg-slate-700 hover:bg-slate-600 text-slate-200"
-                           >
-                        Large
-                        </button>
-                     </div>
-                  </div>
-                  <!-- Theme Control -->
-                  <div class="mb-5 pb-5 border-b border-slate-700">
-                     <label class="text-sm font-medium text-slate-200 block mb-2">Theme</label>
-                     <div class="flex gap-2">
-                        <button
-                           data-theme="dark"
-                           class="theme-btn flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-colors bg-sky-600 hover:bg-sky-700 text-white active"
-                           >
-                        🌙 Dark
-                        </button>
-                        <button
-                           data-theme="light"
-                           class="theme-btn flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-colors bg-slate-700 hover:bg-slate-600 text-slate-200"
-                           >
-                        ☀️ Light
-                        </button>
-                     </div>
-                  </div>
-                  <div class="text-xs text-slate-400 text-center">
-                     <p>Chatra v1.0</p>
-                  </div>
-               </div>
-            </div>
-            <!-- User Profile Modal -->
-            <div
-               id="profileModal"
-               class="modal-overlay fixed inset-0 z-50 modal-closed items-center justify-center px-4"
-               >
-               <div class="glass-card max-w-sm w-full rounded-2xl p-6 max-h-[90vh] overflow-y-auto">
-                  <div class="flex justify-between items-center mb-4">
-                     <h3 class="text-lg font-semibold text-slate-100">My Profile</h3>
-                     <button
-                        id="profileCloseBtn"
-                        class="p-1 hover:bg-slate-700 rounded-lg transition-colors"
-                        >
-                     ✕
-                     </button>
-                  </div>
-                  <!-- Profile Picture -->
-                  <div class="mb-5 flex flex-col items-center">
-                     <div
-                        id="profilePicPreview"
-                        class="h-20 w-20 rounded-full bg-gradient-to-br from-sky-500 to-sky-600 flex items-center justify-center text-white text-2xl font-bold mb-2 shadow-lg"
-                        >
-                        👤
-                     </div>
-                     <input
-                        id="profilePicInput"
-                        type="file"
-                        accept="image/*"
-                        class="hidden"
-                        />
-                     <button
-                        id="uploadPicBtn"
-                        class="px-3 py-1.5 text-xs rounded-lg bg-slate-700 hover:bg-slate-600 transition-colors"
-                        >
-                     Upload Photo
-                     </button>
-                  </div>
-                  <!-- Username Display -->
-                  <div class="mb-4">
-                     <label class="text-xs font-medium text-slate-300 block mb-1">Username</label>
-                     <div class="p-2 rounded-lg bg-slate-800/50 text-slate-200 text-sm" id="profileUsername">
-                        -
-                     </div>
-                  </div>
-                  <!-- Bio -->
-                  <div class="mb-4">
-                     <label class="text-xs font-medium text-slate-300 block mb-1">Bio (max 150 chars)</label>
-                     <textarea
-                        id="profileBio"
-                        placeholder="Tell us about yourself..."
-                        maxlength="150"
-                        class="w-full p-2 rounded-lg bg-slate-800/80 border border-slate-600/60 focus:border-sky-400 focus:ring-2 focus:ring-sky-500/60 outline-none transition-all text-sm text-slate-100 placeholder-slate-500 resize-none"
-                        rows="3"
-                        ></textarea>
-                  </div>
-                  <!-- Save Button -->
-                  <button
-                     id="saveProfileBtn"
-                     class="w-full px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-700 transition-colors font-medium text-sm text-white"
-                     >
-                  Save Profile
-                  </button>
-               </div>
-            </div>
-            <!-- Chat Messages -->
-            <div
-               id="messages"
-               class="flex-1 min-h-0 overflow-y-auto px-2 sm:px-3 py-2 sm:py-3 space-y-1 bg-slate-900"
-               ></div>
-            <!-- Combined status bar (typing + warnings) -->
-            <div
-               class="px-4 py-1.5 text-xs bg-slate-800 border-t border-slate-700 flex items-center gap-2 text-slate-300"
-               >
-               <span
-                  class="h-1.5 w-1.5 rounded-full bg-emerald-500"
-                  ></span>
-               <p
-                  id="typingIndicator"
-                  class="flex-1 min-h-[0.5rem]"
-                  style="padding: 0; margin: 0;"
-                  ></p>
-               <!-- Old warning element kept but visually empty (text controlled in JS) -->
-               <p
-                  id="sendWarning"
-                  class="hidden text-sm text-red-400 min-h-[0.5rem]"
-                  ></p>
-            </div>
-            <!-- Message Input (wrapped in a form so Enter submits on any device) -->
-            <form
-               id="messageForm"
-               class="p-2 sm:p-3 bg-slate-900 border-t border-slate-800 w-full"
-               >
-               <div
-                  class="input-shell flex items-center gap-1.5 sm:gap-2 bg-slate-800 rounded-lg px-2 sm:px-3 py-1.5 sm:py-2"
-                  >
-                  <input
-                     id="msgInput"
-                     class="flex-1 px-3 py-2.5 rounded-lg bg-transparent text-sm sm:text-base placeholder:text-slate-500 focus:outline-none focus:ring-0"
-                     placeholder="Type a message..."
-                     autocomplete="off"
-                     />
-                  <button
-                     id="sendBtn"
-                     type="submit"
-                     class="btn-primary flex items-center gap-2 px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-700 text-sm sm:text-[15px] font-medium transition-colors"
-                     >
-                  <span>Send</span>
-                  <span class="text-lg leading-none">➤</span>
-                  </button>
-               </div>
-            </form>
-         </div>
+              Add Friend
+            </button>
+
+            <!-- Close Button (Bottom) -->
+            <button
+              id="viewProfileCloseBtn2"
+              class="w-full px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 transition-colors font-medium text-sm text-slate-100"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+
+        <!-- Chat Messages -->
+        <div
+          id="messages"
+          class="flex-1 min-h-0 overflow-y-auto px-2 sm:px-3 py-2 sm:py-3 space-y-1 bg-slate-900"
+        ></div>
+
+        <!-- Combined status bar (typing + warnings) -->
+        <div
+          class="px-4 py-1.5 text-xs bg-slate-800 border-t border-slate-700 flex items-center gap-2 text-slate-300"
+        >
+          <span
+            class="h-1.5 w-1.5 rounded-full bg-emerald-500"
+          ></span>
+          <p
+            id="typingIndicator"
+            class="flex-1 min-h-[0.5rem]"
+            style="padding: 0; margin: 0;"
+          ></p>
+          <!-- Old warning element kept but visually empty (text controlled in JS) -->
+          <p
+            id="sendWarning"
+            class="hidden text-sm text-red-400 min-h-[0.5rem]"
+          ></p>
+        </div>
+
+        <!-- Message Input (wrapped in a form so Enter submits on any device) -->
+        <form
+          id="messageForm"
+          class="p-2 sm:p-3 bg-slate-900 border-t border-slate-800 w-full"
+        >
+          <div
+            class="input-shell flex items-center gap-1.5 sm:gap-2 bg-slate-800 rounded-lg px-2 sm:px-3 py-1.5 sm:py-2"
+          >
+            <input
+              id="msgInput"
+              class="flex-1 px-3 py-2.5 rounded-lg bg-transparent text-sm sm:text-base placeholder:text-slate-500 focus:outline-none focus:ring-0"
+              placeholder="Type a message..."
+              autocomplete="off"
+            />
+            <button
+              id="sendBtn"
+              type="submit"
+              class="btn-primary flex items-center gap-2 px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-700 text-sm sm:text-[15px] font-medium transition-colors"
+            >
+              <span>Send</span>
+              <span class="text-lg leading-none">➤</span>
+            </button>
+          </div>
+        </form>
       </div>
-      <script>
-         // --- GLOBAL ERROR LOGGING ---
-         window.addEventListener("error", (event) => {
-           console.error(
-             "[window error]",
-             event.message,
-             "at",
-             event.filename + ":" + event.lineno,
-             "details:",
-             event.error
-           );
-         });
-         
-         window.addEventListener("unhandledrejection", (event) => {
-           console.error("[unhandled rejection]", event.reason);
-         });
-         
-         // Firebase configuration
-         const firebaseConfig = {
-           apiKey: "AIzaSyC945jY7UEh4sOOuuk7OMZVXeIh333kxVk",
-           authDomain: "chat-app-710f0.firebaseapp.com",
-           projectId: "chat-app-710f0",
-           storageBucket: "chat-app-710f0.firebasestorage.app",
-           messagingSenderId: "225892837672",
-           appId: "1:225892837672:web:f190f3585c4ffbd0f1c81d",
-           databaseURL: "https://chat-app-710f0-default-rtdb.firebaseio.com",
-         };
-         
-         console.log("[init] starting firebase init");
-         
-         // Initialize Firebase
-         firebase.initializeApp(firebaseConfig);
-         const auth = firebase.auth();
-         const db = firebase.database();
-         
-         console.log("[init] firebase initialized");
-         
-         // DOM elements
-         const loginForm = document.getElementById("loginForm");
-         const registerForm = document.getElementById("registerForm");
-         const chatInterface = document.getElementById("chatInterface");
-         const loadingScreen = document.getElementById("loadingScreen");
-         
-         const loginUsernameInput = document.getElementById("loginUsername");
-         const loginPasswordInput = document.getElementById("loginPassword");
-         const rememberMeCheckbox = document.getElementById("rememberMe");
-         const loginBtn = document.getElementById("loginBtn");
-         const loginError = document.getElementById("loginError");
-         const loginInfo = document.getElementById("loginInfo");
-         
-         const regUsernameInput = document.getElementById("regUsername");
-         const regPasswordInput = document.getElementById("regPassword");
-         const regPasswordConfirmInput =
-           document.getElementById("regPasswordConfirm");
-         const registerBtn = document.getElementById("registerBtn");
-         const registerError = document.getElementById("registerError");
-         
-         const msgInput = document.getElementById("msgInput");
-         const sendBtn = document.getElementById("sendBtn");
-         const messagesDiv = document.getElementById("messages");
-         const messageForm = document.getElementById("messageForm");
-         const sendWarningEl = document.getElementById("sendWarning");
-         const typingIndicatorEl = document.getElementById("typingIndicator");
-         
-         const registerLink = document.getElementById("registerLink");
-         const loginLink = document.getElementById("loginLink");
-         const logoutBtn = document.getElementById("logoutBtn");
-         const chatUserLabel = document.getElementById("chatUserLabel");
-         
-         // Global state
-         let currentUsername = null; // SINGLE SOURCE for username
-         let currentUserId = null;
-         
-         // Real-time messages
-         let messagesRef = null;      // realtime ref for new messages
-         let messagesListener = null; // child_added listener
-         const seenMessageKeys = new Set();
-         
-         // Pagination / infinite scroll
-         const PAGE_SIZE = 50; // Reduced for faster loading
-         let oldestTime = null;
-         let newestTime = null;
-         let isLoadingOlder = false;
-         let allHistoryLoaded = false;
-         let scrollListenerAttached = false;
-         
-         // Typing status
-         let typingTimeoutId = null;
-         let typingListenerAttached = false;
-         const TYPING_CLEANUP_INTERVAL = 5000; // Clean up stale typing status every 5s
-         let typingCleanupInterval = null;
-         
-         // Rate-limit warning timeout + local last-sent time
-         let sendWarningTimeoutId = null;
-         let lastSentTime = 0; // for local 500ms rate limit
-         
-         // Message rendering optimization
-         let messageRenderQueue = [];
-         let isRenderingMessages = false;
-         
-         // --- COMBINED STATUS BAR (typing + warning) ---
-         let lastTypingText = "";
-         let currentWarningText = "";
-         
-         function updateStatusBar() {
-           const parts = [];
-           if (lastTypingText) parts.push(lastTypingText);
-           if (currentWarningText) {
-             if (parts.length > 0) {
-               parts.push("• " + currentWarningText);
-             } else {
-               parts.push(currentWarningText);
-             }
-           }
-           typingIndicatorEl.textContent = parts.join(" ");
-           // keep the old warning element visually empty
-           if (sendWarningEl) sendWarningEl.textContent = "";
-         }
-         
-         // Helper: clear messages
-         function clearLoginMessages() {
-           loginError.textContent = "";
-           loginInfo.textContent = "";
-         }
-         
-         // ===== AUTO-CREATE FIREBASE PATHS =====
-         async function ensureUserProfilePath(uid) {
-           try {
-             const ref = db.ref("userProfiles/" + uid);
-             const snap = await ref.once("value");
-             if (!snap.exists()) {
-               await ref.set({
-                 username: currentUsername,
-                 bio: "",
-                 profilePic: null,
-                 createdAt: firebase.database.ServerValue.TIMESTAMP,
-               });
-               console.log("[init] auto-created userProfiles path for", uid);
-             }
-           } catch (err) {
-             console.warn("[init] could not ensure profile path:", err);
-           }
-         }
-         
-         async function ensureUsernamePath(uid, username) {
-           try {
-             const ref = db.ref("users/" + uid + "/username");
-             const snap = await ref.once("value");
-             if (!snap.exists()) {
-               await ref.set(username);
-               console.log("[init] auto-created username path for", uid);
-             }
-           } catch (err) {
-             console.warn("[init] could not ensure username path:", err);
-           }
-         }
-         
-         function clearRegisterMessages() {
-           registerError.textContent = "";
-         }
-         
-         function updateChatUserLabel(username) {
-           currentUsername = username || null;
-           chatUserLabel.textContent = username || "";
-           console.log("[ui] chat user label set to:", chatUserLabel.textContent);
-         }
-         
-         // On-screen warning (2 seconds) — now combined with typing in one line
-         function showRateLimitWarning() {
-           currentWarningText = "Slow down — you're sending messages too fast.";
-           if (sendWarningTimeoutId) {
-             clearTimeout(sendWarningTimeoutId);
-           }
-           updateStatusBar();
-           sendWarningTimeoutId = setTimeout(() => {
-             currentWarningText = "";
-             updateStatusBar();
-           }, 2000);
-         }
-         
-         // --- USERNAME FROM DB (ONE SOURCE OF TRUTH) ---
-         async function fetchUsername(uid, emailFallback) {
-           try {
-             const snap = await db.ref("users/" + uid + "/username").once("value");
-             let username = snap.val();
-             
-             if (!username && emailFallback) {
-               username = emailFallback.split("@")[0];
-               console.log("[username] no username in DB, using email:", username);
-               // Auto-save to DB for next time
-               try {
-                 await db.ref("users/" + uid + "/username").set(username);
-               } catch (e) {
-                 console.warn("[username] could not auto-save username:", e);
-               }
-             }
-             
-             return username || "User";
-           } catch (err) {
-             console.error("[username] error fetching from DB:", err);
-             if (emailFallback) {
-               const fallback = emailFallback.split("@")[0];
-               console.log("[username] using email fallback:", fallback);
-               return fallback;
-             }
-             return "User";
-           }
-         }
-         
-         // On load: prefill username if "remember me" was used (ONLY for login form)
-         (function initRememberMe() {
-           try {
-             const remember = localStorage.getItem("rememberMe") === "true";
-             const savedUsername = localStorage.getItem("rememberedUsername");
-             console.log(
-               "[rememberMe] remember =",
-               remember,
-               "savedUsername =",
-               savedUsername
-             );
-             if (remember && savedUsername) {
-               rememberMeCheckbox.checked = true;
-               loginUsernameInput.value = savedUsername;
-             }
-           } catch (err) {
-             console.error("[rememberMe] error reading localStorage", err);
-           }
-         })();
-         
-         // Switch to Register form
-         registerLink.onclick = () => {
-           clearLoginMessages();
-           loginForm.classList.add("hidden");
-           registerForm.classList.remove("hidden");
-           console.log("[ui] switched to register form");
-         };
-         
-         // Switch to Login form
-         loginLink.onclick = () => {
-           clearRegisterMessages();
-           registerForm.classList.add("hidden");
-           loginForm.classList.remove("hidden");
-           console.log("[ui] switched to login form");
-         };
-         
-         // Helper: make fake email from username
-         function makeEmailFromUsername(username) {
-           return username.toLowerCase() + "@gmail.com";
-         }
-         
-         // 🔍 Check if username is already taken in DB
-         async function isUsernameTaken(username) {
-           console.log("[users] checking if username taken:", username);
-           try {
-             const snapshot = await db
-               .ref("users")
-               .orderByChild("username")
-               .equalTo(username)
-               .once("value");
-             const exists = snapshot.exists();
-             console.log("[users] username taken =", exists);
-             return exists;
-           } catch (err) {
-             console.error("[users] error while checking username", err);
-             registerError.textContent = "Error checking username. Try again.";
-             return true;
-           }
-         }
-         
-         // Register User (username + password + confirm)
-         registerBtn.onclick = async () => {
-           clearRegisterMessages();
-         
-           const username = regUsernameInput.value.trim();
-           const password = regPasswordInput.value.trim();
-           const passwordConfirm = regPasswordConfirmInput.value.trim();
-         
-           console.log("[register] submit", { username });
-         
-           if (!username || !password || !passwordConfirm) {
-             registerError.textContent = "Please fill all fields.";
-             return;
-           }
-         
-           if (username.includes("@") || username.includes(" ")) {
-             registerError.textContent = "Username can't have spaces or '@'.";
-             return;
-           }
-         
-           if (password !== passwordConfirm) {
-             registerError.textContent = "Passwords do not match.";
-             return;
-           }
-         
-           // Check username in database
-           if (await isUsernameTaken(username)) {
-             if (!registerError.textContent) {
-               registerError.textContent = "That username is already taken.";
-             }
-             return;
-           }
-         
-           const fakeEmail = makeEmailFromUsername(username);
-           console.log("[register] creating auth user", fakeEmail);
-         
-           try {
-             const userCredential = await auth.createUserWithEmailAndPassword(
-               fakeEmail,
-               password
-             );
-             const user = userCredential.user;
-             console.log("[register] auth user created", user.uid);
-         
-             // Save the username in Firebase Database
-             const userRef = db.ref("users/" + user.uid);
-             await userRef.set({ username });
-             console.log("[register] username saved to /users", user.uid);
-             
-             // Auto-create profile path
-             try {
-               await db.ref("userProfiles/" + user.uid).set({
-                 username: username,
-                 bio: "",
-                 profilePic: null,
-                 createdAt: firebase.database.ServerValue.TIMESTAMP,
-               });
-               console.log("[register] auto-created userProfiles", user.uid);
-             } catch (e) {
-               console.warn("[register] could not create profile:", e);
-             }
-         
-             // Log them out so they still go through login flow
-             await auth.signOut();
-             console.log("[register] signed out after registration");
-         
-             // Switch back to login, show success message
-             registerForm.classList.add("hidden");
-             loginForm.classList.remove("hidden");
-             clearLoginMessages();
-             loginInfo.textContent = "Account created! You can log in now.";
-           } catch (error) {
-             console.error("[register] Error registering:", error);
-             if (error.code === "auth/email-already-in-use") {
-               registerError.textContent = "That username is already taken.";
-             } else if (error.code === "auth/weak-password") {
-               registerError.textContent = "Password is too weak.";
-             } else {
-               registerError.textContent = "Could not register. Try again.";
-             }
-           }
-         };
-         
-         /// Sign In User (username + password only) with persistence
-         loginBtn.onclick = async () => {
-           clearLoginMessages();
-         
-           const username = loginUsernameInput.value.trim();
-           const password = loginPasswordInput.value.trim();
-           const remember = rememberMeCheckbox.checked;
-         
-           console.log("[login] submit", { username, remember });
-         
-           if (!username || !password) {
-             loginError.textContent = "Please fill username and password.";
-             return;
-           }
-         
-           if (username.includes("@") || username.includes(" ")) {
-             loginError.textContent = "Username can't have spaces or '@'.";
-             return;
-           }
-         
-           const fakeEmail = makeEmailFromUsername(username);
-         
-           try {
-             const persistence = remember
-               ? firebase.auth.Auth.Persistence.LOCAL
-               : firebase.auth.Auth.Persistence.SESSION;
-         
-             console.log(
-               "[login] setting persistence",
-               remember ? "LOCAL" : "SESSION"
-             );
-             
-             try {
-               await auth.setPersistence(persistence);
-             } catch (e) {
-               console.warn("[login] persistence not available (incognito?):", e);
-               // Continue anyway, will just be session-based
-             }
-         
-             console.log("[login] signing in with email", fakeEmail);
-         
-             const userCredential = await auth.signInWithEmailAndPassword(
-               fakeEmail,
-               password
-             );
-             const user = userCredential.user;
-         
-             console.log("[login] signed in as", user.uid);
-             
-             // Auto-ensure paths exist
-             try {
-               await ensureUsernamePath(user.uid, username);
-               await ensureUserProfilePath(user.uid);
-             } catch (e) {
-               console.warn("[login] could not ensure paths:", e);
-               // Continue anyway - these aren't critical
-             }
-         
-             // Save "remember me" stuff ONLY for login form next time
-             try {
-               if (remember) {
-                 localStorage.setItem("rememberMe", "true");
-                 localStorage.setItem("rememberedUsername", username);
-               } else {
-                 localStorage.removeItem("rememberMe");
-                 localStorage.removeItem("rememberedUsername");
-               }
-             } catch (err) {
-               console.error(
-                 "[login] error writing rememberMe to localStorage",
-                 err
-               );
-             }
-         
-             // DO NOT show chat here. onAuthStateChanged will do it.
-           } catch (error) {
-             console.error("[login] Error signing in:", error);
-             if (
-               error.code === "auth/user-not-found" ||
-               error.code === "auth/wrong-password"
-             ) {
-               loginError.textContent = "Wrong username or password.";
-             } else if (error.code === "auth/too-many-requests") {
-               loginError.textContent =
-                 "Too many attempts. Please wait and try again.";
-             } else {
-               loginError.textContent = "Could not log in. Try again.";
-             }
-           }
-         };
-         
-         // --- MESSAGE RENDERING (bigger iMessage-style bubbles) ---
-         function createMessageRow(msg) {
-           const myName = currentUsername || null;
-           const isMine = myName && msg.user === myName;
-         
-           const row = document.createElement("div");
-           row.className = isMine 
-             ? "w-full flex mb-2 sm:mb-2 justify-end pr-1 sm:pr-3"
-             : "w-full flex mb-2 sm:mb-2 justify-start pl-1 sm:pl-3";
-         
-           const column = document.createElement("div");
-           column.className =
-             "flex flex-col max-w-[80%] sm:max-w-[60%] gap-1";
-         
-           if (!isMine) {
-             const nameLabel = document.createElement("div");
-             nameLabel.className =
-               "text-[10px] sm:text-xs text-slate-400 px-3 font-medium";
-             nameLabel.textContent = msg.user || "Unknown";
-             column.appendChild(nameLabel);
-           }
-         
-           const bubble = document.createElement("div");
-           const textLength = (msg.text || "").length;
-           const isSmallMessage = textLength <= 2;
-           const padding = isSmallMessage ? "px-3 py-1.5" : "px-3 py-2";
-           
-           bubble.className = isMine
-             ? `message-bubble-anim mine ${padding} sm:px-3 sm:py-2 rounded-2xl text-xs sm:text-sm leading-relaxed break-words shadow-sm bg-gradient-to-br from-sky-500 to-sky-600 text-white rounded-br-md font-medium shadow-md shadow-sky-500/20`
-             : `message-bubble-anim ${padding} sm:px-3 sm:py-2 rounded-2xl text-xs sm:text-sm leading-relaxed break-words shadow-sm bg-slate-700/90 text-slate-50 rounded-bl-md border border-slate-600/50 backdrop-blur-sm`;
-         
-           const textSpan = document.createElement("span");
-           textSpan.className = "message-text-reveal inline-block";
-           textSpan.textContent = msg.text || "";
-           
-           bubble.appendChild(textSpan);
-           column.appendChild(bubble);
-           row.appendChild(column);
-           return row;
-         }
-         
-         function renderMessage(msg, options = {}) {
-           const { prepend = false, maintainScroll = false } = options;
-         
-           const row = createMessageRow(msg);
-         
-           if (prepend) {
-             if (messagesDiv.firstChild) {
-               messagesDiv.insertBefore(row, messagesDiv.firstChild);
-             } else {
-               messagesDiv.appendChild(row);
-             }
-           } else {
-             messagesDiv.appendChild(row);
-           }
-         
-           if (!maintainScroll) {
-             messagesDiv.scrollTop = messagesDiv.scrollHeight;
-           }
-         }
-         
-         function renderMessageOnce(key, msg, options = {}) {
-           if (!key) {
-             console.warn("[messages] missing key for message", msg);
-             renderMessage(msg, options);
-             return;
-           }
-           if (seenMessageKeys.has(key)) return;
-           seenMessageKeys.add(key);
-           renderMessage(msg, options);
-         }
-         
-         // Batch render messages for better performance
-         function batchRenderMessages(messages, options = {}) {
-           const fragment = document.createDocumentFragment();
-           let newMessagesCount = 0;
-         
-           messages.forEach(({ key, msg }) => {
-             if (key && seenMessageKeys.has(key)) return;
-             if (key) seenMessageKeys.add(key);
-         
-             const row = createMessageRow(msg);
-             if (options.prepend) {
-               fragment.insertBefore(row, fragment.firstChild);
-             } else {
-               fragment.appendChild(row);
-             }
-             newMessagesCount++;
-           });
-         
-           if (newMessagesCount > 0) {
-             if (options.prepend && messagesDiv.firstChild) {
-               messagesDiv.insertBefore(fragment, messagesDiv.firstChild);
-             } else {
-               messagesDiv.appendChild(fragment);
-             }
-         
-             if (!options.maintainScroll) {
-               messagesDiv.scrollTop = messagesDiv.scrollHeight;
-             }
-           }
-         }
-         
-         // --- INFINITE SCROLL HELPERS ---
-         function onMessagesScroll() {
-           if (allHistoryLoaded || isLoadingOlder) return;
-           // When user is near top (~5 messages above), load older
-           const threshold = 120; // px from top, tweak if you want
-           if (messagesDiv.scrollTop <= threshold) {
-             loadOlderMessages();
-           }
-         }
-         
-         function attachScrollListener() {
-           if (scrollListenerAttached) return;
-           messagesDiv.addEventListener("scroll", onMessagesScroll);
-           scrollListenerAttached = true;
-         }
-         
-         function detachScrollListener() {
-           if (!scrollListenerAttached) return;
-           messagesDiv.removeEventListener("scroll", onMessagesScroll);
-           scrollListenerAttached = false;
-         }
-         
-         function loadOlderMessages() {
-           if (isLoadingOlder) return;
-           if (oldestTime === null) return;
-           isLoadingOlder = true;
-           console.log("[messages] loading older messages before time =", oldestTime);
-         
-           const prevScrollHeight = messagesDiv.scrollHeight;
-           const prevScrollTop = messagesDiv.scrollTop;
-         
-           const baseRef = db.ref("messages").orderByChild("time");
-         
-           baseRef
-             .endAt(oldestTime - 1)
-             .limitToLast(PAGE_SIZE)
-             .once(
-               "value",
-               (snap) => {
-                 const msgs = [];
-                 snap.forEach((child) => {
-                   msgs.push({ key: child.key, msg: child.val() || {} });
-                 });
-         
-                 if (msgs.length === 0) {
-                   console.log("[messages] no older messages, all history loaded");
-                   allHistoryLoaded = true;
-                   isLoadingOlder = false;
-                   return;
-                 }
-         
-                 // Update time range
-                 msgs.forEach(({ key, msg }) => {
-                   const t = msg.time || 0;
-                   if (oldestTime === null || t < oldestTime) {
-                     oldestTime = t;
-                   }
-                 });
-         
-                 // Batch render for performance
-                 batchRenderMessages(msgs, {
-                   prepend: true,
-                   maintainScroll: true,
-                 });
-         
-                 const newScrollHeight = messagesDiv.scrollHeight;
-                 const addedHeight = newScrollHeight - prevScrollHeight;
-                 messagesDiv.scrollTop = prevScrollTop + addedHeight;
-         
-                 console.log(
-                   "[messages] loaded older page, count =",
-                   msgs.length,
-                   "oldestTime now =",
-                   oldestTime
-                 );
-         
-                 if (msgs.length < PAGE_SIZE) {
-                   allHistoryLoaded = true;
-                 }
-         
-                 isLoadingOlder = false;
-               },
-               (error) => {
-                 console.error("[messages] error loading older:", error);
-                 isLoadingOlder = false;
-               }
-             );
-         }
-         
-         function startMessagesListener() {
-           console.log("[messages] startMessagesListener called");
-           stopMessagesListener();
-           seenMessageKeys.clear();
-           messagesDiv.innerHTML = "";
-         
-           oldestTime = null;
-           newestTime = null;
-           allHistoryLoaded = false;
-           isLoadingOlder = false;
-         
-           try {
-             const baseRef = db.ref("messages").orderByChild("time");
-             const initialQuery = baseRef.limitToLast(PAGE_SIZE);
-         
-             initialQuery.once(
-               "value",
-               (snap) => {
-                 const msgs = [];
-                 snap.forEach((child) => {
-                   msgs.push({ key: child.key, msg: child.val() || {} });
-                 });
-         
-                 const count = msgs.length;
-                 console.log("[messages] initial load snapshot, count =", count);
-         
-                 // Calculate time range
-                 msgs.forEach(({ key, msg }) => {
-                   const t = msg.time || 0;
-                   if (oldestTime === null || t < oldestTime) {
-                     oldestTime = t;
-                   }
-                   if (newestTime === null || t > newestTime) {
-                     newestTime = t;
-                   }
-                 });
-         
-                 // Batch render all messages at once
-                 batchRenderMessages(msgs, { maintainScroll: true });
-         
-                 // After initial render, jump to bottom
-                 messagesDiv.scrollTop = messagesDiv.scrollHeight;
-         
-                 // Hide loading screen after messages are loaded
-                 loadingScreen.classList.add("hidden");
-         
-                 if (count < PAGE_SIZE) {
-                   allHistoryLoaded = true;
-                 }
-         
-                 // Attach scroll listener only after we have some messages
-                 attachScrollListener();
-         
-                 // --- REALTIME LISTENER FOR NEW MESSAGES ---
-                 if (messagesRef && messagesListener) {
-                   messagesRef.off("child_added", messagesListener);
-                 }
-         
-                 if (newestTime !== null) {
-                   messagesRef = baseRef.startAt(newestTime + 1);
-                 } else {
-                   messagesRef = baseRef;
-                 }
-         
-                 messagesListener = (snap) => {
-                   const msg = snap.val() || {};
-                   const key = snap.key;
-                   const t = msg.time || 0;
-         
-                   if (newestTime === null || t > newestTime) {
-                     newestTime = t;
-                   }
-                   renderMessageOnce(key, msg);
-                 };
-         
-                 messagesRef.on(
-                   "child_added",
-                   messagesListener,
-                   (error) => {
-                     console.error("[messages] listener error:", error);
-                   }
-                 );
-               },
-               (error) => {
-                 console.error("[messages] error during initial load:", error);
-                 loadingScreen.classList.add("hidden");
-               }
-             );
-           } catch (err) {
-             console.error("[messages] startMessagesListener crashed:", err);
-             loadingScreen.classList.add("hidden");
-           }
-         }
-         
-         function stopMessagesListener() {
-           console.log("[messages] stopMessagesListener called");
-           try {
-             if (messagesRef && messagesListener) {
-               messagesRef.off("child_added", messagesListener);
-             }
-           } catch (err) {
-             console.error("[messages] error while stopping listener:", err);
-           }
-           messagesRef = null;
-           messagesListener = null;
-           seenMessageKeys.clear();
-         
-           detachScrollListener();
-         
-           oldestTime = null;
-           newestTime = null;
-           allHistoryLoaded = false;
-           isLoadingOlder = false;
-         }
-         
-         // --- TYPING STATUS HELPERS ---
-         function setTyping(isTyping) {
-           if (!currentUserId) return;
-           const ref = db.ref("typingStatus/" + currentUserId);
-           const name = currentUsername || "User";
-           return ref.set({
-             username: name,
-             typing: isTyping,
-             ts: firebase.database.ServerValue.TIMESTAMP,
-           });
-         }
-         
-         function handleTypingSnapshot(snap) {
-           const data = snap.val() || {};
-           const typingUsers = [];
-         
-           for (const uid in data) {
-             if (!Object.prototype.hasOwnProperty.call(data, uid)) continue;
-             if (uid === currentUserId) continue; // don't show yourself
-         
-             const entry = data[uid];
-             if (entry && entry.typing) {
-               const name = entry.username || "Someone";
-               typingUsers.push(name);
-             }
-           }
-         
-           let text = "";
-           if (typingUsers.length === 1) {
-             text = typingUsers[0] + " is typing…";
-           } else if (typingUsers.length === 2) {
-             text = typingUsers[0] + " and " + typingUsers[1] + " are typing…";
-           } else if (typingUsers.length === 3) {
-             text = typingUsers[0] + ", " + typingUsers[1] + ", and " + typingUsers[2] + " are typing…";
-           } else if (typingUsers.length > 3) {
-             text = "Several people are typing…";
-           }
-         
-           lastTypingText = text;
-           updateStatusBar();
-         }
-         
-         function startTypingListener() {
-           if (typingListenerAttached) return;
-           console.log("[typing] attaching typingStatus listener");
-           
-           db.ref("typingStatus").on(
-             "value",
-             handleTypingSnapshot,
-             (err) => {
-               console.error("[typing] listener error:", err);
-             }
-           );
-           typingListenerAttached = true;
-         
-           // Clean up stale typing status every 5 seconds
-           if (!typingCleanupInterval) {
-             typingCleanupInterval = setInterval(() => {
-               const now = Date.now();
-               db.ref("typingStatus").once("value", (snap) => {
-                 const data = snap.val() || {};
-                 const updates = {};
-                 
-                 for (const uid in data) {
-                   if (!Object.prototype.hasOwnProperty.call(data, uid)) continue;
-                   const entry = data[uid];
-                   // Remove if older than 10 seconds
-                   if (entry && entry.ts && (now - entry.ts) > 10000) {
-                     updates[uid] = null;
-                   }
-                 }
-                 
-                 if (Object.keys(updates).length > 0) {
-                   db.ref("typingStatus").update(updates).catch(err => {
-                     // Silently ignore permission errors during cleanup
-                     if (!err.message?.includes("PERMISSION_DENIED")) {
-                       console.warn("[typing] cleanup error:", err);
-                     }
-                   });
-                 }
-               });
-             }, TYPING_CLEANUP_INTERVAL);
-           }
-         }
-         
-         function stopTypingListener() {
-           if (!typingListenerAttached) return;
-           console.log("[typing] detaching typingStatus listener");
-           db.ref("typingStatus").off("value", handleTypingSnapshot);
-           typingListenerAttached = false;
-           lastTypingText = "";
-           updateStatusBar();
-         
-           // Clear cleanup interval
-           if (typingCleanupInterval) {
-             clearInterval(typingCleanupInterval);
-             typingCleanupInterval = null;
-           }
-         }
-         
-         // Typing on input
-         msgInput.addEventListener("input", () => {
-           if (!currentUserId) return;
-         
-           // Mark as typing
-           setTyping(true);
-         
-           // Auto stop after 1.5s of no input
-           if (typingTimeoutId) {
-             clearTimeout(typingTimeoutId);
-           }
-           typingTimeoutId = setTimeout(() => {
-             setTyping(false);
-           }, 1500);
-         });
-         
-         // Auto-handle already logged-in users on page load
-         auth.onAuthStateChanged(async (user) => {
-           console.log(
-             "[auth] onAuthStateChanged user =",
-             user ? user.uid : null
-           );
-         
-           if (user) {
-             try {
-               currentUserId = user.uid;
-         
-               // Get username from DB (ONE PLACE)
-               currentUsername = await fetchUsername(
-                 user.uid,
-                 user.email || null
-               );
-               
-               if (!currentUsername) {
-                 throw new Error("Could not get username");
-               }
-               
-               updateChatUserLabel(currentUsername);
-         
-               // Auto-ensure paths exist
-               try {
-                 await ensureUsernamePath(user.uid, currentUsername);
-                 await ensureUserProfilePath(user.uid);
-               } catch (e) {
-                 console.warn("[auth] could not ensure paths:", e);
-                 // Continue anyway
-               }
-         
-               loginForm.classList.add("hidden");
-               registerForm.classList.add("hidden");
-               chatInterface.classList.remove("hidden");
-               // Show loading screen while fetching messages
-               loadingScreen.classList.remove("hidden");
-         
-               console.log("[auth] starting messages listener from auth state change");
-               startMessagesListener();
-               startTypingListener();
-             } catch (err) {
-               console.error("[auth] error in onAuthStateChanged:", err);
-               // Show error and sign out
-               try {
-                 await auth.signOut();
-               } catch (e) {
-                 console.warn("[auth] error signing out:", e);
-               }
-               alert("Error loading your profile. Please log in again.");
-             }
-           } else {
-             console.log(
-               "[auth] user is null, stopping listeners and showing login"
-             );
-         
-             stopMessagesListener();
-             stopTypingListener();
-         
-             currentUserId = null;
-             currentUsername = null;
-             messagesDiv.innerHTML = "";
-         
-             chatInterface.classList.add("hidden");
-             loginForm.classList.remove("hidden");
-             // Hide loading screen if not logged in
-             loadingScreen.classList.add("hidden");
-             updateChatUserLabel("");
-           }
-         });
-         
-         // Logout
-         logoutBtn.onclick = async () => {
-           console.log("[logout] clicked");
-           logoutBtn.disabled = true;
-           logoutBtn.textContent = "Logging out...";
-         
-           try {
-             // Try to clear typing status before leaving
-             try {
-               if (currentUserId) {
-                 await db.ref("typingStatus/" + currentUserId).remove();
-                 console.log("[logout] cleared typing status");
-               }
-             } catch (e) {
-               console.warn("[logout] could not clear typing status:", e);
-             }
-         
-             // Stop listeners
-             stopMessagesListener();
-             stopTypingListener();
-         
-             // Sign out
-             await auth.signOut();
-             console.log("[logout] signOut complete");
-         
-             // Clear UI
-             msgInput.value = "";
-             loginPasswordInput.value = "";
-             clearLoginMessages();
-         
-             const remember = localStorage.getItem("rememberMe") === "true";
-             if (!remember) {
-               localStorage.removeItem("rememberedUsername");
-               loginUsernameInput.value = "";
-             } else {
-               const savedUsername = localStorage.getItem("rememberedUsername");
-               loginUsernameInput.value = savedUsername || "";
-             }
-           } catch (err) {
-             console.error("[logout] error during logout:", err);
-             alert("Error logging out. Try refreshing the page.");
-           } finally {
-             logoutBtn.disabled = false;
-             logoutBtn.textContent = "Logout";
-           }
-         };
-         
-         // Send a message (shared logic) + local rate-limit + server rules
-         function sendMessage() {
-           const text = msgInput.value.trim();
-           if (text === "") return;
-         
-           const userObj = auth.currentUser;
-           if (!userObj) {
-             console.warn("[send] tried to send while not logged in");
-             currentWarningText = "Not logged in. Please refresh and log in again.";
-             updateStatusBar();
-             msgInput.value = "";
-             setTimeout(() => {
-               currentWarningText = "";
-               updateStatusBar();
-             }, 3000);
-             return;
-           }
-           
-           if (!currentUsername) {
-             console.warn("[send] no username set");
-             currentWarningText = "Username not loaded. Please refresh.";
-             updateStatusBar();
-             setTimeout(() => {
-               currentWarningText = "";
-               updateStatusBar();
-             }, 3000);
-             return;
-           }
-         
-           // ✅ Local 250ms rate limit (was 500ms)
-           const now = Date.now();
-           if (now - lastSentTime < 250) {
-             showRateLimitWarning();
-             return;
-           }
-           lastSentTime = now;
-         
-           const username = currentUsername;
-         
-           console.log("[send] sending message", {
-             username,
-             text,
-             userId: userObj.uid,
-           });
-         
-           const uid = userObj.uid;
-         
-           // Add visual feedback to send button
-           const originalBtnText = sendBtn.innerHTML;
-           sendBtn.innerHTML = '<span class="animate-pulse">✓</span>';
-           sendBtn.disabled = true;
-         
-           // Push the message
-           db.ref("messages")
-             .push({
-               user: username,
-               text: text,
-               time: firebase.database.ServerValue.TIMESTAMP,
-             })
-             .then((ref) => {
-               console.log("[send] message saved under key", ref.key);
-         
-               // Update last message time so Firebase rules can block spam as backup
-               return db
-                 .ref("userLastMessageTime/" + uid)
-                 .set(firebase.database.ServerValue.TIMESTAMP);
-             })
-             .then(() => {
-               // Only clear input when message + timestamp both succeed
-               msgInput.value = "";
-               // Stop typing once message is sent
-               setTyping(false);
-               
-               // Reset button after 300ms
-               setTimeout(() => {
-                 sendBtn.innerHTML = originalBtnText;
-                 sendBtn.disabled = false;
-               }, 300);
-             })
-             .catch((error) => {
-               console.error("[send] error sending message:", error);
-               
-               let errorMsg = "Failed to send message";
-               if (error.code === "PERMISSION_DENIED") {
-                 errorMsg = "Message blocked (rate limit or permissions)";
-                 showRateLimitWarning();
-               } else if (error.message?.includes("permission")) {
-                 errorMsg = "Permission denied. Check Firebase rules.";
-               } else if (error.message?.includes("network")) {
-                 errorMsg = "Network error. Check your connection.";
-               }
-               
-               currentWarningText = errorMsg;
-               updateStatusBar();
-               
-               // Reset button on error
-               setTimeout(() => {
-                 sendBtn.innerHTML = originalBtnText;
-                 sendBtn.disabled = false;
-                 currentWarningText = "";
-                 updateStatusBar();
-               }, 3000);
-             });
-         }
-         
-         // Form submit = send message (works with Enter / Return everywhere)
-         messageForm.addEventListener("submit", (e) => {
-           e.preventDefault();
-           sendMessage();
-         });
-         
-         // ===== SETTINGS MENU & MODALS =====
-         const menuToggle = document.getElementById("menuToggle");
-         const settingsMenu = document.getElementById("settingsMenu");
-         const settingsModal = document.getElementById("settingsModal");
-         const profileModal = document.getElementById("profileModal");
-         const settingsOpenBtn = document.getElementById("settingsOpenBtn");
-         const profileOpenBtn = document.getElementById("profileOpenBtn");
-         const settingsCloseBtn = document.getElementById("settingsCloseBtn");
-         const profileCloseBtn = document.getElementById("profileCloseBtn");
-         const saveProfileBtn = document.getElementById("saveProfileBtn");
-         const uploadPicBtn = document.getElementById("uploadPicBtn");
-         const profilePicInput = document.getElementById("profilePicInput");
-         const profileBio = document.getElementById("profileBio");
-         const profileUsername = document.getElementById("profileUsername");
-         const profilePicPreview = document.getElementById("profilePicPreview");
-         
-         let currentUserData = {};
-         
-         // Toggle menu
-         menuToggle.addEventListener("click", (e) => {
-           e.stopPropagation(); // Prevent event from bubbling
-           settingsMenu.classList.toggle("menu-open");
-           settingsMenu.classList.toggle("menu-closed");
-         });
-         
-         // Close menu when clicking outside
-         document.addEventListener("click", (e) => {
-           // Only close if clicking outside BOTH menu and toggle button
-           if (!settingsMenu.contains(e.target) && !menuToggle.contains(e.target)) {
-             settingsMenu.classList.remove("menu-open");
-             settingsMenu.classList.add("menu-closed");
-           }
-         });
-         
-         // Prevent closing when clicking inside menu
-         settingsMenu.addEventListener("click", (e) => {
-           e.stopPropagation();
-         });
-         
-         // Open settings modal
-         settingsOpenBtn.addEventListener("click", () => {
-           settingsMenu.classList.remove("menu-open");
-           settingsMenu.classList.add("menu-closed");
-           settingsModal.classList.remove("modal-closed");
-           settingsModal.classList.add("modal-open");
-         });
-         
-         // Close settings modal
-         settingsCloseBtn.addEventListener("click", () => {
-           settingsModal.classList.remove("modal-open");
-           settingsModal.classList.add("modal-closed");
-         });
-         
-         settingsModal.addEventListener("click", (e) => {
-           if (e.target === settingsModal) {
-             settingsModal.classList.remove("modal-open");
-             settingsModal.classList.add("modal-closed");
-           }
-         });
-         
-         // Open profile modal
-         profileOpenBtn.addEventListener("click", () => {
-           settingsMenu.classList.remove("menu-open");
-           settingsMenu.classList.add("menu-closed");
-           loadUserProfile();
-           profileModal.classList.remove("modal-closed");
-           profileModal.classList.add("modal-open");
-         });
-         
-         // Close profile modal
-         profileCloseBtn.addEventListener("click", () => {
-           profileModal.classList.remove("modal-open");
-           profileModal.classList.add("modal-closed");
-         });
-         
-         profileModal.addEventListener("click", (e) => {
-           if (e.target === profileModal) {
-             profileModal.classList.remove("modal-open");
-             profileModal.classList.add("modal-closed");
-           }
-         });
-         
-         // Message size buttons
-         document.querySelectorAll(".size-btn").forEach((btn) => {
-           btn.addEventListener("click", () => {
-             const size = btn.getAttribute("data-size");
-             document.querySelectorAll(".size-btn").forEach((b) => {
-               b.classList.remove("active", "bg-sky-600", "hover:bg-sky-700", "text-white");
-               b.classList.add("bg-slate-700", "hover:bg-slate-600", "text-slate-200");
-             });
-             btn.classList.remove("bg-slate-700", "hover:bg-slate-600", "text-slate-200");
-             btn.classList.add("active", "bg-sky-600", "hover:bg-sky-700", "text-white");
-         
-             // Apply message size
-             const messagesContainer = document.getElementById("messages");
-             messagesContainer.classList.remove("msg-small", "msg-large");
-             if (size === "small") messagesContainer.classList.add("msg-small");
-             if (size === "large") messagesContainer.classList.add("msg-large");
-         
-             localStorage.setItem("messageSize", size);
-             console.log("[settings] message size set to", size);
-           });
-         });
-         
-         // Theme buttons with light mode implementation
-         function applyTheme(theme) {
-           if (theme === "light") {
-             document.body.classList.add("light-mode");
-           } else {
-             document.body.classList.remove("light-mode");
-           }
-           localStorage.setItem("theme", theme);
-           console.log("[settings] theme applied:", theme);
-         }
-         
-         document.querySelectorAll(".theme-btn").forEach((btn) => {
-           btn.addEventListener("click", () => {
-             const theme = btn.getAttribute("data-theme");
-             document.querySelectorAll(".theme-btn").forEach((b) => {
-               b.classList.remove("active", "bg-sky-600", "hover:bg-sky-700", "text-white");
-               b.classList.add("bg-slate-700", "hover:bg-slate-600", "text-slate-200");
-             });
-             btn.classList.remove("bg-slate-700", "hover:bg-slate-600", "text-slate-200");
-             btn.classList.add("active", "bg-sky-600", "hover:bg-sky-700", "text-white");
-         
-             applyTheme(theme);
-           });
-         });
-         
-         // Load saved theme on startup
-         (function initTheme() {
-           const savedTheme = localStorage.getItem("theme") || "dark";
-           const themeBtn = document.querySelector(`[data-theme="${savedTheme}"]`);
-           if (themeBtn) {
-             themeBtn.click();
-           }
-           applyTheme(savedTheme);
-         })();
-         
-         // Upload profile picture
-         uploadPicBtn.addEventListener("click", () => {
-           profilePicInput.click();
-         });
-         
-         profilePicInput.addEventListener("change", (e) => {
-           const file = e.target.files[0];
-           if (file) {
-             const reader = new FileReader();
-             reader.onload = (event) => {
-               profilePicPreview.innerHTML = "";
-               const img = document.createElement("img");
-               img.src = event.target.result;
-               img.className = "h-full w-full object-cover";
-               profilePicPreview.appendChild(img);
-               currentUserData.profilePic = event.target.result;
-             };
-             reader.readAsDataURL(file);
-           }
-         });
-         
-         // Load user profile data
-         function loadUserProfile() {
-           const uid = auth.currentUser?.uid;
-           if (!uid) {
-             console.error("[profile] no user ID");
-             return;
-           }
-         
-           // Set username
-           profileUsername.textContent = currentUsername || "-";
-         
-           // Load from Firebase with error handling
-           db.ref("userProfiles/" + uid).once(
-             "value",
-             (snap) => {
-               const data = snap.val();
-               if (data) {
-                 profileBio.value = data.bio || "";
-                 if (data.profilePic) {
-                   try {
-                     profilePicPreview.innerHTML = "";
-                     const img = document.createElement("img");
-                     img.src = data.profilePic;
-                     img.className = "h-full w-full object-cover";
-                     img.onerror = () => {
-                       console.warn("[profile] failed to load image");
-                       profilePicPreview.innerHTML = "👤";
-                     };
-                     profilePicPreview.appendChild(img);
-                   } catch (e) {
-                     console.warn("[profile] error loading image:", e);
-                     profilePicPreview.innerHTML = "👤";
-                   }
-                 }
-                 currentUserData = { ...data };
-                 console.log("[profile] loaded successfully");
-               } else {
-                 // Auto-create empty profile
-                 console.log("[profile] no profile exists, will create on save");
-                 profileBio.value = "";
-                 profilePicPreview.innerHTML = "👤";
-                 currentUserData = {};
-               }
-             },
-             (err) => {
-               console.error("[profile] error loading profile:", err);
-               alert("Could not load profile. Error: " + err.message);
-               profileBio.value = "";
-               currentUserData = {};
-             }
-           );
-         }
-         
-         // Save profile
-         saveProfileBtn.addEventListener("click", () => {
-           const uid = auth.currentUser?.uid;
-           if (!uid) {
-             console.error("[profile] not logged in");
-             alert("Not logged in. Please refresh and log in again.");
-             return;
-           }
-         
-           // Validate bio length
-           if (profileBio.value.length > 150) {
-             alert("Bio is too long (max 150 characters)");
-             return;
-           }
-         
-           const userData = {
-             username: currentUsername,
-             bio: profileBio.value.trim(),
-             profilePic: currentUserData.profilePic || null,
-             updatedAt: firebase.database.ServerValue.TIMESTAMP,
-           };
-         
-           saveProfileBtn.disabled = true;
-           saveProfileBtn.textContent = "Saving...";
-           const originalText = saveProfileBtn.textContent;
-         
-           db.ref("userProfiles/" + uid)
-             .set(userData)
-             .then(() => {
-               console.log("[profile] saved successfully");
-               saveProfileBtn.textContent = "✓ Saved!";
-               saveProfileBtn.style.background = "rgb(34, 197, 94)"; // green
-               setTimeout(() => {
-                 saveProfileBtn.textContent = originalText;
-                 saveProfileBtn.style.background = "";
-                 saveProfileBtn.disabled = false;
-               }, 2000);
-             })
-             .catch((err) => {
-               console.error("[profile] error:", err);
-               saveProfileBtn.textContent = "Failed";
-               saveProfileBtn.style.background = "rgb(239, 68, 68)"; // red
-               
-               let errorMsg = "Error saving profile";
-               if (err.message?.includes("permission")) {
-                 errorMsg = "Permission denied. Check Firebase rules for /userProfiles";
-               } else if (err.message?.includes("network")) {
-                 errorMsg = "Network error. Check your connection.";
-               }
-               
-               setTimeout(() => {
-                 alert(errorMsg);
-                 saveProfileBtn.textContent = originalText;
-                 saveProfileBtn.style.background = "";
-                 saveProfileBtn.disabled = false;
-               }, 1500);
-             });
-         });
-         
-         // Load message size preference on startup
-         const savedSize = localStorage.getItem("messageSize") || "medium";
-         const sizeBtn = document.querySelector(`[data-size="${savedSize}"]`);
-         if (sizeBtn) {
-           sizeBtn.click();
-         }
-      </script>
-   </body>
+    </div>
+
+    <!-- Friend Requests Modal -->
+    <div
+      id="friendRequestsModal"
+      class="modal-overlay fixed inset-0 z-50 modal-closed items-center justify-center px-4"
+    >
+      <div class="glass-card max-w-md w-full rounded-2xl p-6 max-h-[90vh] overflow-y-auto">
+        <div class="flex justify-between items-center mb-4">
+          <h3 class="text-lg font-semibold text-slate-100">Friend Requests</h3>
+          <button
+            id="friendRequestsCloseBtn"
+            class="p-1 hover:bg-slate-700 rounded-lg transition-colors"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div id="friendRequestsList" class="space-y-2">
+          <!-- Friend requests will be rendered here -->
+        </div>
+
+        <p id="noFriendRequestsMsg" class="text-center text-slate-400 text-sm mt-4">
+          No pending requests
+        </p>
+      </div>
+    </div>
+
+    <script>
+      // --- GLOBAL ERROR LOGGING ---
+      window.addEventListener("error", (event) => {
+        console.error(
+          "[window error]",
+          event.message,
+          "at",
+          event.filename + ":" + event.lineno,
+          "details:",
+          event.error
+        );
+      });
+
+      window.addEventListener("unhandledrejection", (event) => {
+        console.error("[unhandled rejection]", event.reason);
+      });
+
+      // Helper function for detailed error logging
+      function logDetailedError(context, error, additionalInfo = {}) {
+        const errorObj = {
+          timestamp: new Date().toISOString(),
+          context,
+          message: error?.message || String(error),
+          code: error?.code,
+          type: error?.constructor?.name,
+          ...additionalInfo
+        };
+        console.error(`[ERROR] ${context}:`, errorObj);
+        return errorObj;
+      }
+
+      // Firebase configuration
+      const firebaseConfig = {
+        apiKey: "AIzaSyC945jY7UEh4sOOuuk7OMZVXeIh333kxVk",
+        authDomain: "chat-app-710f0.firebaseapp.com",
+        projectId: "chat-app-710f0",
+        storageBucket: "chat-app-710f0.firebasestorage.app",
+        messagingSenderId: "225892837672",
+        appId: "1:225892837672:web:f190f3585c4ffbd0f1c81d",
+        databaseURL: "https://chat-app-710f0-default-rtdb.firebaseio.com",
+      };
+
+      console.log("[init] starting firebase init");
+
+      // Initialize Firebase
+      firebase.initializeApp(firebaseConfig);
+      const auth = firebase.auth();
+      const db = firebase.database();
+
+      console.log("[init] firebase initialized");
+
+      // DOM elements
+      const loginForm = document.getElementById("loginForm");
+      const registerForm = document.getElementById("registerForm");
+      const chatInterface = document.getElementById("chatInterface");
+      const loadingScreen = document.getElementById("loadingScreen");
+
+      const loginUsernameInput = document.getElementById("loginUsername");
+      const loginPasswordInput = document.getElementById("loginPassword");
+      const rememberMeCheckbox = document.getElementById("rememberMe");
+      const loginBtn = document.getElementById("loginBtn");
+      const loginError = document.getElementById("loginError");
+      const loginInfo = document.getElementById("loginInfo");
+
+      const regUsernameInput = document.getElementById("regUsername");
+      const regPasswordInput = document.getElementById("regPassword");
+      const regPasswordConfirmInput =
+        document.getElementById("regPasswordConfirm");
+      const registerBtn = document.getElementById("registerBtn");
+      const registerError = document.getElementById("registerError");
+
+      const msgInput = document.getElementById("msgInput");
+      const sendBtn = document.getElementById("sendBtn");
+      const messagesDiv = document.getElementById("messages");
+      const messageForm = document.getElementById("messageForm");
+      const sendWarningEl = document.getElementById("sendWarning");
+      const typingIndicatorEl = document.getElementById("typingIndicator");
+
+      const registerLink = document.getElementById("registerLink");
+      const loginLink = document.getElementById("loginLink");
+      const logoutBtn = document.getElementById("logoutBtn");
+      const chatUserLabel = document.getElementById("chatUserLabel");
+
+      // Global state
+      let currentUsername = null; // SINGLE SOURCE for username
+      let currentUserId = null;
+
+      // Real-time messages
+      let messagesRef = null;      // realtime ref for new messages
+      let messagesListener = null; // child_added listener
+      const seenMessageKeys = new Set();
+
+      // Pagination / infinite scroll
+      const PAGE_SIZE = 50; // Reduced for faster loading
+      let oldestTime = null;
+      let newestTime = null;
+      let isLoadingOlder = false;
+      let allHistoryLoaded = false;
+      let scrollListenerAttached = false;
+
+      // Typing status
+      let typingTimeoutId = null;
+      let typingListenerAttached = false;
+      const TYPING_CLEANUP_INTERVAL = 5000; // Clean up stale typing status every 5s
+      let typingCleanupInterval = null;
+
+      // Rate-limit warning timeout + local last-sent time
+      let sendWarningTimeoutId = null;
+      let lastSentTime = 0; // for local 500ms rate limit
+      
+      // Message rendering optimization
+      let messageRenderQueue = [];
+      let isRenderingMessages = false;
+
+      // --- COMBINED STATUS BAR (typing + warning) ---
+      let lastTypingText = "";
+      let currentWarningText = "";
+
+      function updateStatusBar() {
+        const parts = [];
+        if (lastTypingText) parts.push(lastTypingText);
+        if (currentWarningText) {
+          if (parts.length > 0) {
+            parts.push("• " + currentWarningText);
+          } else {
+            parts.push(currentWarningText);
+          }
+        }
+        typingIndicatorEl.textContent = parts.join(" ");
+        // keep the old warning element visually empty
+        if (sendWarningEl) sendWarningEl.textContent = "";
+      }
+
+      // Helper: clear messages
+      function clearLoginMessages() {
+        loginError.textContent = "";
+        loginInfo.textContent = "";
+      }
+
+      // ===== AUTO-CREATE FIREBASE PATHS =====
+      async function ensureUserProfilePath(uid) {
+        try {
+          const ref = db.ref("userProfiles/" + uid);
+          const snap = await ref.once("value");
+          if (!snap.exists()) {
+            await ref.set({
+              username: currentUsername,
+              bio: "",
+              profilePic: null,
+              createdAt: firebase.database.ServerValue.TIMESTAMP,
+            });
+            console.log("[init] auto-created userProfiles path for", uid);
+          }
+        } catch (err) {
+          console.warn("[init] could not ensure profile path:", err);
+        }
+      }
+
+      async function ensureUsernamePath(uid, username) {
+        try {
+          const ref = db.ref("users/" + uid + "/username");
+          const snap = await ref.once("value");
+          if (!snap.exists()) {
+            await ref.set(username);
+            console.log("[init] auto-created username path for", uid);
+          }
+        } catch (err) {
+          console.warn("[init] could not ensure username path:", err);
+        }
+      }
+
+      async function ensureFriendRequestsPaths(uid) {
+        try {
+          const ref = db.ref("friendRequests/" + uid + "/incoming");
+          const snap = await ref.once("value");
+          if (!snap.exists()) {
+            await ref.set({});
+            console.log("[init] auto-created friendRequests incoming path for", uid);
+          }
+        } catch (err) {
+          console.warn("[init] could not ensure friendRequests path:", err);
+        }
+      }
+
+      async function ensureFriendsList(uid) {
+        try {
+          const ref = db.ref("friends/" + uid);
+          const snap = await ref.once("value");
+          if (!snap.exists()) {
+            await ref.set({});
+            console.log("[init] auto-created friends list for", uid);
+          }
+        } catch (err) {
+          console.warn("[init] could not ensure friends list:", err);
+        }
+      }
+
+      function clearRegisterMessages() {
+        registerError.textContent = "";
+      }
+
+      function updateChatUserLabel(username) {
+        currentUsername = username || null;
+        chatUserLabel.textContent = username || "";
+        console.log("[ui] chat user label set to:", chatUserLabel.textContent);
+      }
+
+      // On-screen warning (2 seconds) — now combined with typing in one line
+      function showRateLimitWarning() {
+        currentWarningText = "Slow down — you're sending messages too fast.";
+        if (sendWarningTimeoutId) {
+          clearTimeout(sendWarningTimeoutId);
+        }
+        updateStatusBar();
+        sendWarningTimeoutId = setTimeout(() => {
+          currentWarningText = "";
+          updateStatusBar();
+        }, 2000);
+      }
+
+      // --- USERNAME FROM DB (ONE SOURCE OF TRUTH) ---
+      async function fetchUsername(uid, emailFallback) {
+        try {
+          const snap = await db.ref("users/" + uid + "/username").once("value");
+          let username = snap.val();
+          
+          if (!username && emailFallback) {
+            username = emailFallback.split("@")[0];
+            console.log("[username] no username in DB, using email:", username);
+            // Auto-save to DB for next time
+            try {
+              await db.ref("users/" + uid + "/username").set(username);
+            } catch (e) {
+              console.warn("[username] could not auto-save username:", e);
+            }
+          }
+          
+          return username || "User";
+        } catch (err) {
+          console.error("[username] error fetching from DB:", err);
+          if (emailFallback) {
+            const fallback = emailFallback.split("@")[0];
+            console.log("[username] using email fallback:", fallback);
+            return fallback;
+          }
+          return "User";
+        }
+      }
+
+      // On load: prefill username if "remember me" was used (ONLY for login form)
+      (function initRememberMe() {
+        try {
+          const remember = localStorage.getItem("rememberMe") === "true";
+          const savedUsername = localStorage.getItem("rememberedUsername");
+          console.log(
+            "[rememberMe] remember =",
+            remember,
+            "savedUsername =",
+            savedUsername
+          );
+          if (remember && savedUsername) {
+            rememberMeCheckbox.checked = true;
+            loginUsernameInput.value = savedUsername;
+          }
+        } catch (err) {
+          console.error("[rememberMe] error reading localStorage", err);
+        }
+      })();
+
+      // Switch to Register form
+      registerLink.onclick = () => {
+        clearLoginMessages();
+        loginForm.classList.add("hidden");
+        registerForm.classList.remove("hidden");
+        console.log("[ui] switched to register form");
+      };
+
+      // Switch to Login form
+      loginLink.onclick = () => {
+        clearRegisterMessages();
+        registerForm.classList.add("hidden");
+        loginForm.classList.remove("hidden");
+        console.log("[ui] switched to login form");
+      };
+
+      // Helper: make fake email from username
+      function makeEmailFromUsername(username) {
+        return username.toLowerCase() + "@gmail.com";
+      }
+
+      // 🔍 Check if username is already taken in DB
+      async function isUsernameTaken(username) {
+        console.log("[users] checking if username taken:", username);
+        try {
+          const snapshot = await db
+            .ref("users")
+            .orderByChild("username")
+            .equalTo(username)
+            .once("value");
+          const exists = snapshot.exists();
+          console.log("[users] username taken =", exists);
+          return exists;
+        } catch (err) {
+          console.error("[users] error while checking username", err);
+          registerError.textContent = "Error checking username. Try again.";
+          return true;
+        }
+      }
+
+      // Register User (username + password + confirm)
+      registerBtn.onclick = async () => {
+        clearRegisterMessages();
+
+        const username = regUsernameInput.value.trim();
+        const password = regPasswordInput.value.trim();
+        const passwordConfirm = regPasswordConfirmInput.value.trim();
+
+        console.log("[register] submit", { username });
+
+        if (!username || !password || !passwordConfirm) {
+          registerError.textContent = "Please fill all fields.";
+          return;
+        }
+
+        if (username.includes("@") || username.includes(" ")) {
+          registerError.textContent = "Username can't have spaces or '@'.";
+          return;
+        }
+
+        if (password !== passwordConfirm) {
+          registerError.textContent = "Passwords do not match.";
+          return;
+        }
+
+        // Check username in database
+        if (await isUsernameTaken(username)) {
+          if (!registerError.textContent) {
+            registerError.textContent = "That username is already taken.";
+          }
+          return;
+        }
+
+        const fakeEmail = makeEmailFromUsername(username);
+        console.log("[register] creating auth user", fakeEmail);
+
+        try {
+          const userCredential = await auth.createUserWithEmailAndPassword(
+            fakeEmail,
+            password
+          );
+          const user = userCredential.user;
+          console.log("[register] auth user created", user.uid);
+
+          // Save the username in Firebase Database
+          const userRef = db.ref("users/" + user.uid);
+          await userRef.set({ username });
+          console.log("[register] username saved to /users", user.uid);
+          
+          // Auto-create profile path
+          try {
+            await db.ref("userProfiles/" + user.uid).set({
+              username: username,
+              bio: "",
+              profilePic: null,
+              createdAt: firebase.database.ServerValue.TIMESTAMP,
+            });
+            console.log("[register] auto-created userProfiles", user.uid);
+            
+            // Also create friend requests and friends paths
+            await db.ref("friendRequests/" + user.uid + "/incoming").set({});
+            await db.ref("friends/" + user.uid).set({});
+            console.log("[register] auto-created friend paths", user.uid);
+          } catch (e) {
+            console.warn("[register] could not create paths:", e);
+          }
+
+          // Log them out so they still go through login flow
+          await auth.signOut();
+          console.log("[register] signed out after registration");
+
+          // Switch back to login, show success message
+          registerForm.classList.add("hidden");
+          loginForm.classList.remove("hidden");
+          clearLoginMessages();
+          loginInfo.textContent = "Account created! You can log in now.";
+        } catch (error) {
+          console.error("[register] Error registering:", error);
+          if (error.code === "auth/email-already-in-use") {
+            registerError.textContent = "That username is already taken.";
+          } else if (error.code === "auth/weak-password") {
+            registerError.textContent = "Password is too weak.";
+          } else {
+            registerError.textContent = "Could not register. Try again.";
+          }
+        }
+      };
+
+      /// Sign In User (username + password only) with persistence
+      loginBtn.onclick = async () => {
+        clearLoginMessages();
+
+        const username = loginUsernameInput.value.trim();
+        const password = loginPasswordInput.value.trim();
+        const remember = rememberMeCheckbox.checked;
+
+        console.log("[login] submit", { username, remember });
+
+        if (!username || !password) {
+          loginError.textContent = "Please fill username and password.";
+          return;
+        }
+
+        if (username.includes("@") || username.includes(" ")) {
+          loginError.textContent = "Username can't have spaces or '@'.";
+          return;
+        }
+
+        const fakeEmail = makeEmailFromUsername(username);
+
+        try {
+          const persistence = remember
+            ? firebase.auth.Auth.Persistence.LOCAL
+            : firebase.auth.Auth.Persistence.SESSION;
+
+          console.log(
+            "[login] setting persistence",
+            remember ? "LOCAL" : "SESSION"
+          );
+          
+          try {
+            await auth.setPersistence(persistence);
+          } catch (e) {
+            console.warn("[login] persistence not available (incognito?):", e);
+            // Continue anyway, will just be session-based
+          }
+
+          console.log("[login] signing in with email", fakeEmail);
+
+          const userCredential = await auth.signInWithEmailAndPassword(
+            fakeEmail,
+            password
+          );
+          const user = userCredential.user;
+
+          console.log("[login] signed in as", user.uid);
+          
+          // Auto-ensure paths exist
+          try {
+            await ensureUsernamePath(user.uid, username);
+            await ensureUserProfilePath(user.uid);
+            await ensureFriendRequestsPaths(user.uid);
+            await ensureFriendsList(user.uid);
+          } catch (e) {
+            console.warn("[login] could not ensure paths:", e);
+            // Continue anyway - these aren't critical
+          }
+
+          // Save "remember me" stuff ONLY for login form next time
+          try {
+            if (remember) {
+              localStorage.setItem("rememberMe", "true");
+              localStorage.setItem("rememberedUsername", username);
+            } else {
+              localStorage.removeItem("rememberMe");
+              localStorage.removeItem("rememberedUsername");
+            }
+          } catch (err) {
+            console.error(
+              "[login] error writing rememberMe to localStorage",
+              err
+            );
+          }
+
+          // DO NOT show chat here. onAuthStateChanged will do it.
+        } catch (error) {
+          console.error("[login] Error signing in:", error);
+          if (
+            error.code === "auth/user-not-found" ||
+            error.code === "auth/wrong-password"
+          ) {
+            loginError.textContent = "Wrong username or password.";
+          } else if (error.code === "auth/too-many-requests") {
+            loginError.textContent =
+              "Too many attempts. Please wait and try again.";
+          } else {
+            loginError.textContent = "Could not log in. Try again.";
+          }
+        }
+      };
+
+      // Profile cache to avoid excessive DB lookups
+      const profileCache = {};
+
+      // Fetch user profile data with timeout
+      async function fetchUserProfile(username) {
+        if (profileCache[username]) {
+          return profileCache[username];
+        }
+        
+        try {
+          // Set a timeout for the fetch
+          const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error("timeout")), 3000)
+          );
+
+          const fetchPromise = (async () => {
+            const snap = await db.ref("users").orderByChild("username").equalTo(username).once("value");
+            if (snap.exists()) {
+              const uid = Object.keys(snap.val())[0];
+              const profileSnap = await db.ref("userProfiles/" + uid).once("value");
+              const data = profileSnap.val() || {};
+              profileCache[username] = { uid, ...data };
+              return profileCache[username];
+            }
+            return null;
+          })();
+
+          return await Promise.race([fetchPromise, timeoutPromise]);
+        } catch (err) {
+          // Return null on timeout or error - silently
+          return null;
+        }
+      }
+
+      // --- MESSAGE RENDERING (bigger iMessage-style bubbles) ---
+      function createMessageRow(msg) {
+        const myName = currentUsername || null;
+        const isMine = myName && msg.user === myName;
+        const username = msg.user || "Unknown";
+
+        const row = document.createElement("div");
+        row.className = isMine 
+          ? "w-full flex mb-2 sm:mb-2 justify-end pr-1 sm:pr-3 gap-2 items-end"
+          : "w-full flex mb-2 sm:mb-2 justify-start pl-1 sm:pl-3 gap-2 items-end";
+
+        const column = document.createElement("div");
+        column.className =
+          "flex flex-col max-w-[80%] sm:max-w-[60%] gap-1";
+
+        // Add profile picture for received messages
+        if (!isMine) {
+          const avatarDiv = document.createElement("div");
+          avatarDiv.className = "h-7 w-7 sm:h-8 sm:w-8 rounded-full bg-gradient-to-br from-sky-500 to-sky-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0 cursor-pointer hover:opacity-80 transition-opacity overflow-hidden";
+          avatarDiv.innerHTML = '<svg width="100%" height="100%" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>';
+          avatarDiv.style.minWidth = "1.75rem";
+          avatarDiv.style.minHeight = "1.75rem";
+
+          // Load profile picture async (non-blocking)
+          setTimeout(() => {
+            fetchUserProfile(username).then(profile => {
+              if (profile?.profilePic && avatarDiv.innerHTML.includes("svg")) {
+                try {
+                  const img = document.createElement("img");
+                  img.src = profile.profilePic;
+                  img.className = "h-full w-full object-cover";
+                  img.onerror = () => {};
+                  avatarDiv.innerHTML = "";
+                  avatarDiv.appendChild(img);
+                } catch (e) {
+                  // Silently ignore, keep default
+                }
+              }
+            }).catch(() => {
+              // Silently ignore fetch errors
+            });
+          }, 0);
+
+          // Click to view profile
+          avatarDiv.addEventListener("click", () => {
+            viewUserProfile(username);
+          });
+
+          row.appendChild(avatarDiv);
+        }
+
+        if (!isMine) {
+          const nameLabel = document.createElement("div");
+          nameLabel.className =
+            "text-[10px] sm:text-xs text-slate-400 px-3 font-medium cursor-pointer hover:text-slate-300 transition-colors";
+          nameLabel.textContent = username;
+          nameLabel.addEventListener("click", () => {
+            viewUserProfile(username);
+          });
+          column.appendChild(nameLabel);
+        }
+
+        const bubble = document.createElement("div");
+        const textLength = (msg.text || "").length;
+        const isSmallMessage = textLength <= 2;
+        const padding = isSmallMessage ? "px-3 py-1.5" : "px-3 py-2";
+        
+        bubble.className = isMine
+          ? `message-bubble-anim mine ${padding} sm:px-3 sm:py-2 rounded-2xl text-xs sm:text-sm leading-relaxed break-words shadow-sm bg-gradient-to-br from-sky-500 to-sky-600 text-white rounded-br-md font-medium shadow-md shadow-sky-500/20`
+          : `message-bubble-anim ${padding} sm:px-3 sm:py-2 rounded-2xl text-xs sm:text-sm leading-relaxed break-words shadow-sm bg-slate-700/90 text-slate-50 rounded-bl-md border border-slate-600/50 backdrop-blur-sm`;
+
+        const textSpan = document.createElement("span");
+        textSpan.className = "message-text-reveal inline-block";
+        textSpan.textContent = msg.text || "";
+        
+        bubble.appendChild(textSpan);
+        column.appendChild(bubble);
+        row.appendChild(column);
+        return row;
+      }
+
+      function renderMessage(msg, options = {}) {
+        const { prepend = false, maintainScroll = false } = options;
+
+        const row = createMessageRow(msg);
+
+        if (prepend) {
+          if (messagesDiv.firstChild) {
+            messagesDiv.insertBefore(row, messagesDiv.firstChild);
+          } else {
+            messagesDiv.appendChild(row);
+          }
+        } else {
+          messagesDiv.appendChild(row);
+        }
+
+        if (!maintainScroll) {
+          messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+      }
+
+      function renderMessageOnce(key, msg, options = {}) {
+        if (!key) {
+          console.warn("[messages] missing key for message", msg);
+          renderMessage(msg, options);
+          return;
+        }
+        if (seenMessageKeys.has(key)) return;
+        seenMessageKeys.add(key);
+        renderMessage(msg, options);
+      }
+
+      // Batch render messages for better performance
+      function batchRenderMessages(messages, options = {}) {
+        const fragment = document.createDocumentFragment();
+        let newMessagesCount = 0;
+
+        messages.forEach(({ key, msg }) => {
+          if (key && seenMessageKeys.has(key)) return;
+          if (key) seenMessageKeys.add(key);
+
+          const row = createMessageRow(msg);
+          if (options.prepend) {
+            fragment.insertBefore(row, fragment.firstChild);
+          } else {
+            fragment.appendChild(row);
+          }
+          newMessagesCount++;
+        });
+
+        if (newMessagesCount > 0) {
+          if (options.prepend && messagesDiv.firstChild) {
+            messagesDiv.insertBefore(fragment, messagesDiv.firstChild);
+          } else {
+            messagesDiv.appendChild(fragment);
+          }
+
+          if (!options.maintainScroll) {
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+          }
+        }
+      }
+
+      // --- INFINITE SCROLL HELPERS ---
+      function onMessagesScroll() {
+        if (allHistoryLoaded || isLoadingOlder) return;
+        // When user is near top (~5 messages above), load older
+        const threshold = 120; // px from top, tweak if you want
+        if (messagesDiv.scrollTop <= threshold) {
+          loadOlderMessages();
+        }
+      }
+
+      function attachScrollListener() {
+        if (scrollListenerAttached) return;
+        messagesDiv.addEventListener("scroll", onMessagesScroll);
+        scrollListenerAttached = true;
+      }
+
+      function detachScrollListener() {
+        if (!scrollListenerAttached) return;
+        messagesDiv.removeEventListener("scroll", onMessagesScroll);
+        scrollListenerAttached = false;
+      }
+
+      function loadOlderMessages() {
+        if (isLoadingOlder) return;
+        if (oldestTime === null) return;
+        isLoadingOlder = true;
+        console.log("[messages] loading older messages before time =", oldestTime);
+
+        const prevScrollHeight = messagesDiv.scrollHeight;
+        const prevScrollTop = messagesDiv.scrollTop;
+
+        const baseRef = db.ref("messages").orderByChild("time");
+
+        baseRef
+          .endAt(oldestTime - 1)
+          .limitToLast(PAGE_SIZE)
+          .once(
+            "value",
+            (snap) => {
+              const msgs = [];
+              snap.forEach((child) => {
+                msgs.push({ key: child.key, msg: child.val() || {} });
+              });
+
+              if (msgs.length === 0) {
+                console.log("[messages] no older messages, all history loaded");
+                allHistoryLoaded = true;
+                isLoadingOlder = false;
+                return;
+              }
+
+              // Update time range
+              msgs.forEach(({ key, msg }) => {
+                const t = msg.time || 0;
+                if (oldestTime === null || t < oldestTime) {
+                  oldestTime = t;
+                }
+              });
+
+              // Batch render for performance
+              batchRenderMessages(msgs, {
+                prepend: true,
+                maintainScroll: true,
+              });
+
+              const newScrollHeight = messagesDiv.scrollHeight;
+              const addedHeight = newScrollHeight - prevScrollHeight;
+              messagesDiv.scrollTop = prevScrollTop + addedHeight;
+
+              console.log(
+                "[messages] loaded older page, count =",
+                msgs.length,
+                "oldestTime now =",
+                oldestTime
+              );
+
+              if (msgs.length < PAGE_SIZE) {
+                allHistoryLoaded = true;
+              }
+
+              isLoadingOlder = false;
+            },
+            (error) => {
+              console.error("[messages] error loading older:", error);
+              isLoadingOlder = false;
+            }
+          );
+      }
+
+      function startMessagesListener() {
+        console.log("[messages] startMessagesListener called");
+        stopMessagesListener();
+        seenMessageKeys.clear();
+        messagesDiv.innerHTML = "";
+
+        oldestTime = null;
+        newestTime = null;
+        allHistoryLoaded = false;
+        isLoadingOlder = false;
+
+        try {
+          const baseRef = db.ref("messages").orderByChild("time");
+          const initialQuery = baseRef.limitToLast(PAGE_SIZE);
+
+          initialQuery.once(
+            "value",
+            (snap) => {
+              const msgs = [];
+              snap.forEach((child) => {
+                msgs.push({ key: child.key, msg: child.val() || {} });
+              });
+
+              const count = msgs.length;
+              console.log("[messages] initial load snapshot, count =", count);
+
+              // Calculate time range
+              msgs.forEach(({ key, msg }) => {
+                const t = msg.time || 0;
+                if (oldestTime === null || t < oldestTime) {
+                  oldestTime = t;
+                }
+                if (newestTime === null || t > newestTime) {
+                  newestTime = t;
+                }
+              });
+
+              // Batch render all messages at once
+              batchRenderMessages(msgs, { maintainScroll: true });
+
+              // After initial render, jump to bottom
+              messagesDiv.scrollTop = messagesDiv.scrollHeight;
+
+              // Hide loading screen after messages are loaded
+              loadingScreen.classList.add("hidden");
+
+              if (count < PAGE_SIZE) {
+                allHistoryLoaded = true;
+              }
+
+              // Attach scroll listener only after we have some messages
+              attachScrollListener();
+
+              // --- REALTIME LISTENER FOR NEW MESSAGES ---
+              if (messagesRef && messagesListener) {
+                messagesRef.off("child_added", messagesListener);
+              }
+
+              if (newestTime !== null) {
+                messagesRef = baseRef.startAt(newestTime + 1);
+              } else {
+                messagesRef = baseRef;
+              }
+
+              messagesListener = (snap) => {
+                const msg = snap.val() || {};
+                const key = snap.key;
+                const t = msg.time || 0;
+
+                if (newestTime === null || t > newestTime) {
+                  newestTime = t;
+                }
+                renderMessageOnce(key, msg);
+              };
+
+              messagesRef.on(
+                "child_added",
+                messagesListener,
+                (error) => {
+                  console.error("[messages] listener error:", error);
+                }
+              );
+            },
+            (error) => {
+              console.error("[messages] error during initial load:", error);
+              loadingScreen.classList.add("hidden");
+            }
+          );
+        } catch (err) {
+          console.error("[messages] startMessagesListener crashed:", err);
+          loadingScreen.classList.add("hidden");
+        }
+      }
+
+      function stopMessagesListener() {
+        console.log("[messages] stopMessagesListener called");
+        try {
+          if (messagesRef && messagesListener) {
+            messagesRef.off("child_added", messagesListener);
+          }
+        } catch (err) {
+          console.error("[messages] error while stopping listener:", err);
+        }
+        messagesRef = null;
+        messagesListener = null;
+        seenMessageKeys.clear();
+
+        detachScrollListener();
+
+        oldestTime = null;
+        newestTime = null;
+        allHistoryLoaded = false;
+        isLoadingOlder = false;
+      }
+
+      // --- TYPING STATUS HELPERS ---
+      function setTyping(isTyping) {
+        if (!currentUserId) {
+          console.debug("[typing] setTyping called but no userId");
+          return;
+        }
+        const ref = db.ref("typingStatus/" + currentUserId);
+        const name = currentUsername || "User";
+        console.log("[typing] setting typing status:", isTyping, "for", currentUserId);
+        return ref.set({
+          username: name,
+          typing: isTyping,
+          ts: firebase.database.ServerValue.TIMESTAMP,
+        }).catch((err) => {
+          // Detailed logging for typing status errors
+          if (err.message?.includes("permission_denied")) {
+            console.warn("[typing] permission denied on /typingStatus/" + currentUserId + " - this is OK, typing indicators may not work");
+          } else {
+            logDetailedError("setTyping", err, { userId: currentUserId, isTyping });
+          }
+        });
+      }
+
+      function handleTypingSnapshot(snap) {
+        const data = snap.val() || {};
+        const typingUsers = [];
+
+        for (const uid in data) {
+          if (!Object.prototype.hasOwnProperty.call(data, uid)) continue;
+          if (uid === currentUserId) continue; // don't show yourself
+
+          const entry = data[uid];
+          if (entry && entry.typing) {
+            const name = entry.username || "Someone";
+            typingUsers.push(name);
+          }
+        }
+
+        let text = "";
+        if (typingUsers.length === 1) {
+          text = typingUsers[0] + " is typing…";
+        } else if (typingUsers.length === 2) {
+          text = typingUsers[0] + " and " + typingUsers[1] + " are typing…";
+        } else if (typingUsers.length === 3) {
+          text = typingUsers[0] + ", " + typingUsers[1] + ", and " + typingUsers[2] + " are typing…";
+        } else if (typingUsers.length > 3) {
+          text = "Several people are typing…";
+        }
+
+        lastTypingText = text;
+        updateStatusBar();
+      }
+
+      function startTypingListener() {
+        if (typingListenerAttached) return;
+        console.log("[typing] attaching typingStatus listener");
+        
+        db.ref("typingStatus").on(
+          "value",
+          handleTypingSnapshot,
+          (err) => {
+            console.error("[typing] listener error:", err);
+          }
+        );
+        typingListenerAttached = true;
+
+        // Clean up stale typing status every 5 seconds
+        if (!typingCleanupInterval) {
+          typingCleanupInterval = setInterval(() => {
+            const now = Date.now();
+            db.ref("typingStatus").once("value", (snap) => {
+              const data = snap.val() || {};
+              const updates = {};
+              
+              for (const uid in data) {
+                if (!Object.prototype.hasOwnProperty.call(data, uid)) continue;
+                const entry = data[uid];
+                // Remove if older than 10 seconds
+                if (entry && entry.ts && (now - entry.ts) > 10000) {
+                  updates[uid] = null;
+                }
+              }
+              
+              if (Object.keys(updates).length > 0) {
+                db.ref("typingStatus").update(updates).catch(err => {
+                  // Silently ignore permission errors during cleanup
+                  if (!err.message?.includes("PERMISSION_DENIED")) {
+                    console.warn("[typing] cleanup error:", err);
+                  }
+                });
+              }
+            });
+          }, TYPING_CLEANUP_INTERVAL);
+        }
+      }
+
+      function stopTypingListener() {
+        if (!typingListenerAttached) return;
+        console.log("[typing] detaching typingStatus listener");
+        db.ref("typingStatus").off("value", handleTypingSnapshot);
+        typingListenerAttached = false;
+        lastTypingText = "";
+        updateStatusBar();
+
+        // Clear cleanup interval
+        if (typingCleanupInterval) {
+          clearInterval(typingCleanupInterval);
+          typingCleanupInterval = null;
+        }
+      }
+
+      // Typing on input
+      msgInput.addEventListener("input", () => {
+        if (!currentUserId) return;
+
+        // Mark as typing
+        setTyping(true);
+
+        // Auto stop after 1.5s of no input
+        if (typingTimeoutId) {
+          clearTimeout(typingTimeoutId);
+        }
+        typingTimeoutId = setTimeout(() => {
+          setTyping(false);
+        }, 1500);
+      });
+
+      // Auto-handle already logged-in users on page load
+      auth.onAuthStateChanged(async (user) => {
+        console.log(
+          "[auth] onAuthStateChanged user =",
+          user ? user.uid : null
+        );
+
+        if (user) {
+          try {
+            currentUserId = user.uid;
+
+            // Get username from DB (ONE PLACE)
+            currentUsername = await fetchUsername(
+              user.uid,
+              user.email || null
+            );
+            
+            if (!currentUsername) {
+              throw new Error("Could not get username");
+            }
+            
+            updateChatUserLabel(currentUsername);
+
+            // Auto-ensure paths exist
+            try {
+              await ensureUsernamePath(user.uid, currentUsername);
+              await ensureUserProfilePath(user.uid);
+              await ensureFriendRequestsPaths(user.uid);
+              await ensureFriendsList(user.uid);
+            } catch (e) {
+              console.warn("[auth] could not ensure paths:", e);
+              // Continue anyway
+            }
+
+            loginForm.classList.add("hidden");
+            registerForm.classList.add("hidden");
+            chatInterface.classList.remove("hidden");
+            // Show loading screen while fetching messages
+            loadingScreen.classList.remove("hidden");
+
+            console.log("[auth] starting messages listener from auth state change");
+            startMessagesListener();
+            startTypingListener();
+          } catch (err) {
+            console.error("[auth] error in onAuthStateChanged:", err);
+            // Show error and sign out
+            try {
+              await auth.signOut();
+            } catch (e) {
+              console.warn("[auth] error signing out:", e);
+            }
+            alert("Error loading your profile. Please log in again.");
+          }
+        } else {
+          console.log(
+            "[auth] user is null, stopping listeners and showing login"
+          );
+
+          stopMessagesListener();
+          stopTypingListener();
+
+          currentUserId = null;
+          currentUsername = null;
+          messagesDiv.innerHTML = "";
+
+          chatInterface.classList.add("hidden");
+          loginForm.classList.remove("hidden");
+          // Hide loading screen if not logged in
+          loadingScreen.classList.add("hidden");
+          updateChatUserLabel("");
+        }
+      });
+
+      // Logout
+      logoutBtn.onclick = async () => {
+        console.log("[logout] clicked");
+        logoutBtn.disabled = true;
+        logoutBtn.textContent = "Logging out...";
+
+        try {
+          // Try to clear typing status before leaving
+          try {
+            if (currentUserId) {
+              await db.ref("typingStatus/" + currentUserId).remove();
+              console.log("[logout] cleared typing status");
+            }
+          } catch (e) {
+            console.warn("[logout] could not clear typing status:", e);
+          }
+
+          // Stop listeners
+          stopMessagesListener();
+          stopTypingListener();
+
+          // Sign out
+          await auth.signOut();
+          console.log("[logout] signOut complete");
+
+          // Clear UI
+          msgInput.value = "";
+          loginPasswordInput.value = "";
+          clearLoginMessages();
+
+          const remember = localStorage.getItem("rememberMe") === "true";
+          if (!remember) {
+            localStorage.removeItem("rememberedUsername");
+            loginUsernameInput.value = "";
+          } else {
+            const savedUsername = localStorage.getItem("rememberedUsername");
+            loginUsernameInput.value = savedUsername || "";
+          }
+        } catch (err) {
+          console.error("[logout] error during logout:", err);
+          alert("Error logging out. Try refreshing the page.");
+        } finally {
+          logoutBtn.disabled = false;
+          logoutBtn.textContent = "Logout";
+        }
+      };
+
+      // Send a message (shared logic) + local rate-limit + server rules
+      function sendMessage() {
+        const text = msgInput.value.trim();
+        if (text === "") return;
+
+        const userObj = auth.currentUser;
+        if (!userObj) {
+          console.warn("[send] tried to send while not logged in");
+          currentWarningText = "Not logged in. Please refresh and log in again.";
+          updateStatusBar();
+          msgInput.value = "";
+          setTimeout(() => {
+            currentWarningText = "";
+            updateStatusBar();
+          }, 3000);
+          return;
+        }
+        
+        if (!currentUsername) {
+          console.warn("[send] no username set");
+          currentWarningText = "Username not loaded. Please refresh.";
+          updateStatusBar();
+          setTimeout(() => {
+            currentWarningText = "";
+            updateStatusBar();
+          }, 3000);
+          return;
+        }
+
+        // ✅ Local 250ms rate limit (was 500ms)
+        const now = Date.now();
+        if (now - lastSentTime < 250) {
+          showRateLimitWarning();
+          return;
+        }
+        lastSentTime = now;
+
+        const username = currentUsername;
+
+        console.log("[send] sending message", {
+          username,
+          text,
+          userId: userObj.uid,
+        });
+
+        const uid = userObj.uid;
+
+        // Add visual feedback to send button
+        const originalBtnText = sendBtn.innerHTML;
+        sendBtn.innerHTML = '<span class="animate-pulse">✓</span>';
+        sendBtn.disabled = true;
+
+        // Push the message
+        db.ref("messages")
+          .push({
+            user: username,
+            text: text,
+            time: firebase.database.ServerValue.TIMESTAMP,
+          })
+          .then((ref) => {
+            console.log("[send] message saved under key", ref.key);
+
+            // Update last message time so Firebase rules can block spam as backup
+            return db
+              .ref("userLastMessageTime/" + uid)
+              .set(firebase.database.ServerValue.TIMESTAMP);
+          })
+          .then(() => {
+            // Only clear input when message + timestamp both succeed
+            msgInput.value = "";
+            // Stop typing once message is sent
+            setTyping(false);
+            
+            // Reset button after 300ms
+            setTimeout(() => {
+              sendBtn.innerHTML = originalBtnText;
+              sendBtn.disabled = false;
+            }, 300);
+          })
+          .catch((error) => {
+            console.error("[send] error sending message:", error);
+            
+            let errorMsg = "Failed to send message";
+            if (error.code === "PERMISSION_DENIED") {
+              errorMsg = "Message blocked (rate limit or permissions)";
+              showRateLimitWarning();
+            } else if (error.message?.includes("permission")) {
+              errorMsg = "Permission denied. Check Firebase rules.";
+            } else if (error.message?.includes("network")) {
+              errorMsg = "Network error. Check your connection.";
+            }
+            
+            currentWarningText = errorMsg;
+            updateStatusBar();
+            
+            // Reset button on error
+            setTimeout(() => {
+              sendBtn.innerHTML = originalBtnText;
+              sendBtn.disabled = false;
+              currentWarningText = "";
+              updateStatusBar();
+            }, 3000);
+          });
+      }
+
+      // Form submit = send message (works with Enter / Return everywhere)
+      messageForm.addEventListener("submit", (e) => {
+        e.preventDefault();
+        sendMessage();
+      });
+
+      // ===== SETTINGS MENU & MODALS =====
+      const menuToggle = document.getElementById("menuToggle");
+      const settingsMenu = document.getElementById("settingsMenu");
+      const settingsModal = document.getElementById("settingsModal");
+      const profileModal = document.getElementById("profileModal");
+      const viewProfileModal = document.getElementById("viewProfileModal");
+      const settingsOpenBtn = document.getElementById("settingsOpenBtn");
+      const profileOpenBtn = document.getElementById("profileOpenBtn");
+      const settingsCloseBtn = document.getElementById("settingsCloseBtn");
+      const profileCloseBtn = document.getElementById("profileCloseBtn");
+      const saveProfileBtn = document.getElementById("saveProfileBtn");
+      const uploadPicBtn = document.getElementById("uploadPicBtn");
+      const viewProfileCloseBtn = document.getElementById("viewProfileCloseBtn");
+      const viewProfileCloseBtn2 = document.getElementById("viewProfileCloseBtn2");
+      const viewProfilePic = document.getElementById("viewProfilePic");
+      const viewProfileName = document.getElementById("viewProfileName");
+      const viewProfileBio = document.getElementById("viewProfileBio");
+      const profilePicInput = document.getElementById("profilePicInput");
+      const profileBio = document.getElementById("profileBio");
+      const profileUsername = document.getElementById("profileUsername");
+      const profilePicPreview = document.getElementById("profilePicPreview");
+
+      let currentUserData = {};
+
+      // Toggle menu
+      menuToggle.addEventListener("click", (e) => {
+        e.stopPropagation(); // Prevent event from bubbling
+        settingsMenu.classList.toggle("menu-open");
+        settingsMenu.classList.toggle("menu-closed");
+      });
+
+      // Close menu when clicking outside
+      document.addEventListener("click", (e) => {
+        // Only close if clicking outside BOTH menu and toggle button
+        if (!settingsMenu.contains(e.target) && !menuToggle.contains(e.target)) {
+          settingsMenu.classList.remove("menu-open");
+          settingsMenu.classList.add("menu-closed");
+        }
+      });
+
+      // Prevent closing when clicking inside menu
+      settingsMenu.addEventListener("click", (e) => {
+        e.stopPropagation();
+      });
+
+      // Open settings modal
+      settingsOpenBtn.addEventListener("click", () => {
+        settingsMenu.classList.remove("menu-open");
+        settingsMenu.classList.add("menu-closed");
+        settingsModal.classList.remove("modal-closed");
+        settingsModal.classList.add("modal-open");
+      });
+
+      // Close settings modal
+      settingsCloseBtn.addEventListener("click", () => {
+        settingsModal.classList.remove("modal-open");
+        settingsModal.classList.add("modal-closed");
+      });
+
+      settingsModal.addEventListener("click", (e) => {
+        if (e.target === settingsModal) {
+          settingsModal.classList.remove("modal-open");
+          settingsModal.classList.add("modal-closed");
+        }
+      });
+
+      // Open profile modal
+      profileOpenBtn.addEventListener("click", () => {
+        settingsMenu.classList.remove("menu-open");
+        settingsMenu.classList.add("menu-closed");
+        loadUserProfile();
+        profileModal.classList.remove("modal-closed");
+        profileModal.classList.add("modal-open");
+      });
+
+      // Message size buttons
+      document.querySelectorAll(".size-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const size = btn.getAttribute("data-size");
+          document.querySelectorAll(".size-btn").forEach((b) => {
+            b.classList.remove("active", "bg-sky-600", "hover:bg-sky-700", "text-white");
+            b.classList.add("bg-slate-700", "hover:bg-slate-600", "text-slate-200");
+          });
+          btn.classList.remove("bg-slate-700", "hover:bg-slate-600", "text-slate-200");
+          btn.classList.add("active", "bg-sky-600", "hover:bg-sky-700", "text-white");
+
+          // Apply message size
+          const messagesContainer = document.getElementById("messages");
+          messagesContainer.classList.remove("msg-small", "msg-large");
+          if (size === "small") messagesContainer.classList.add("msg-small");
+          if (size === "large") messagesContainer.classList.add("msg-large");
+
+          localStorage.setItem("messageSize", size);
+          console.log("[settings] message size set to", size);
+        });
+      });
+
+      // Theme buttons with light mode implementation
+      function applyTheme(theme) {
+        if (theme === "light") {
+          document.body.classList.add("light-mode");
+        } else {
+          document.body.classList.remove("light-mode");
+        }
+        localStorage.setItem("theme", theme);
+        console.log("[settings] theme applied:", theme);
+      }
+
+      document.querySelectorAll(".theme-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const theme = btn.getAttribute("data-theme");
+          document.querySelectorAll(".theme-btn").forEach((b) => {
+            b.classList.remove("active", "bg-sky-600", "hover:bg-sky-700", "text-white");
+            b.classList.add("bg-slate-700", "hover:bg-slate-600", "text-slate-200");
+          });
+          btn.classList.remove("bg-slate-700", "hover:bg-slate-600", "text-slate-200");
+          btn.classList.add("active", "bg-sky-600", "hover:bg-sky-700", "text-white");
+
+          applyTheme(theme);
+        });
+      });
+
+      // Load saved theme on startup
+      (function initTheme() {
+        const savedTheme = localStorage.getItem("theme") || "dark";
+        const themeBtn = document.querySelector(`[data-theme="${savedTheme}"]`);
+        if (themeBtn) {
+          themeBtn.click();
+        }
+        applyTheme(savedTheme);
+      })();
+
+      // Upload profile picture
+      uploadPicBtn.addEventListener("click", () => {
+        profilePicInput.click();
+      });
+
+      profilePicInput.addEventListener("change", (e) => {
+        const file = e.target.files[0];
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            profilePicPreview.innerHTML = "";
+            const img = document.createElement("img");
+            img.src = event.target.result;
+            img.className = "h-full w-full object-cover";
+            profilePicPreview.appendChild(img);
+            currentUserData.profilePic = event.target.result;
+          };
+          reader.readAsDataURL(file);
+        }
+      });
+
+      // Load user profile data
+      function loadUserProfile() {
+        const uid = auth.currentUser?.uid;
+        if (!uid) {
+          console.error("[profile] no user ID");
+          return;
+        }
+
+        // Set username
+        profileUsername.value = currentUsername || "";
+
+        // Load from Firebase with error handling
+        db.ref("userProfiles/" + uid).once(
+          "value",
+          (snap) => {
+            const data = snap.val();
+            if (data) {
+              profileBio.value = data.bio || "";
+              if (data.profilePic) {
+                try {
+                  profilePicPreview.innerHTML = "";
+                  const img = document.createElement("img");
+                  img.src = data.profilePic;
+                  img.className = "h-full w-full object-cover";
+                  img.onerror = () => {
+                    console.warn("[profile] failed to load image");
+                    setDefaultProfileIcon(profilePicPreview, 40);
+                  };
+                  profilePicPreview.appendChild(img);
+                } catch (e) {
+                  console.warn("[profile] error loading image:", e);
+                  setDefaultProfileIcon(profilePicPreview, 40);
+                }
+              }
+              currentUserData = { ...data };
+              console.log("[profile] loaded successfully");
+            } else {
+              // Auto-create empty profile
+              console.log("[profile] no profile exists, will create on save");
+              profileBio.value = "";
+              setDefaultProfileIcon(profilePicPreview, 40);
+              currentUserData = {};
+            }
+          },
+          (err) => {
+            console.error("[profile] error loading profile:", err);
+            alert("Could not load profile. Error: " + err.message);
+            profileBio.value = "";
+            currentUserData = {};
+          }
+        );
+      }
+
+      // View another user's profile
+      function viewUserProfile(username) {
+        console.log("[profile] viewing profile for", username);
+        
+        if (username === currentUsername) {
+          // If it's their own profile, open the edit modal
+          profileOpenBtn.click();
+          return;
+        }
+
+        // For other users, show custom read-only view
+        viewProfileName.textContent = username || "-";
+        viewProfileBio.textContent = "Loading...";
+        viewProfilePic.innerHTML = generateDefaultAvatar(username);
+
+        // Fetch user profile (non-blocking)
+        setTimeout(() => {
+          fetchUserProfile(username).then(profile => {
+            if (profile?.profilePic) {
+              try {
+                viewProfilePic.innerHTML = "";
+                const img = document.createElement("img");
+                img.src = profile.profilePic;
+                img.className = "h-full w-full object-cover rounded-full";
+                img.onerror = () => {
+                  setDefaultProfileIcon(viewProfilePic, 64);
+                };
+                viewProfilePic.appendChild(img);
+              } catch (e) {
+                // Keep default
+              }
+            }
+            viewProfileBio.textContent = profile?.bio || "No bio yet";
+          }).catch(() => {
+            viewProfileBio.textContent = "No bio yet";
+          });
+        }, 0);
+
+        viewProfileModal.classList.remove("modal-closed");
+        viewProfileModal.classList.add("modal-open");
+      }
+
+      // Generate default avatar with initials
+      function generateDefaultAvatar(username) {
+        const initial = (username || "?").charAt(0).toUpperCase();
+        const colors = [
+          "from-red-500 to-red-600",
+          "from-blue-500 to-blue-600",
+          "from-purple-500 to-purple-600",
+          "from-green-500 to-green-600",
+          "from-pink-500 to-pink-600",
+          "from-indigo-500 to-indigo-600",
+          "from-cyan-500 to-cyan-600",
+          "from-amber-500 to-amber-600"
+        ];
+        const colorIdx = (username.charCodeAt(0) || 0) % colors.length;
+        const color = colors[colorIdx];
+        return `<div class="h-full w-full bg-gradient-to-br ${color} flex items-center justify-center text-4xl font-bold text-white">${initial}</div>`;
+      }
+
+      // Helper to set default profile picture SVG
+      function setDefaultProfileIcon(element, size = 40) {
+        const svg = `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>`;
+        element.innerHTML = svg;
+      }
+
+      // Reset profile modal to edit mode when closing
+      profileCloseBtn.addEventListener("click", () => {
+        profileModal.classList.remove("modal-open");
+        profileModal.classList.add("modal-closed");
+        // Reset to edit mode
+        setTimeout(() => {
+          profileBio.disabled = false;
+          profileBio.style.opacity = "1";
+          saveProfileBtn.style.display = "block";
+          uploadPicBtn.style.display = "block";
+        }, 100);
+      });
+
+      profileModal.addEventListener("click", (e) => {
+        if (e.target === profileModal) {
+          profileModal.classList.remove("modal-open");
+          profileModal.classList.add("modal-closed");
+          // Reset to edit mode
+          setTimeout(() => {
+            profileBio.disabled = false;
+            profileBio.style.opacity = "1";
+            saveProfileBtn.style.display = "block";
+            uploadPicBtn.style.display = "block";
+          }, 100);
+        }
+      });
+
+      // Close view profile modal
+      viewProfileCloseBtn.addEventListener("click", () => {
+        viewProfileModal.classList.remove("modal-open");
+        viewProfileModal.classList.add("modal-closed");
+      });
+
+      viewProfileCloseBtn2.addEventListener("click", () => {
+        viewProfileModal.classList.remove("modal-open");
+        viewProfileModal.classList.add("modal-closed");
+      });
+
+      viewProfileModal.addEventListener("click", (e) => {
+        if (e.target === viewProfileModal) {
+          viewProfileModal.classList.remove("modal-open");
+          viewProfileModal.classList.add("modal-closed");
+        }
+      });
+
+      // Save profile
+      saveProfileBtn.addEventListener("click", () => {
+        const uid = auth.currentUser?.uid;
+        if (!uid) {
+          console.error("[profile] not logged in");
+          alert("Not logged in. Please refresh and log in again.");
+          return;
+        }
+
+        const newUsername = profileUsername.value.trim();
+        
+        // Validate username
+        if (!newUsername) {
+          alert("Username cannot be empty");
+          return;
+        }
+
+        if (newUsername.includes("@") || newUsername.includes(" ")) {
+          alert("Username can't have spaces or '@'");
+          return;
+        }
+
+        // Validate bio length
+        if (profileBio.value.length > 150) {
+          alert("Bio is too long (max 150 characters)");
+          return;
+        }
+
+        saveProfileBtn.disabled = true;
+        saveProfileBtn.textContent = "Saving...";
+        const originalText = saveProfileBtn.textContent;
+
+        // Check if username changed
+        const usernameChanged = newUsername !== currentUsername;
+
+        if (usernameChanged) {
+          // Check if new username is already taken
+          console.log("[profile] checking if username is taken:", newUsername);
+          db.ref("users")
+            .orderByChild("username")
+            .equalTo(newUsername)
+            .once("value")
+            .then((snap) => {
+              if (snap.exists()) {
+                throw new Error("Username already taken");
+              }
+
+              // Update both profile and username paths
+              const updates = {};
+              updates["userProfiles/" + uid] = {
+                username: newUsername,
+                bio: profileBio.value.trim(),
+                profilePic: currentUserData.profilePic || null,
+                updatedAt: firebase.database.ServerValue.TIMESTAMP,
+              };
+              updates["users/" + uid + "/username"] = newUsername;
+
+              return db.ref().update(updates);
+            })
+            .then(() => {
+              console.log("[profile] saved successfully with new username");
+              currentUsername = newUsername;
+              updateChatUserLabel(newUsername);
+              
+              // Clear profile cache so next load gets fresh data
+              profileCache[newUsername] = null;
+              
+              // Re-render all messages to update usernames if they were changed
+              messagesContainer.innerHTML = "";
+              currentMessages.forEach((msg) => renderMessageOnce(msg));
+              
+              saveProfileBtn.textContent = "✓ Saved!";
+              saveProfileBtn.style.background = "rgb(34, 197, 94)"; // green
+              setTimeout(() => {
+                saveProfileBtn.textContent = originalText;
+                saveProfileBtn.style.background = "";
+                saveProfileBtn.disabled = false;
+              }, 2000);
+            })
+            .catch((err) => {
+              console.error("[profile] error:", err);
+              
+              let errorMsg = "Error saving profile";
+              let buttonText = "Failed";
+              
+              if (err.message?.includes("already taken")) {
+                errorMsg = "Username is taken";
+                buttonText = "Username taken";
+              } else if (err.message?.includes("permission")) {
+                errorMsg = "Permission denied. Check Firebase rules.";
+              } else if (err.message?.includes("network")) {
+                errorMsg = "Network error. Check your connection.";
+              }
+
+              saveProfileBtn.textContent = buttonText;
+              saveProfileBtn.style.background = "rgb(239, 68, 68)"; // red
+
+              setTimeout(() => {
+                alert(errorMsg);
+                saveProfileBtn.textContent = originalText;
+                saveProfileBtn.style.background = "";
+                saveProfileBtn.disabled = false;
+              }, 1500);
+            });
+        } else {
+          // Username didn't change, just save profile
+          const userData = {
+            username: currentUsername,
+            bio: profileBio.value.trim(),
+            profilePic: currentUserData.profilePic || null,
+            updatedAt: firebase.database.ServerValue.TIMESTAMP,
+          };
+
+          db.ref("userProfiles/" + uid)
+            .set(userData)
+            .then(() => {
+              console.log("[profile] saved successfully");
+              saveProfileBtn.textContent = "✓ Saved!";
+              saveProfileBtn.style.background = "rgb(34, 197, 94)"; // green
+              setTimeout(() => {
+                saveProfileBtn.textContent = originalText;
+                saveProfileBtn.style.background = "";
+                saveProfileBtn.disabled = false;
+              }, 2000);
+            })
+            .catch((err) => {
+              console.error("[profile] error:", err);
+              saveProfileBtn.textContent = "Failed";
+              saveProfileBtn.style.background = "rgb(239, 68, 68)"; // red
+              
+              let errorMsg = "Error saving profile";
+              if (err.message?.includes("permission")) {
+                errorMsg = "Permission denied. Check Firebase rules for /userProfiles";
+              } else if (err.message?.includes("network")) {
+                errorMsg = "Network error. Check your connection.";
+              }
+              
+              setTimeout(() => {
+                alert(errorMsg);
+                saveProfileBtn.textContent = originalText;
+                saveProfileBtn.style.background = "";
+                saveProfileBtn.disabled = false;
+              }, 1500);
+            });
+        }
+      });
+
+      // Load message size preference on startup
+      const savedSize = localStorage.getItem("messageSize") || "medium";
+      const sizeBtn = document.querySelector(`[data-size="${savedSize}"]`);
+      if (sizeBtn) {
+        sizeBtn.click();
+      }
+
+      // ===== FRIEND REQUESTS =====
+      let currentViewingUsername = null;
+
+      const friendRequestsModal = document.getElementById("friendRequestsModal");
+      const friendRequestsCloseBtn = document.getElementById("friendRequestsCloseBtn");
+      const friendRequestsList = document.getElementById("friendRequestsList");
+      const noFriendRequestsMsg = document.getElementById("noFriendRequestsMsg");
+      const friendRequestBadge = document.getElementById("friendRequestBadge");
+      const sendFriendRequestBtn = document.getElementById("sendFriendRequestBtn");
+      const friendsRequestsBtn = document.getElementById("friendsRequestsBtn");
+
+      // Open friend requests modal
+      friendsRequestsBtn.addEventListener("click", () => {
+        friendRequestsModal.classList.remove("modal-closed");
+        friendRequestsModal.classList.add("modal-open");
+        loadFriendRequests();
+      });
+
+      friendRequestsCloseBtn.addEventListener("click", () => {
+        friendRequestsModal.classList.remove("modal-open");
+        friendRequestsModal.classList.add("modal-closed");
+      });
+
+      friendRequestsModal.addEventListener("click", (e) => {
+        if (e.target === friendRequestsModal) {
+          friendRequestsModal.classList.remove("modal-open");
+          friendRequestsModal.classList.add("modal-closed");
+        }
+      });
+
+      // Load and display friend requests
+      async function loadFriendRequests() {
+        const uid = auth.currentUser?.uid;
+        if (!uid) {
+          logDetailedError("loadFriendRequests", new Error("Not logged in"));
+          return;
+        }
+
+        try {
+          console.log("[friends] loading requests for uid:", uid);
+          const snap = await db.ref("friendRequests/" + uid + "/incoming").once("value");
+          const requests = snap.val() || {};
+          const requestArray = Object.entries(requests).map(([fromUid, data]) => ({
+            fromUid,
+            fromUsername: data.fromUsername,
+            timestamp: data.timestamp
+          }));
+
+          console.log("[friends] loaded", requestArray.length, "requests");
+
+          friendRequestsList.innerHTML = "";
+
+          if (requestArray.length === 0) {
+            noFriendRequestsMsg.style.display = "block";
+            friendRequestBadge.classList.add("hidden");
+            friendRequestBadge.textContent = "0";
+          } else {
+            noFriendRequestsMsg.style.display = "none";
+            friendRequestBadge.classList.remove("hidden");
+            friendRequestBadge.textContent = requestArray.length;
+
+            requestArray.forEach((req) => {
+              const div = document.createElement("div");
+              div.className = "flex items-center justify-between p-3 bg-slate-700/50 rounded-lg";
+              div.innerHTML = `
+                <span class="text-sm font-medium text-slate-100">${req.fromUsername}</span>
+                <div class="flex gap-2">
+                  <button class="accept-btn px-3 py-1 bg-sky-600 hover:bg-sky-700 text-white text-xs rounded-lg transition-colors" data-from-uid="${req.fromUid}">
+                    Accept
+                  </button>
+                  <button class="reject-btn px-3 py-1 bg-slate-600 hover:bg-slate-500 text-slate-100 text-xs rounded-lg transition-colors" data-from-uid="${req.fromUid}">
+                    Reject
+                  </button>
+                </div>
+              `;
+              friendRequestsList.appendChild(div);
+            });
+
+            // Add event listeners
+            friendRequestsList.querySelectorAll(".accept-btn").forEach((btn) => {
+              btn.addEventListener("click", () => {
+                const fromUid = btn.dataset.fromUid;
+                console.log("[friends] accept button clicked for:", fromUid);
+                acceptFriendRequest(fromUid);
+              });
+            });
+
+            friendRequestsList.querySelectorAll(".reject-btn").forEach((btn) => {
+              btn.addEventListener("click", () => {
+                const fromUid = btn.dataset.fromUid;
+                console.log("[friends] reject button clicked for:", fromUid);
+                rejectFriendRequest(fromUid);
+              });
+            });
+          }
+        } catch (err) {
+          logDetailedError("loadFriendRequests", err, { uid });
+          alert("Error loading requests: " + err.message);
+        }
+      }
+
+      // Send friend request
+      sendFriendRequestBtn.addEventListener("click", async () => {
+        const uid = auth.currentUser?.uid;
+        if (!uid) {
+          logDetailedError("sendFriendRequest", new Error("Not logged in"));
+          alert("Not logged in");
+          return;
+        }
+        
+        if (!currentViewingUsername) {
+          logDetailedError("sendFriendRequest", new Error("No username selected"));
+          alert("No profile selected");
+          return;
+        }
+
+        if (currentViewingUsername === currentUsername) {
+          alert("You can't send a friend request to yourself!");
+          return;
+        }
+
+        try {
+          console.log("[friends] sending request from:", currentUsername, "to:", currentViewingUsername);
+          sendFriendRequestBtn.disabled = true;
+          sendFriendRequestBtn.textContent = "Sending...";
+
+          // Get target user's UID from username
+          console.log("[friends] looking up target uid for username:", currentViewingUsername);
+          const snap = await db.ref("users").orderByChild("username").equalTo(currentViewingUsername).once("value");
+          if (!snap.exists()) {
+            alert("User not found");
+            sendFriendRequestBtn.disabled = false;
+            sendFriendRequestBtn.textContent = "Add Friend";
+            return;
+          }
+
+          const targetUid = Object.keys(snap.val())[0];
+          console.log("[friends] found target uid:", targetUid);
+
+          // Check if already sent or friends
+          console.log("[friends] checking for existing request at: friendRequests/" + targetUid + "/incoming/" + uid);
+          const existingReq = await db.ref("friendRequests/" + targetUid + "/incoming/" + uid).once("value");
+          if (existingReq.exists()) {
+            alert("Friend request already sent!");
+            sendFriendRequestBtn.disabled = false;
+            sendFriendRequestBtn.textContent = "Add Friend";
+            return;
+          }
+
+          // Send request
+          console.log("[friends] writing request to: friendRequests/" + targetUid + "/incoming/" + uid);
+          await db.ref("friendRequests/" + targetUid + "/incoming/" + uid).set({
+            fromUsername: currentUsername,
+            timestamp: firebase.database.ServerValue.TIMESTAMP
+          });
+
+          console.log("[friends] request sent successfully");
+          sendFriendRequestBtn.textContent = "✓ Sent!";
+          sendFriendRequestBtn.style.background = "rgb(34, 197, 94)";
+          setTimeout(() => {
+            sendFriendRequestBtn.disabled = false;
+            sendFriendRequestBtn.textContent = "Add Friend";
+            sendFriendRequestBtn.style.background = "";
+          }, 2000);
+        } catch (err) {
+          const errorInfo = logDetailedError("sendFriendRequest", err, {
+            targetUsername: currentViewingUsername,
+            currentUser: currentUsername,
+            uid,
+            path: "friendRequests/" + (uid ? "targetUid" : "?") + "/incoming/" + uid
+          });
+
+          let errorMsg = "Error sending request";
+          if (err.message?.includes("permission_denied")) {
+            errorMsg = "Permission denied - check Firebase rules for /friendRequests\n\nMake sure your rules allow writing to incoming requests.";
+          } else if (err.message?.includes("network")) {
+            errorMsg = "Network error - check your connection";
+          } else if (err.code === "PERMISSION_DENIED") {
+            errorMsg = "You don't have permission to send requests - check Firebase rules";
+          }
+
+          alert(errorMsg + "\n\n(Check console for details)");
+          sendFriendRequestBtn.disabled = false;
+          sendFriendRequestBtn.textContent = "Add Friend";
+        }
+      });
+
+      // Accept friend request
+      async function acceptFriendRequest(fromUid) {
+        const uid = auth.currentUser?.uid;
+        if (!uid) {
+          logDetailedError("acceptFriendRequest", new Error("Not logged in"), { fromUid });
+          return;
+        }
+
+        try {
+          console.log("[friends] accepting request from:", fromUid);
+          
+          const fromUsernameSnap = await db.ref("friendRequests/" + uid + "/incoming/" + fromUid + "/fromUsername").once("value");
+          const fromUsername = fromUsernameSnap.val();
+
+          if (!fromUsername) {
+            throw new Error("Could not find fromUsername in request");
+          }
+
+          console.log("[friends] removing request from:", fromUid);
+          // Remove request
+          await db.ref("friendRequests/" + uid + "/incoming/" + fromUid).remove();
+
+          console.log("[friends] adding friend:", fromUid, fromUsername);
+          // Add to friends list for both users
+          await db.ref("friends/" + uid + "/" + fromUid).set({
+            username: fromUsername,
+            addedAt: firebase.database.ServerValue.TIMESTAMP
+          });
+
+          await db.ref("friends/" + fromUid + "/" + uid).set({
+            username: currentUsername,
+            addedAt: firebase.database.ServerValue.TIMESTAMP
+          });
+
+          console.log("[friends] request accepted successfully");
+          loadFriendRequests();
+        } catch (err) {
+          logDetailedError("acceptFriendRequest", err, { fromUid, currentUid: uid });
+          alert("Error accepting request: " + err.message);
+        }
+      }
+
+      // Reject friend request
+      async function rejectFriendRequest(fromUid) {
+        const uid = auth.currentUser?.uid;
+        if (!uid) {
+          logDetailedError("rejectFriendRequest", new Error("Not logged in"), { fromUid });
+          return;
+        }
+
+        try {
+          console.log("[friends] rejecting request from:", fromUid);
+          await db.ref("friendRequests/" + uid + "/incoming/" + fromUid).remove();
+          console.log("[friends] request rejected successfully");
+          loadFriendRequests();
+        } catch (err) {
+          logDetailedError("rejectFriendRequest", err, { fromUid, currentUid: uid });
+          alert("Error rejecting request: " + err.message);
+        }
+      }
+
+      // Update viewUserProfile to track username
+      const originalViewUserProfile = window.viewUserProfile;
+      window.viewUserProfile = function(username) {
+        currentViewingUsername = username;
+        originalViewUserProfile.call(this, username);
+      };
+    </script>
+  </body>
 </html>
