@@ -152,7 +152,7 @@
   <script>
     // --- GLOBAL ERROR LOGGING ---
     window.addEventListener("error", (event) => {
-      console.error("[window error]", event.message, "at", event.filename + ":" + event.lineno);
+      console.error("[window error]", event.message, "at", event.filename + ":" + event.lineno, "details:", event.error);
     });
 
     window.addEventListener("unhandledrejection", (event) => {
@@ -197,15 +197,24 @@
     const registerBtn             = document.getElementById("registerBtn");
     const registerError           = document.getElementById("registerError");
 
-    const msgInput     = document.getElementById("msgInput");
-    const sendBtn      = document.getElementById("sendBtn");
-    const messagesDiv  = document.getElementById("messages");
-    const messageForm  = document.getElementById("messageForm");
+    const msgInput        = document.getElementById("msgInput");
+    const sendBtn         = document.getElementById("sendBtn");
+    const messagesDiv     = document.getElementById("messages");
+    const messageForm     = document.getElementById("messageForm");
 
     const registerLink  = document.getElementById("registerLink");
     const loginLink     = document.getElementById("loginLink");
     const logoutBtn     = document.getElementById("logoutBtn");
     const chatUserLabel = document.getElementById("chatUserLabel");
+
+    // Global state
+    let currentUsername = null;   // SINGLE SOURCE for username
+    let currentUserId   = null;
+
+    // Real-time messages
+    let messagesListener  = null;
+    let messagesRef       = null;
+    const seenMessageKeys = new Set();
 
     // Helper: clear messages
     function clearLoginMessages() {
@@ -218,11 +227,28 @@
     }
 
     function updateChatUserLabel(username) {
+      currentUsername = username || null;
       chatUserLabel.textContent = username ? `Logged in as ${username}` : "";
       console.log("[ui] chat user label set to:", chatUserLabel.textContent);
     }
 
-    // On load: prefill username if "remember me" was used
+    // --- USERNAME FROM DB (ONE SOURCE OF TRUTH) ---
+    async function fetchUsername(uid, emailFallback) {
+      try {
+        const snap = await db.ref("users/" + uid + "/username").once("value");
+        let username = snap.val();
+        if (!username && emailFallback) {
+          username = emailFallback.split("@")[0];
+        }
+        return username || "User";
+      } catch (err) {
+        console.error("[username] error fetching from DB", err);
+        if (emailFallback) return emailFallback.split("@")[0];
+        return "User";
+      }
+    }
+
+    // On load: prefill username if "remember me" was used (ONLY for login form)
     (function initRememberMe() {
       try {
         const remember      = localStorage.getItem("rememberMe") === "true";
@@ -272,7 +298,6 @@
         return exists;
       } catch (err) {
         console.error("[users] error while checking username", err);
-        // If we can't check, be safe and say "taken" so we don't create bad state
         registerError.textContent = "Error checking username. Try again.";
         return true;
       }
@@ -327,9 +352,6 @@
         await userRef.set({ username });
         console.log("[register] username saved to /users", user.uid);
 
-        // Store the username in localStorage (for chat)
-        localStorage.setItem("username", username);
-
         // Log them out so they still go through login flow
         await auth.signOut();
         console.log("[register] signed out after registration");
@@ -351,7 +373,7 @@
       }
     };
 
-    // Sign In User (username + password only) with persistence
+    /// Sign In User (username + password only) with persistence
     loginBtn.onclick = async () => {
       clearLoginMessages();
 
@@ -374,71 +396,86 @@
       const fakeEmail = makeEmailFromUsername(username);
 
       try {
-        // Set persistence based on "remember me"
         const persistence = remember
-          ? firebase.auth.Auth.Persistence.LOCAL   // stay logged in across restarts
-          : firebase.auth.Auth.Persistence.SESSION; // only until browser/tab closed
+          ? firebase.auth.Auth.Persistence.LOCAL
+          : firebase.auth.Auth.Persistence.SESSION;
 
         console.log("[login] setting persistence", remember ? "LOCAL" : "SESSION");
         await auth.setPersistence(persistence);
 
         console.log("[login] signing in with email", fakeEmail);
+
         const userCredential = await auth.signInWithEmailAndPassword(
           fakeEmail,
           password
         );
         const user = userCredential.user;
+
         console.log("[login] signed in as", user.uid);
 
-        // Store username for chat
-        localStorage.setItem("username", username);
-
-        // Handle remember me
-        if (remember) {
-          localStorage.setItem("rememberMe", "true");
-          localStorage.setItem("rememberedUsername", username);
-        } else {
-          localStorage.removeItem("rememberMe");
-          localStorage.removeItem("rememberedUsername");
+        // Save "remember me" stuff ONLY for login form next time
+        try {
+          if (remember) {
+            localStorage.setItem("rememberMe", "true");
+            localStorage.setItem("rememberedUsername", username);
+          } else {
+            localStorage.removeItem("rememberMe");
+            localStorage.removeItem("rememberedUsername");
+          }
+        } catch (err) {
+          console.error("[login] error writing rememberMe to localStorage", err);
         }
 
-        updateChatUserLabel(username);
-
-        // Show chat (messages listener also starts in onAuthStateChanged)
-        loginForm.classList.add("hidden");
-        chatInterface.classList.remove("hidden");
-
-        // EXTRA: start listener right away too (in case onAuthStateChanged is slow)
-        console.log("[login] manually starting messages listener after login");
-        startMessagesListener();
+        // DO NOT show chat here. onAuthStateChanged will do it.
       } catch (error) {
         console.error("[login] Error signing in:", error);
-        loginError.textContent = "Wrong username or password.";
+        if (
+          error.code === "auth/user-not-found" ||
+          error.code === "auth/wrong-password"
+        ) {
+          loginError.textContent = "Wrong username or password.";
+        } else if (error.code === "auth/too-many-requests") {
+          loginError.textContent = "Too many attempts. Please wait and try again.";
+        } else {
+          loginError.textContent = "Could not log in. Try again.";
+        }
       }
     };
 
-    // Real-time message listener
-    let messagesListener = null;
-    let messagesRef      = null;
-    const seenMessageKeys = new Set();
-
+    // --- MESSAGE RENDERING (iMessage style bubbles) ---
     function renderMessage(msg) {
-      const wrapper = document.createElement("div");
-      wrapper.className = "p-3 bg-gray-700 rounded";
+      const myName = currentUsername || null;
+      const isMine = myName && msg.user === myName;
 
-      const userSpan = document.createElement("span");
-      userSpan.className = "font-bold text-orange-300";
-      userSpan.textContent = msg.user || "Unknown";
+      const row = document.createElement("div");
+      row.className = "w-full flex";
+      row.classList.add(isMine ? "justify-end" : "justify-start");
 
-      const textSpan = document.createElement("span");
-      textSpan.className = "ml-1 break-words";
-      textSpan.textContent = msg.text || "";
+      const column = document.createElement("div");
+      column.className = "flex flex-col max-w-[75%]";
 
-      wrapper.appendChild(userSpan);
-      wrapper.appendChild(document.createTextNode(": "));
-      wrapper.appendChild(textSpan);
+      if (!isMine) {
+        const nameLabel = document.createElement("div");
+        nameLabel.className = "text-xs text-gray-300 mb-1 ml-1";
+        nameLabel.textContent = msg.user || "Unknown";
+        column.appendChild(nameLabel);
+      }
 
-      messagesDiv.appendChild(wrapper);
+      const bubble = document.createElement("div");
+      bubble.className = "px-3 py-2 rounded-2xl text-sm break-words";
+
+      if (isMine) {
+        bubble.classList.add("bg-blue-500", "text-white", "rounded-br-sm");
+      } else {
+        bubble.classList.add("bg-gray-700", "text-gray-100", "rounded-bl-sm");
+      }
+
+      bubble.textContent = msg.text || "";
+
+      column.appendChild(bubble);
+      row.appendChild(column);
+
+      messagesDiv.appendChild(row);
       messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }
 
@@ -455,15 +492,13 @@
 
     function startMessagesListener() {
       console.log("[messages] startMessagesListener called");
-      stopMessagesListener(); // avoid duplicates
+      stopMessagesListener();
       seenMessageKeys.clear();
       messagesDiv.innerHTML = "";
 
       try {
-        // order by time so history makes sense
         messagesRef = db.ref("messages").orderByChild("time");
 
-        // Load existing messages once
         messagesRef.once(
           "value",
           (snap) => {
@@ -478,7 +513,6 @@
           }
         );
 
-        // Listen for new messages live
         messagesListener = (snap) => {
           const msg = snap.val() || {};
           console.log("[messages] child_added", { key: snap.key, msg });
@@ -512,28 +546,15 @@
     }
 
     // Auto-handle already logged-in users on page load
-    auth.onAuthStateChanged((user) => {
+    auth.onAuthStateChanged(async (user) => {
       console.log("[auth] onAuthStateChanged user =", user ? user.uid : null);
 
       if (user) {
-        // Get username from localStorage or from fake email
-        let username = null;
-        try {
-          username = localStorage.getItem("username");
-        } catch (err) {
-          console.error("[auth] error reading username from localStorage", err);
-        }
+        currentUserId = user.uid;
 
-        if (!username && user.email) {
-          username = user.email.split("@")[0];
-          try {
-            localStorage.setItem("username", username);
-          } catch (err) {
-            console.error("[auth] error writing username to localStorage", err);
-          }
-        }
-
-        updateChatUserLabel(username || "User");
+        // Get username from DB (ONE PLACE)
+        currentUsername = await fetchUsername(user.uid, user.email || null);
+        updateChatUserLabel(currentUsername);
 
         loginForm.classList.add("hidden");
         registerForm.classList.add("hidden");
@@ -542,9 +563,12 @@
         console.log("[auth] starting messages listener from auth state change");
         startMessagesListener();
       } else {
-        // Not logged in
-        console.log("[auth] user is null, stopping listener and showing login");
+        console.log("[auth] user is null, stopping listeners and showing login");
+
         stopMessagesListener();
+
+        currentUserId    = null;
+        currentUsername  = null;
         messagesDiv.innerHTML = "";
 
         chatInterface.classList.add("hidden");
@@ -563,14 +587,12 @@
         console.error("[logout] Error signing out:", e);
       }
 
-      // UI reset happens in onAuthStateChanged
       msgInput.value           = "";
       loginPasswordInput.value = "";
       clearLoginMessages();
 
       const remember = localStorage.getItem("rememberMe") === "true";
       if (!remember) {
-        localStorage.removeItem("username");
         localStorage.removeItem("rememberedUsername");
         loginUsernameInput.value = "";
       } else {
@@ -591,11 +613,13 @@
         return;
       }
 
-      const username =
-        localStorage.getItem("username") ||
-        (userObj.email ? userObj.email.split("@")[0] : "Unknown");
+      let username = currentUsername;
+      if (!username) {
+        console.warn("[send] no currentUsername; falling back to 'Unknown'");
+        username = "Unknown";
+      }
 
-      console.log("[send] sending message", { username, text });
+      console.log("[send] sending message", { username, text, userId: userObj.uid });
 
       db.ref("messages")
         .push({
@@ -618,8 +642,6 @@
       e.preventDefault();
       sendMessage();
     });
-
-    // (No need for extra keydown handler now; the form handles Enter)
   </script>
 
 </body>
