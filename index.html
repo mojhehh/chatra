@@ -945,6 +945,47 @@
       />
     </div>
 
+    <!-- Delete Message Confirmation Modal -->
+    <div
+      id="deleteMessageModal"
+      class="modal-overlay fixed inset-0 z-50 modal-closed items-center justify-center px-4"
+    >
+      <div class="glass-card max-w-sm w-full rounded-2xl p-6 border-2 border-red-500/30">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-red-500">
+              <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              <line x1="10" y1="11" x2="10" y2="17"></line>
+              <line x1="14" y1="11" x2="14" y2="17"></line>
+            </svg>
+          </div>
+          <div>
+            <h3 class="text-lg font-semibold text-slate-100">Delete Message</h3>
+            <p class="text-sm text-slate-400">This action cannot be undone</p>
+          </div>
+        </div>
+
+        <p class="text-sm text-slate-300 mb-6">
+          Are you sure you want to delete this message? It will be removed for everyone.
+        </p>
+
+        <div class="flex gap-3">
+          <button
+            id="cancelDeleteBtn"
+            class="flex-1 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-100 rounded-lg transition-colors font-medium"
+          >
+            Cancel
+          </button>
+          <button
+            id="confirmDeleteBtn"
+            class="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors font-medium"
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+
     <script>
       // --- GLOBAL ERROR LOGGING ---
       window.addEventListener("error", (event) => {
@@ -1791,9 +1832,7 @@
           deleteBtn.title = "Message options";
           
           deleteBtn.addEventListener("click", () => {
-            if (confirm("Delete this message?")) {
-              deleteMessage(messageId, msg.deleteToken);
-            }
+            openDeleteMessageModal(messageId, msg.deleteToken);
           });
           
           bubbleContainer.appendChild(deleteBtn);
@@ -3614,6 +3653,70 @@
       document.addEventListener("keydown", (e) => {
         if (e.key === "Escape" && imageViewerModal.style.display === "flex") {
           closeImageViewerFunc();
+        }
+      });
+
+      // Delete Message Modal
+      const deleteMessageModal = document.getElementById("deleteMessageModal");
+      const cancelDeleteBtn = document.getElementById("cancelDeleteBtn");
+      const confirmDeleteBtn = document.getElementById("confirmDeleteBtn");
+      let pendingDeleteMessageId = null;
+      let pendingDeleteToken = null;
+
+      function openDeleteMessageModal(messageId, deleteToken) {
+        pendingDeleteMessageId = messageId;
+        pendingDeleteToken = deleteToken;
+        deleteMessageModal.classList.remove("modal-closed");
+        deleteMessageModal.classList.add("modal-open");
+      }
+
+      function closeDeleteMessageModal() {
+        deleteMessageModal.classList.remove("modal-open");
+        deleteMessageModal.classList.add("modal-closed");
+        pendingDeleteMessageId = null;
+        pendingDeleteToken = null;
+      }
+
+      cancelDeleteBtn.addEventListener("click", closeDeleteMessageModal);
+
+      confirmDeleteBtn.addEventListener("click", async () => {
+        if (!pendingDeleteMessageId) return;
+
+        // Disable button and show loading state
+        confirmDeleteBtn.disabled = true;
+        confirmDeleteBtn.innerHTML = '<span class="animate-pulse">Deleting...</span>';
+
+        try {
+          await deleteMessage(pendingDeleteMessageId, pendingDeleteToken);
+          
+          // Show success state
+          confirmDeleteBtn.innerHTML = '✓ Deleted';
+          confirmDeleteBtn.className = "flex-1 px-4 py-2 bg-green-600 text-white rounded-lg font-medium";
+          
+          setTimeout(() => {
+            closeDeleteMessageModal();
+            // Reset button state
+            confirmDeleteBtn.disabled = false;
+            confirmDeleteBtn.innerHTML = 'Delete';
+            confirmDeleteBtn.className = "flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors font-medium";
+          }, 800);
+        } catch (err) {
+          // Show error state
+          confirmDeleteBtn.innerHTML = '✗ Failed';
+          confirmDeleteBtn.className = "flex-1 px-4 py-2 bg-orange-600 text-white rounded-lg font-medium";
+          
+          setTimeout(() => {
+            confirmDeleteBtn.disabled = false;
+            confirmDeleteBtn.innerHTML = 'Delete';
+            confirmDeleteBtn.className = "flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors font-medium";
+          }, 2000);
+        }
+      });
+
+      // ESC key to close delete modal
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && deleteMessageModal.classList.contains("modal-open")) {
+          closeDeleteMessageModal();
         }
       });
     </script>
