@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -813,6 +814,23 @@
           ></p>
         </div>
 
+        <!-- Media Preview -->
+        <div id="mediaPreview" class="hidden p-3 bg-slate-800 border-t border-slate-700">
+          <div class="flex items-start gap-3">
+            <div id="mediaPreviewContent" class="flex-1"></div>
+            <button
+              type="button"
+              id="cancelMediaBtn"
+              class="p-1 hover:bg-slate-700 rounded-lg transition-colors text-slate-400"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </div>
+        </div>
+
         <!-- Message Input (wrapped in a form so Enter submits on any device) -->
         <form
           id="messageForm"
@@ -903,6 +921,28 @@
           No friends yet
         </p>
       </div>
+    </div>
+
+    <!-- Image Viewer Modal -->
+    <div
+      id="imageViewerModal"
+      class="fixed inset-0 z-50 hidden items-center justify-center bg-black/90 backdrop-blur-sm"
+      style="cursor: zoom-out;"
+    >
+      <button
+        id="closeImageViewer"
+        class="absolute top-4 right-4 p-2 text-white hover:bg-white/10 rounded-lg transition-colors z-10"
+      >
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+      <img
+        id="imageViewerImg"
+        class="max-w-[95vw] max-h-[95vh] object-contain"
+        style="cursor: zoom-out;"
+      />
     </div>
 
     <script>
@@ -998,7 +1038,7 @@
       const seenMessageKeys = new Set();
 
       // Pagination / infinite scroll
-      const PAGE_SIZE = 50; // Reduced for faster loading
+      const PAGE_SIZE = 75; // Optimized balance between speed and data
       let oldestTime = null;
       let newestTime = null;
       let isLoadingOlder = false;
@@ -1438,39 +1478,97 @@
       // Profile cache to avoid excessive DB lookups
       const profileCache = {};
 
-      // Fetch user profile data with timeout
-      async function fetchUserProfile(username) {
-        if (profileCache[username]) {
-          return profileCache[username];
+      // Delete message function
+      async function deleteMessage(messageId, deleteToken) {
+        if (!messageId) {
+          console.error("[delete] no messageId provided");
+          return;
         }
-        
+
         try {
-          // Set a timeout for the fetch
-          const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error("timeout")), 3000)
-          );
+          console.log("[delete] deleting message", messageId);
 
-          const fetchPromise = (async () => {
-            const snap = await db.ref("users").orderByChild("username").equalTo(username).once("value");
-            if (snap.exists()) {
-              const uid = Object.keys(snap.val())[0];
-              const profileSnap = await db.ref("userProfiles/" + uid).once("value");
-              const data = profileSnap.val() || {};
-              profileCache[username] = { uid, ...data };
-              return profileCache[username];
+          // Delete from Cloudinary if has deleteToken
+          if (deleteToken) {
+            try {
+              await deleteFromCloudinary(deleteToken);
+              console.log("[delete] deleted media from Cloudinary");
+            } catch (err) {
+              console.warn("[delete] failed to delete from Cloudinary, continuing", err);
             }
-            return null;
-          })();
+          }
 
-          return await Promise.race([fetchPromise, timeoutPromise]);
+          // Delete from Firebase
+          await db.ref("messages/" + messageId).remove();
+          console.log("[delete] deleted message from Firebase");
+
+          // Remove from DOM
+          const messageElements = messagesDiv.querySelectorAll(".message-bubble-anim");
+          messageElements.forEach(el => {
+            const parent = el.closest(".w-full");
+            if (parent && parent.dataset.messageId === messageId) {
+              parent.remove();
+            }
+          });
+
         } catch (err) {
-          // Return null on timeout or error - silently
-          return null;
+          console.error("[delete] error deleting message", err);
+          alert("Failed to delete message: " + (err.message || "Unknown error"));
         }
       }
 
+      // Fetch user profile data with timeout
+      // Pending profile requests for deduplication
+      const pendingProfileRequests = new Map();
+
+      async function fetchUserProfile(username) {
+        // Return cached result if available and recent (5 minutes)
+        if (profileCache[username]) {
+          const cached = profileCache[username];
+          const now = Date.now();
+          if (cached._timestamp && (now - cached._timestamp) < 300000) {
+            return cached;
+          }
+        }
+        
+        // Deduplicate concurrent requests for same username
+        if (pendingProfileRequests.has(username)) {
+          return pendingProfileRequests.get(username);
+        }
+        
+        const fetchPromise = (async () => {
+          try {
+            // Set a timeout for the fetch
+            const timeoutPromise = new Promise((_, reject) => 
+              setTimeout(() => reject(new Error("timeout")), 2000)
+            );
+
+            const dataPromise = (async () => {
+              const snap = await db.ref("users").orderByChild("username").equalTo(username).once("value");
+              if (snap.exists()) {
+                const uid = Object.keys(snap.val())[0];
+                const profileSnap = await db.ref("userProfiles/" + uid).once("value");
+                const data = profileSnap.val() || {};
+                profileCache[username] = { uid, ...data, _timestamp: Date.now() };
+                return profileCache[username];
+              }
+              return null;
+            })();
+
+            return await Promise.race([dataPromise, timeoutPromise]);
+          } catch (err) {
+            return null;
+          } finally {
+            pendingProfileRequests.delete(username);
+          }
+        })();
+        
+        pendingProfileRequests.set(username, fetchPromise);
+        return fetchPromise;
+      }
+
       // --- MESSAGE RENDERING (bigger iMessage-style bubbles) ---
-      function createMessageRow(msg) {
+      function createMessageRow(msg, messageId = null) {
         const myName = currentUsername || null;
         const isMine = myName && msg.user === myName;
         const username = msg.user || "Unknown";
@@ -1479,6 +1577,11 @@
         row.className = isMine 
           ? "w-full flex mb-2 sm:mb-2 justify-end pr-1 sm:pr-3 gap-2 items-end"
           : "w-full flex mb-2 sm:mb-2 justify-start pl-1 sm:pl-3 gap-2 items-end";
+        
+        // Store messageId in dataset for deletion
+        if (messageId) {
+          row.dataset.messageId = messageId;
+        }
 
         const column = document.createElement("div");
         column.className =
@@ -1531,6 +1634,10 @@
           column.appendChild(nameLabel);
         }
 
+        // Add container for bubble + delete button
+        const bubbleContainer = document.createElement("div");
+        bubbleContainer.className = "relative group";
+
         const bubble = document.createElement("div");
         const textLength = (msg.text || "").length;
         const isSmallMessage = textLength <= 2;
@@ -1552,12 +1659,33 @@
             videoContainer.style.maxWidth = "400px";
             
             const video = document.createElement("video");
-            video.src = mediaUrl;
+            video.dataset.src = mediaUrl;
             video.controls = true;
-            video.preload = "metadata";
+            video.preload = "none";
             video.className = "w-full rounded-lg";
             video.style.maxHeight = "300px";
             video.style.display = "block";
+            
+            // Lazy load video when visible
+            const observer = new IntersectionObserver((entries) => {
+              entries.forEach(entry => {
+                if (entry.isIntersecting && video.dataset.src) {
+                  video.src = video.dataset.src;
+                  video.preload = "metadata";
+                  delete video.dataset.src;
+                  observer.unobserve(video);
+                }
+              });
+            }, { rootMargin: "100px" });
+            observer.observe(video);
+            
+            // Scroll after video metadata loads
+            video.addEventListener("loadedmetadata", () => {
+              if (!isMine) return; // Only scroll for own messages
+              setTimeout(() => {
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+              }, 50);
+            });
             
             videoContainer.appendChild(video);
             bubble.appendChild(videoContainer);
@@ -1567,14 +1695,33 @@
             gifContainer.style.maxWidth = "400px";
             
             const img = document.createElement("img");
-            img.src = mediaUrl;
+            img.dataset.src = mediaUrl;
             img.className = "w-full rounded-lg cursor-pointer hover:opacity-90 transition-opacity";
             img.style.maxHeight = "300px";
             img.style.display = "block";
             img.style.objectFit = "contain";
             
+            // Lazy load GIF when visible
+            const observer = new IntersectionObserver((entries) => {
+              entries.forEach(entry => {
+                if (entry.isIntersecting && img.dataset.src) {
+                  img.src = img.dataset.src;
+                  delete img.dataset.src;
+                  observer.unobserve(img);
+                }
+              });
+            }, { rootMargin: "100px" });
+            observer.observe(img);
+            
             // GIF controls: loop continuously
             img.onload = () => {
+              // Scroll after image loads (only for own messages)
+              if (isMine) {
+                setTimeout(() => {
+                  messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                }, 50);
+              }
+              
               // Force loop by reloading src when ended (for animated GIFs)
               setInterval(() => {
                 const tempSrc = img.src;
@@ -1583,7 +1730,7 @@
               }, 10000); // Reload every 10 seconds to ensure loop
             };
             
-            img.onclick = () => window.open(mediaUrl, '_blank');
+            img.onclick = () => openImageViewer(mediaUrl);
             gifContainer.appendChild(img);
             bubble.appendChild(gifContainer);
           } else {
@@ -1592,12 +1739,34 @@
             imgContainer.style.maxWidth = "400px";
             
             const img = document.createElement("img");
-            img.src = mediaUrl;
+            img.dataset.src = mediaUrl;
             img.className = "w-full rounded-lg cursor-pointer hover:opacity-90 transition-opacity";
             img.style.maxHeight = "300px";
             img.style.display = "block";
             img.style.objectFit = "contain";
-            img.onclick = () => window.open(mediaUrl, '_blank');
+            
+            // Lazy load image when visible
+            const observer = new IntersectionObserver((entries) => {
+              entries.forEach(entry => {
+                if (entry.isIntersecting && img.dataset.src) {
+                  img.src = img.dataset.src;
+                  delete img.dataset.src;
+                  observer.unobserve(img);
+                }
+              });
+            }, { rootMargin: "100px" });
+            observer.observe(img);
+            
+            // Scroll after image loads (only for own messages)
+            img.onload = () => {
+              if (isMine) {
+                setTimeout(() => {
+                  messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                }, 50);
+              }
+            };
+            
+            img.onclick = () => openImageViewer(mediaUrl);
             
             imgContainer.appendChild(img);
             bubble.appendChild(imgContainer);
@@ -1612,15 +1781,33 @@
           bubble.appendChild(textSpan);
         }
         
-        column.appendChild(bubble);
+        bubbleContainer.appendChild(bubble);
+
+        // Add delete button for own messages
+        if (isMine && messageId) {
+          const deleteBtn = document.createElement("button");
+          deleteBtn.className = "absolute -top-2 -right-2 w-6 h-6 rounded-full bg-slate-700 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center hover:bg-red-600 shadow-md";
+          deleteBtn.innerHTML = "⋮";
+          deleteBtn.title = "Message options";
+          
+          deleteBtn.addEventListener("click", () => {
+            if (confirm("Delete this message?")) {
+              deleteMessage(messageId, msg.deleteToken);
+            }
+          });
+          
+          bubbleContainer.appendChild(deleteBtn);
+        }
+        
+        column.appendChild(bubbleContainer);
         row.appendChild(column);
         return row;
       }
 
       function renderMessage(msg, options = {}) {
-        const { prepend = false, maintainScroll = false } = options;
+        const { prepend = false, maintainScroll = false, messageId = null } = options;
 
-        const row = createMessageRow(msg);
+        const row = createMessageRow(msg, messageId);
 
         if (prepend) {
           if (messagesDiv.firstChild) {
@@ -1645,7 +1832,7 @@
         }
         if (seenMessageKeys.has(key)) return;
         seenMessageKeys.add(key);
-        renderMessage(msg, options);
+        renderMessage(msg, { ...options, messageId: key });
       }
 
       // Batch render messages for better performance
@@ -1657,7 +1844,7 @@
           if (key && seenMessageKeys.has(key)) return;
           if (key) seenMessageKeys.add(key);
 
-          const row = createMessageRow(msg);
+          const row = createMessageRow(msg, key);
           if (options.prepend) {
             fragment.insertBefore(row, fragment.firstChild);
           } else {
@@ -1667,15 +1854,18 @@
         });
 
         if (newMessagesCount > 0) {
-          if (options.prepend && messagesDiv.firstChild) {
-            messagesDiv.insertBefore(fragment, messagesDiv.firstChild);
-          } else {
-            messagesDiv.appendChild(fragment);
-          }
+          // Use requestAnimationFrame for smoother rendering
+          requestAnimationFrame(() => {
+            if (options.prepend && messagesDiv.firstChild) {
+              messagesDiv.insertBefore(fragment, messagesDiv.firstChild);
+            } else {
+              messagesDiv.appendChild(fragment);
+            }
 
-          if (!options.maintainScroll) {
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
-          }
+            if (!options.maintainScroll) {
+              messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            }
+          });
         }
       }
 
@@ -1994,12 +2184,19 @@
         }
       }
 
-      // Typing on input
+      // Typing on input with throttling
+      let lastTypingUpdate = 0;
+      const TYPING_THROTTLE = 1000; // Only update once per second
+      
       msgInput.addEventListener("input", () => {
         if (!currentUserId) return;
 
-        // Mark as typing
-        setTyping(true);
+        const now = Date.now();
+        // Throttle typing updates to reduce database writes
+        if (now - lastTypingUpdate > TYPING_THROTTLE) {
+          setTyping(true);
+          lastTypingUpdate = now;
+        }
 
         // Auto stop after 1.5s of no input
         if (typingTimeoutId) {
@@ -2133,7 +2330,7 @@
       // Send a message (shared logic) + local rate-limit + server rules
       function sendMessage() {
         const text = msgInput.value.trim();
-        if (text === "") return;
+        if (text === "" && !pendingMediaUrl) return;
 
         const userObj = auth.currentUser;
         if (!userObj) {
@@ -2172,6 +2369,7 @@
         console.log("[send] sending message", {
           username,
           text,
+          hasMedia: !!pendingMediaUrl,
           userId: userObj.uid,
         });
 
@@ -2182,13 +2380,23 @@
         sendBtn.innerHTML = '<span class="animate-pulse">✓</span>';
         sendBtn.disabled = true;
 
+        // Build message object
+        const messageData = {
+          user: username,
+          userId: uid,
+          text: text,
+          time: firebase.database.ServerValue.TIMESTAMP,
+        };
+
+        // Add media if present
+        if (pendingMediaUrl) {
+          messageData.media = pendingMediaUrl;
+          messageData.deleteToken = pendingMediaToken;
+        }
+
         // Push the message
         db.ref("messages")
-          .push({
-            user: username,
-            text: text,
-            time: firebase.database.ServerValue.TIMESTAMP,
-          })
+          .push(messageData)
           .then((ref) => {
             console.log("[send] message saved under key", ref.key);
 
@@ -2200,6 +2408,15 @@
           .then(() => {
             // Only clear input when message + timestamp both succeed
             msgInput.value = "";
+            
+            // Clear media preview
+            if (pendingMediaUrl) {
+              pendingMediaUrl = null;
+              pendingMediaToken = null;
+              mediaPreview.classList.add("hidden");
+              mediaPreviewContent.innerHTML = "";
+            }
+            
             // Stop typing once message is sent
             setTyping(false);
             
@@ -2249,6 +2466,13 @@
         mediaInput.click();
       });
 
+      // Global variables for pending media
+      let pendingMediaUrl = null;
+      let pendingMediaToken = null;
+      const mediaPreview = document.getElementById("mediaPreview");
+      const mediaPreviewContent = document.getElementById("mediaPreviewContent");
+      const cancelMediaBtn = document.getElementById("cancelMediaBtn");
+
       mediaInput.addEventListener("change", async (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -2259,29 +2483,37 @@
           return;
         }
 
-        const uid = userObj.uid;
-        const username = currentUsername;
-
         try {
           // Show uploading state
           mediaUploadBtn.disabled = true;
           mediaUploadBtn.innerHTML = '<svg class="animate-spin" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" stroke-opacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10" stroke-opacity="0.75"/></svg>';
 
-          // Upload to Cloudinary
+          // Upload to Cloudinary with optimization
           const upload = await uploadToCloudinary(file);
-          const mediaUrl = upload.secure_url;
-          const deleteToken = upload.delete_token;
+          pendingMediaUrl = upload.secure_url;
+          pendingMediaToken = upload.delete_token;
 
-          // Send message with media
-          await db.ref("messages").push({
-            user: username,
-            text: "",
-            media: mediaUrl,
-            deleteToken: deleteToken,
-            time: firebase.database.ServerValue.TIMESTAMP
-          });
+          // Show preview
+          mediaPreviewContent.innerHTML = "";
+          const isVideo = file.type.includes('video');
+          
+          if (isVideo) {
+            const video = document.createElement("video");
+            video.src = pendingMediaUrl;
+            video.controls = true;
+            video.className = "max-h-20 rounded-lg";
+            mediaPreviewContent.appendChild(video);
+          } else {
+            const img = document.createElement("img");
+            img.src = pendingMediaUrl;
+            img.className = "max-h-20 rounded-lg";
+            mediaPreviewContent.appendChild(img);
+          }
 
-          console.log("[media] uploaded and sent:", mediaUrl);
+          mediaPreview.classList.remove("hidden");
+          msgInput.focus();
+
+          console.log("[media] uploaded, ready to send:", pendingMediaUrl);
 
           // Reset button
           mediaUploadBtn.disabled = false;
@@ -2298,6 +2530,14 @@
           mediaUploadBtn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-slate-400"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>';
           mediaInput.value = "";
         }
+      });
+
+      // Cancel media button
+      cancelMediaBtn.addEventListener("click", () => {
+        pendingMediaUrl = null;
+        pendingMediaToken = null;
+        mediaPreview.classList.add("hidden");
+        mediaPreviewContent.innerHTML = "";
       });
 
       // ===== SETTINGS MENU & MODALS =====
@@ -2609,9 +2849,12 @@
           // Check if already friends
           const friendsSnap = await db.ref("friends/" + uid + "/" + targetUid).once("value");
           if (friendsSnap.exists()) {
-            sendFriendRequestBtn.disabled = true;
-            sendFriendRequestBtn.style.background = "rgb(100, 116, 139)";
-            sendFriendRequestBtn.textContent = "✓ Friends";
+            sendFriendRequestBtn.disabled = false;
+            sendFriendRequestBtn.style.background = "rgb(220, 38, 38)";
+            sendFriendRequestBtn.textContent = "Unfriend";
+            sendFriendRequestBtn.dataset.action = "unfriend";
+            sendFriendRequestBtn.dataset.targetUid = targetUid;
+            sendFriendRequestBtn.dataset.targetUsername = targetUsername;
             return;
           }
 
@@ -2714,7 +2957,7 @@
       });
 
       // Save profile
-      saveProfileBtn.addEventListener("click", () => {
+      saveProfileBtn.addEventListener("click", async () => {
         const uid = auth.currentUser?.uid;
         if (!uid) {
           console.error("[profile] not logged in");
@@ -2723,140 +2966,160 @@
         }
 
         const newUsername = profileUsername.value.trim();
-        
-        // Validate username
-        if (!newUsername) {
-          alert("Username cannot be empty");
-          return;
-        }
-
-        if (newUsername.includes("@") || newUsername.includes(" ")) {
-          alert("Username can't have spaces or '@'");
-          return;
-        }
-
-        // Validate bio length
-        if (profileBio.value.length > 150) {
-          alert("Bio is too long (max 150 characters)");
-          return;
-        }
-
-        saveProfileBtn.disabled = true;
-        saveProfileBtn.textContent = "Saving...";
         const originalText = saveProfileBtn.textContent;
+        
+        // ===== COMPREHENSIVE USERNAME VALIDATION =====
+        try {
+          // Validate username is not empty
+          if (!newUsername) {
+            throw new Error("Username cannot be empty");
+          }
 
-        // Check if username changed
-        const usernameChanged = newUsername !== currentUsername;
+          // Validate username length (3-20 characters)
+          if (newUsername.length < 3) {
+            throw new Error("Username too short (minimum 3 characters)");
+          }
 
-        if (usernameChanged) {
-          // Check if new username is already taken
-          console.log("[profile] checking if username is taken:", newUsername);
-          db.ref("users")
-            .orderByChild("username")
-            .equalTo(newUsername)
-            .once("value")
-            .then((snap) => {
-              if (snap.exists()) {
-                throw new Error("Username already taken");
+          if (newUsername.length > 20) {
+            throw new Error("Username too long (maximum 20 characters)");
+          }
+
+          // Validate character set: only letters, numbers, underscore, dash
+          if (!/^[a-zA-Z0-9_-]+$/.test(newUsername)) {
+            throw new Error("Username can only contain letters, numbers, underscore (_) and dash (-)");
+          }
+
+          // Validate no leading or trailing special characters
+          if (/^[_-]|[_-]$/.test(newUsername)) {
+            throw new Error("Username cannot start or end with _ or -");
+          }
+
+          // Validate bio length
+          if (profileBio.value.length > 150) {
+            throw new Error("Bio is too long (maximum 150 characters)");
+          }
+
+          // Check if username changed
+          const usernameChanged = newUsername.toLowerCase() !== currentUsername.toLowerCase();
+
+          if (usernameChanged) {
+            // Show loading state
+            saveProfileBtn.disabled = true;
+            saveProfileBtn.textContent = "Checking username...";
+            
+            console.log("[profile] checking if username is taken:", newUsername);
+
+            // Case-insensitive duplicate check
+            const snapshot = await db.ref("users")
+              .orderByChild("username")
+              .once("value");
+
+            let isTaken = false;
+            snapshot.forEach((child) => {
+              const existingUsername = child.val().username;
+              const existingUid = child.key;
+              // Check case-insensitive and exclude current user
+              if (existingUsername.toLowerCase() === newUsername.toLowerCase() && existingUid !== uid) {
+                isTaken = true;
               }
-
-              // Update both profile and username paths
-              const updates = {};
-              updates["userProfiles/" + uid] = {
-                username: newUsername,
-                bio: profileBio.value.trim(),
-                profilePic: currentUserData.profilePic || null,
-                updatedAt: firebase.database.ServerValue.TIMESTAMP,
-              };
-              updates["users/" + uid + "/username"] = newUsername;
-
-              return db.ref().update(updates);
-            })
-            .then(() => {
-              console.log("[profile] saved successfully with new username");
-              currentUsername = newUsername;
-              updateChatUserLabel(newUsername);
-              
-              // Clear profile cache so next load gets fresh data
-              profileCache[newUsername] = null;
-              
-              // Re-render all messages to update usernames if they were changed
-              messagesContainer.innerHTML = "";
-              currentMessages.forEach((msg) => renderMessageOnce(msg));
-              
-              saveProfileBtn.textContent = "✓ Saved!";
-              saveProfileBtn.style.background = "rgb(34, 197, 94)"; // green
-              setTimeout(() => {
-                saveProfileBtn.textContent = originalText;
-                saveProfileBtn.style.background = "";
-                saveProfileBtn.disabled = false;
-              }, 2000);
-            })
-            .catch((err) => {
-              console.error("[profile] error:", err);
-              
-              let errorMsg = "Error saving profile";
-              let buttonText = "Failed";
-              
-              if (err.message?.includes("already taken")) {
-                errorMsg = "Username is taken";
-                buttonText = "Username taken";
-              } else if (err.message?.includes("permission")) {
-                errorMsg = "Permission denied. Check Firebase rules.";
-              } else if (err.message?.includes("network")) {
-                errorMsg = "Network error. Check your connection.";
-              }
-
-              saveProfileBtn.textContent = buttonText;
-              saveProfileBtn.style.background = "rgb(239, 68, 68)"; // red
-
-              setTimeout(() => {
-                alert(errorMsg);
-                saveProfileBtn.textContent = originalText;
-                saveProfileBtn.style.background = "";
-                saveProfileBtn.disabled = false;
-              }, 1500);
             });
-        } else {
-          // Username didn't change, just save profile
-          const userData = {
-            username: currentUsername,
-            bio: profileBio.value.trim(),
-            profilePic: currentUserData.profilePic || null,
-            updatedAt: firebase.database.ServerValue.TIMESTAMP,
-          };
 
-          db.ref("userProfiles/" + uid)
-            .set(userData)
-            .then(() => {
-              console.log("[profile] saved successfully");
-              saveProfileBtn.textContent = "✓ Saved!";
-              saveProfileBtn.style.background = "rgb(34, 197, 94)"; // green
-              setTimeout(() => {
-                saveProfileBtn.textContent = originalText;
-                saveProfileBtn.style.background = "";
-                saveProfileBtn.disabled = false;
-              }, 2000);
-            })
-            .catch((err) => {
-              console.error("[profile] error:", err);
-              saveProfileBtn.textContent = "Failed";
-              saveProfileBtn.style.background = "rgb(239, 68, 68)"; // red
-              
-              let errorMsg = "Error saving profile";
-              if (err.message?.includes("permission")) {
-                errorMsg = "Permission denied. Check Firebase rules for /userProfiles";
-              } else if (err.message?.includes("network")) {
-                errorMsg = "Network error. Check your connection.";
-              }
-              
-              setTimeout(() => {
-                alert(errorMsg);
-                saveProfileBtn.textContent = originalText;
-                saveProfileBtn.style.background = "";
-                saveProfileBtn.disabled = false;
-              }, 1500);
-            });
+            if (isTaken) {
+              throw new Error("Username is already taken. Please choose another.");
+            }
+
+            // Username is available, proceed with update
+            saveProfileBtn.textContent = "Saving...";
+
+            // Update both profile and username paths
+            const updates = {};
+            updates["userProfiles/" + uid] = {
+              username: newUsername,
+              bio: profileBio.value.trim(),
+              profilePic: currentUserData.profilePic || null,
+              profilePicDeleteToken: currentUserData.profilePicDeleteToken || null,
+              createdAt: currentUserData.createdAt || firebase.database.ServerValue.TIMESTAMP,
+              updatedAt: firebase.database.ServerValue.TIMESTAMP,
+            };
+            updates["users/" + uid + "/username"] = newUsername;
+
+            await db.ref().update(updates);
+
+            console.log("[profile] saved successfully with new username:", newUsername);
+            currentUsername = newUsername;
+            updateChatUserLabel(newUsername);
+            
+            // Clear profile cache so next load gets fresh data
+            profileCache[newUsername] = null;
+            
+            // Success feedback
+            saveProfileBtn.textContent = "✓ Username Updated!";
+            saveProfileBtn.style.background = "rgb(34, 197, 94)"; // green
+            setTimeout(() => {
+              saveProfileBtn.textContent = originalText;
+              saveProfileBtn.style.background = "";
+              saveProfileBtn.disabled = false;
+            }, 2500);
+
+          } else {
+            // Username didn't change, just save bio and profile pic
+            saveProfileBtn.disabled = true;
+            saveProfileBtn.textContent = "Saving...";
+
+            const userData = {
+              username: currentUsername,
+              bio: profileBio.value.trim(),
+              profilePic: currentUserData.profilePic || null,
+              profilePicDeleteToken: currentUserData.profilePicDeleteToken || null,
+              createdAt: currentUserData.createdAt || firebase.database.ServerValue.TIMESTAMP,
+              updatedAt: firebase.database.ServerValue.TIMESTAMP,
+            };
+
+            await db.ref("userProfiles/" + uid).set(userData);
+
+            console.log("[profile] saved successfully (no username change)");
+            
+            // Success feedback
+            saveProfileBtn.textContent = "✓ Profile Saved!";
+            saveProfileBtn.style.background = "rgb(34, 197, 94)"; // green
+            setTimeout(() => {
+              saveProfileBtn.textContent = originalText;
+              saveProfileBtn.style.background = "";
+              saveProfileBtn.disabled = false;
+            }, 2500);
+          }
+
+        } catch (err) {
+          console.error("[profile] validation/save error:", err);
+          
+          // Determine button text based on error type
+          let buttonText = "Error";
+          if (err.message?.includes("taken")) {
+            buttonText = "Username Taken";
+          } else if (err.message?.includes("too short")) {
+            buttonText = "Too Short";
+          } else if (err.message?.includes("too long")) {
+            buttonText = "Too Long";
+          } else if (err.message?.includes("contain")) {
+            buttonText = "Invalid Chars";
+          } else if (err.message?.includes("start or end")) {
+            buttonText = "Invalid Format";
+          } else if (err.message?.includes("permission")) {
+            buttonText = "Permission Denied";
+          } else if (err.message?.includes("network")) {
+            buttonText = "Network Error";
+          }
+
+          // Show error state
+          saveProfileBtn.textContent = buttonText;
+          saveProfileBtn.style.background = "rgb(239, 68, 68)"; // red
+
+          setTimeout(() => {
+            alert(err.message || "Error saving profile. Please try again.");
+            saveProfileBtn.textContent = originalText;
+            saveProfileBtn.style.background = "";
+            saveProfileBtn.disabled = false;
+          }, 1500);
         }
       });
 
@@ -2911,7 +3174,6 @@
           const requests = snap.val() || {};
           const requestArray = Object.entries(requests).map(([fromUid, data]) => ({
             fromUid,
-            fromUsername: data.fromUsername,
             timestamp: data.timestamp
           }));
 
@@ -2928,11 +3190,12 @@
             friendRequestBadge.classList.remove("hidden");
             friendRequestBadge.textContent = requestArray.length;
 
-            requestArray.forEach((req) => {
+            // Load usernames for each request
+            for (const req of requestArray) {
               const div = document.createElement("div");
               div.className = "flex items-center justify-between p-3 bg-slate-700/50 rounded-lg";
               div.innerHTML = `
-                <span class="text-sm font-medium text-slate-100">${req.fromUsername}</span>
+                <span class="text-sm font-medium text-slate-100">Loading...</span>
                 <div class="flex gap-2">
                   <button class="accept-btn px-3 py-1 bg-sky-600 hover:bg-sky-700 text-white text-xs rounded-lg transition-colors" data-from-uid="${req.fromUid}">
                     Accept
@@ -2943,7 +3206,17 @@
                 </div>
               `;
               friendRequestsList.appendChild(div);
-            });
+              
+              // Fetch username from UID
+              try {
+                const userSnap = await db.ref("users/" + req.fromUid + "/username").once("value");
+                const fromUsername = userSnap.val() || "Unknown User";
+                div.querySelector("span").textContent = fromUsername;
+              } catch (err) {
+                console.error("[friends] error loading username for:", req.fromUid, err);
+                div.querySelector("span").textContent = "Unknown User";
+              }
+            }
 
             // Add event listeners
             friendRequestsList.querySelectorAll(".accept-btn").forEach((btn) => {
@@ -2974,6 +3247,38 @@
         if (!uid) {
           logDetailedError("sendFriendRequest", new Error("Not logged in"));
           alert("Not logged in");
+          return;
+        }
+        
+        // Check if this is an unfriend action
+        if (sendFriendRequestBtn.dataset.action === "unfriend") {
+          const targetUid = sendFriendRequestBtn.dataset.targetUid;
+          const targetUsername = sendFriendRequestBtn.dataset.targetUsername;
+          
+          if (confirm(`Unfriend ${targetUsername}?`)) {
+            try {
+              console.log("[friends] unfriending:", targetUsername);
+              
+              // Remove from both friends lists
+              await db.ref("friends/" + uid + "/" + targetUid).remove();
+              await db.ref("friends/" + targetUid + "/" + uid).remove();
+              
+              console.log("[friends] unfriended successfully");
+              
+              // Reset button
+              sendFriendRequestBtn.disabled = false;
+              sendFriendRequestBtn.style.background = "";
+              sendFriendRequestBtn.textContent = "Add Friend";
+              delete sendFriendRequestBtn.dataset.action;
+              delete sendFriendRequestBtn.dataset.targetUid;
+              delete sendFriendRequestBtn.dataset.targetUsername;
+              
+              alert("Unfriended successfully");
+            } catch (err) {
+              logDetailedError("unfriend", err, { targetUid, targetUsername });
+              alert("Error unfriending: " + err.message);
+            }
+          }
           return;
         }
         
@@ -3042,7 +3347,7 @@
           // Send request
           console.log("[friends] writing request to: friendRequests/" + targetUid + "/incoming/" + uid);
           await db.ref("friendRequests/" + targetUid + "/incoming/" + uid).set({
-            fromUsername: currentUsername,
+            fromUid: uid,
             timestamp: firebase.database.ServerValue.TIMESTAMP
           });
 
@@ -3087,13 +3392,6 @@
 
         try {
           console.log("[friends] accepting request from:", fromUid);
-          
-          const fromUsernameSnap = await db.ref("friendRequests/" + uid + "/incoming/" + fromUid + "/fromUsername").once("value");
-          const fromUsername = fromUsernameSnap.val();
-
-          if (!fromUsername) {
-            throw new Error("Could not find fromUsername in request");
-          }
 
           // Auto-create both users' /friends paths
           console.log("[friends] ensuring /friends paths exist");
@@ -3104,15 +3402,13 @@
           // Remove request
           await db.ref("friendRequests/" + uid + "/incoming/" + fromUid).remove();
 
-          console.log("[friends] adding friend:", fromUid, fromUsername);
-          // Add to friends list for both users
+          console.log("[friends] adding friend:", fromUid);
+          // Add to friends list for both users (store UID only)
           await db.ref("friends/" + uid + "/" + fromUid).set({
-            username: fromUsername,
             addedAt: firebase.database.ServerValue.TIMESTAMP
           });
 
           await db.ref("friends/" + fromUid + "/" + uid).set({
-            username: currentUsername,
             addedAt: firebase.database.ServerValue.TIMESTAMP
           });
 
@@ -3184,27 +3480,75 @@
           noFriendsMsg.style.display = "none";
 
           for (const [friendUid, friendData] of Object.entries(friends)) {
-            const friendUsername = friendData.username || "Unknown";
             const addedAt = new Date(friendData.addedAt).toLocaleDateString();
 
             const div = document.createElement("div");
             div.className = "p-3 bg-slate-800/60 hover:bg-slate-800 rounded-lg flex items-center justify-between transition-colors cursor-pointer border border-slate-700/50";
-            div.innerHTML = `
-              <div class="flex items-center gap-3">
-                <div class="h-8 w-8 rounded-full bg-gradient-to-br from-sky-500 to-sky-600 flex items-center justify-center text-white text-xs font-bold">
-                  ${friendUsername.charAt(0).toUpperCase()}
-                </div>
-                <div class="flex flex-col">
+            
+            const avatarDiv = document.createElement("div");
+            avatarDiv.className = "h-10 w-10 rounded-full bg-gradient-to-br from-sky-500 to-sky-600 flex items-center justify-center text-white text-sm font-bold overflow-hidden flex-shrink-0";
+            avatarDiv.innerHTML = "?";
+            
+            const infoDiv = document.createElement("div");
+            infoDiv.className = "flex flex-col flex-1 ml-3";
+            infoDiv.innerHTML = `
+              <span class="text-sm font-medium text-slate-100">Loading...</span>
+              <span class="text-xs text-slate-400">Added ${addedAt}</span>
+            `;
+            
+            const container = document.createElement("div");
+            container.className = "flex items-center gap-3 flex-1";
+            container.appendChild(avatarDiv);
+            container.appendChild(infoDiv);
+            
+            div.appendChild(container);
+            
+            // Fetch username from UID, then load profile picture
+            (async () => {
+              try {
+                const userSnap = await db.ref("users/" + friendUid + "/username").once("value");
+                const friendUsername = userSnap.val() || "Unknown";
+                
+                // Update display with username
+                avatarDiv.innerHTML = friendUsername.charAt(0).toUpperCase();
+                infoDiv.innerHTML = `
                   <span class="text-sm font-medium text-slate-100">${friendUsername}</span>
                   <span class="text-xs text-slate-400">Added ${addedAt}</span>
-                </div>
-              </div>
-            `;
-            div.addEventListener("click", () => {
-              friendsListModal.classList.remove("modal-open");
-              friendsListModal.classList.add("modal-closed");
-              viewUserProfile(friendUsername);
-            });
+                `;
+                
+                // Load profile picture
+                const profile = await fetchUserProfile(friendUsername);
+                if (profile?.profilePic) {
+                  try {
+                    avatarDiv.innerHTML = "";
+                    const img = document.createElement("img");
+                    img.src = profile.profilePic;
+                    img.className = "h-full w-full object-cover";
+                    img.onerror = () => {
+                      avatarDiv.innerHTML = friendUsername.charAt(0).toUpperCase();
+                    };
+                    avatarDiv.appendChild(img);
+                  } catch (e) {
+                    // Keep default
+                  }
+                }
+                
+                // Set click handler with current username
+                div.addEventListener("click", () => {
+                  friendsListModal.classList.remove("modal-open");
+                  friendsListModal.classList.add("modal-closed");
+                  viewUserProfile(friendUsername);
+                });
+                
+              } catch (err) {
+                console.error("[friends] error loading friend info:", err);
+                infoDiv.innerHTML = `
+                  <span class="text-sm font-medium text-slate-100">Unknown User</span>
+                  <span class="text-xs text-slate-400">Added ${addedAt}</span>
+                `;
+              }
+            })();
+            
             friendsList.appendChild(div);
           }
         } catch (err) {
@@ -3235,6 +3579,41 @@
         if (e.target === friendsListModal) {
           friendsListModal.classList.remove("modal-open");
           friendsListModal.classList.add("modal-closed");
+        }
+      });
+
+      // Image Viewer
+      const imageViewerModal = document.getElementById("imageViewerModal");
+      const imageViewerImg = document.getElementById("imageViewerImg");
+      const closeImageViewer = document.getElementById("closeImageViewer");
+
+      function openImageViewer(imageUrl) {
+        imageViewerImg.src = imageUrl;
+        imageViewerModal.style.display = "flex";
+        document.body.style.overflow = "hidden";
+      }
+
+      function closeImageViewerFunc() {
+        imageViewerModal.style.display = "none";
+        imageViewerImg.src = "";
+        document.body.style.overflow = "";
+      }
+
+      closeImageViewer.addEventListener("click", (e) => {
+        e.stopPropagation();
+        closeImageViewerFunc();
+      });
+
+      imageViewerModal.addEventListener("click", closeImageViewerFunc);
+
+      imageViewerImg.addEventListener("click", (e) => {
+        e.stopPropagation();
+      });
+
+      // ESC key to close
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && imageViewerModal.style.display === "flex") {
+          closeImageViewerFunc();
         }
       });
     </script>
