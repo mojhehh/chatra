@@ -363,11 +363,28 @@
           </h1>
         </div>
       </div>
-      <div
-        class="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-slate-800/50 border border-slate-700/50 text-[11px] uppercase tracking-widest"
-      >
-        <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
-        <span class="text-slate-300">Online</span>
+      <div class="flex items-center gap-2">
+        <button
+          id="notifBellBtn"
+          class="relative px-3 py-2 rounded-full bg-slate-800/70 border border-slate-700/70 text-slate-200 hover:bg-slate-700/70 transition-colors"
+          title="Notifications"
+        >
+          <span class="sr-only">Notifications</span>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="inline align-middle">
+            <path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/>
+            <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+          </svg>
+          <span
+            id="notifBellBadge"
+            class="hidden absolute -top-1 -right-1 text-[10px] px-1.5 py-0.5 rounded-full bg-red-500 text-white font-semibold"
+          >0</span>
+        </button>
+        <div
+          class="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-slate-800/50 border border-slate-700/50 text-[11px] uppercase tracking-widest"
+        >
+          <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+          <span class="text-slate-300">Online</span>
+        </div>
       </div>
     </header>
 
@@ -1400,6 +1417,7 @@
                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
               </svg>
               Direct Messages
+              <span id="sidePanelDMBadge" class="ml-auto bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center hidden">0</span>
             </button>
             <button
               id="sidePanelBlocked"
@@ -1497,6 +1515,35 @@
         </div>
 
         <p id="dmError" class="text-xs text-red-400 min-h-[1rem]"></p>
+      </div>
+    </div>
+
+    <!-- Notifications Modal -->
+    <div
+      id="notifModal"
+      class="modal-overlay fixed inset-0 z-50 modal-closed items-center justify-center px-4"
+    >
+      <div class="glass-card w-full max-w-md rounded-2xl p-4 sm:p-6 max-h-[80vh] overflow-hidden flex flex-col gap-3">
+        <div class="flex items-center justify-between">
+          <h3 class="text-lg font-semibold text-slate-100">Notifications</h3>
+          <button
+            id="notifCloseBtn"
+            class="p-1 hover:bg-slate-700 rounded-lg transition-colors"
+          >
+            ✕
+          </button>
+        </div>
+        <div id="notifList" class="flex-1 overflow-y-auto space-y-2 pr-1">
+          <p class="text-xs text-slate-400">No notifications yet.</p>
+        </div>
+        <div class="flex justify-end gap-2 pt-2 border-t border-slate-800">
+          <button
+            id="notifClearBtn"
+            class="px-3 py-2 text-sm rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-100"
+          >
+            Clear
+          </button>
+        </div>
       </div>
     </div>
 
@@ -1684,6 +1731,51 @@
       let dmMessagesListener = null;
       let dmInboxRef = null;
       let dmInboxListener = null;
+      let dmLastSeenByThread = {};
+      let dmLastNotifiedTimeByThread = {};
+      let dmInboxInitialLoaded = false;
+      let dmUnreadThreads = 0;
+
+      // User settings stored in Firebase (no localStorage)
+      let userSettingsRef = null;
+      async function saveUserSetting(key, value) {
+        if (!currentUserId) return;
+        try {
+          const ref = db.ref("userSettings/" + currentUserId + "/" + key);
+          await ref.set(value);
+        } catch (err) {
+          console.warn("[settings] failed to save", key, err);
+        }
+      }
+
+      async function loadUserSettings() {
+        if (!currentUserId) return { theme: "dark", messageSize: "medium" };
+        userSettingsRef = db.ref("userSettings/" + currentUserId);
+        try {
+          const snap = await userSettingsRef.once("value");
+          const data = snap.val() || {};
+          return {
+            theme: data.theme || "dark",
+            messageSize: data.messageSize || "medium",
+          };
+        } catch (err) {
+          console.warn("[settings] failed to load user settings", err);
+          return { theme: "dark", messageSize: "medium" };
+        }
+      }
+
+      // Friends + notifications
+      let friendsCache = new Set();
+      let notificationsCount = 0;
+      let notificationHistory = [];
+
+      // Track original profile pic for cleanup
+      let originalProfilePic = null;
+      let originalProfilePicDeleteToken = null;
+
+      // Message removal listener
+      let messagesRemoveRef = null;
+      let messagesRemoveListener = null;
 
       // Real-time messages
       let messagesRef = null;      // realtime ref for new messages
@@ -1718,6 +1810,85 @@
         } catch (err) {
           console.error("[block] error loading blocked users cache:", err);
         }
+      }
+
+      // Load friends into cache for quick checks (notifications, etc.)
+      async function loadFriendsCache() {
+        const uid = auth.currentUser?.uid;
+        if (!uid) return;
+        try {
+          const snap = await db.ref("friends/" + uid).once("value");
+          friendsCache.clear();
+          if (snap.exists()) {
+            Object.keys(snap.val()).forEach((fid) => friendsCache.add(fid));
+          }
+          console.log("[friends] loaded", friendsCache.size, "friends into cache");
+        } catch (err) {
+          console.error("[friends] error loading friends cache:", err);
+        }
+      }
+
+      function updateNotifBadge() {
+        if (!notifBellBadge) return;
+        if (notificationsCount > 0) {
+          notifBellBadge.textContent = notificationsCount;
+          notifBellBadge.classList.remove("hidden");
+        } else {
+          notifBellBadge.classList.add("hidden");
+        }
+      }
+
+      function bumpNotification() {
+        notificationsCount += 1;
+        updateNotifBadge();
+      }
+
+      function clearNotifications() {
+        notificationsCount = 0;
+        updateNotifBadge();
+      }
+
+      function renderNotificationHistory() {
+        notifList.innerHTML = "";
+        if (!notificationHistory.length) {
+          notifList.innerHTML = '<p class="text-xs text-slate-400">No notifications yet.</p>';
+          return;
+        }
+        notificationHistory
+          .slice()
+          .sort((a, b) => b.time - a.time)
+          .forEach((item) => {
+            const row = document.createElement("div");
+            row.className = "p-3 rounded-lg bg-slate-800/70 border border-slate-700";
+            const title = document.createElement("div");
+            title.className = "text-sm text-slate-100 font-semibold";
+            title.textContent = item.title;
+            const body = document.createElement("div");
+            body.className = "text-xs text-slate-300 mt-1";
+            body.textContent = item.body;
+            const time = document.createElement("div");
+            time.className = "text-[11px] text-slate-500 mt-1";
+            time.textContent = new Date(item.time).toLocaleString();
+            if (item.threadId) {
+              row.classList.add("cursor-pointer", "hover:bg-slate-700/70");
+              row.addEventListener("click", () => {
+                openDmModal();
+                selectDmThread(item.threadId, item.withUid || null, item.withUsername || null);
+              });
+            }
+            row.appendChild(title);
+            row.appendChild(body);
+            row.appendChild(time);
+            notifList.appendChild(row);
+          });
+      }
+
+      function addNotification(title, body, extra = {}) {
+        notificationHistory.push({ title, body, time: Date.now(), ...extra });
+        if (notificationHistory.length > 50) {
+          notificationHistory = notificationHistory.slice(-50);
+        }
+        bumpNotification();
       }
 
       // Check if a message is from a blocked user
@@ -1915,24 +2086,9 @@
         }
       }
 
-      // On load: prefill username if "remember me" was used (ONLY for login form)
+      // On load: no local remember-me persistence; checkbox starts unchecked
       (function initRememberMe() {
-        try {
-          const remember = localStorage.getItem("rememberMe") === "true";
-          const savedUsername = localStorage.getItem("rememberedUsername");
-          console.log(
-            "[rememberMe] remember =",
-            remember,
-            "savedUsername =",
-            savedUsername
-          );
-          if (remember && savedUsername) {
-            rememberMeCheckbox.checked = true;
-            loginUsernameInput.value = savedUsername;
-          }
-        } catch (err) {
-          console.error("[rememberMe] error reading localStorage", err);
-        }
+        rememberMeCheckbox.checked = false;
       })();
 
       // Switch to Register form
@@ -2113,6 +2269,26 @@
             const msg = snap.val();
             if (!msg) return;
             renderDmMessage(msg);
+            
+            // Update inbox and fire notification if new message from other user
+            if (activeDMTarget && msg.fromUid !== currentUserId && dmInboxInitialLoaded) {
+              const now = Date.now();
+              db.ref("dmInbox/" + currentUserId + "/" + threadId).update({
+                withUid: activeDMTarget.uid,
+                withUsername: activeDMTarget.username || activeDMTarget.uid,
+                lastMsg: msg.text,
+                lastTime: now
+              }).catch(() => {});
+              
+              // Fire notification
+              const who = activeDMTarget.username || "Someone";
+              const preview = previewText(msg.text || "(no text)", 80);
+              addNotification("New DM", `${who}: ${preview}`, {
+                threadId: threadId,
+                withUid: activeDMTarget.uid,
+                withUsername: activeDMTarget.username,
+              });
+            }
           });
       }
 
@@ -2127,22 +2303,87 @@
             .map(([threadId, info]) => ({ threadId, ...info }))
             .sort((a, b) => (b.lastTime || 0) - (a.lastTime || 0));
 
+          let unreadThreadsCount = 0;
+
+          entries.forEach((item) => {
+            const lastTime = item.lastTime || 0;
+            const lastSeen = dmLastSeenByThread[item.threadId] || 0;
+            const lastNotified = dmLastNotifiedTimeByThread[item.threadId] || 0;
+            const isActiveThread =
+              activeDMThread === item.threadId && dmModal.classList.contains("modal-open");
+
+            // Mark active thread as seen
+            if (isActiveThread && lastTime > lastSeen) {
+              dmLastSeenByThread[item.threadId] = lastTime;
+            }
+
+            // Fire notification for new DM unless user is already viewing this thread
+            if (!isActiveThread && lastTime > lastNotified && dmInboxInitialLoaded) {
+              const who = item.withUsername || item.withUid || "Someone";
+              const preview = previewText(item.lastMsg || "New message", 80);
+              addNotification("New DM", `${who}: ${preview}`, {
+                threadId: item.threadId,
+                withUid: item.withUid,
+                withUsername: item.withUsername,
+              });
+              dmLastNotifiedTimeByThread[item.threadId] = lastTime;
+            }
+
+            if (isActiveThread) {
+              dmLastNotifiedTimeByThread[item.threadId] = lastTime;
+            }
+
+            if (!dmInboxInitialLoaded && lastTime > lastNotified) {
+              dmLastNotifiedTimeByThread[item.threadId] = lastTime;
+            }
+
+            const effectiveLastSeen = dmLastSeenByThread[item.threadId] || lastSeen;
+            const hasUnread = lastTime > effectiveLastSeen && !isActiveThread;
+
+            if (hasUnread) {
+              unreadThreadsCount += 1;
+            }
+          });
+
           dmConversationList.innerHTML = "";
           if (!entries.length) {
             dmConversationList.innerHTML = '<p class="text-xs text-slate-400">No conversations yet</p>';
+            dmUnreadThreads = 0;
+            updateDmBadge();
+            dmInboxInitialLoaded = true;
             return;
           }
 
           entries.forEach((item) => {
+            const lastTime = item.lastTime || 0;
+            const lastSeen = dmLastSeenByThread[item.threadId] || 0;
+            const isActiveThread =
+              activeDMThread === item.threadId && dmModal.classList.contains("modal-open");
+            const hasUnread = lastTime > lastSeen && !isActiveThread;
+
             const btn = document.createElement("button");
             btn.className = "w-full text-left px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors";
+            if (hasUnread) {
+              btn.classList.add("border", "border-sky-600/60");
+            }
+
             btn.innerHTML = `<div class="text-sm text-slate-100">${item.withUsername || item.withUid || "Unknown"}</div>
               <div class="text-xs text-slate-400 truncate">${item.lastMsg || "(no message)"}</div>`;
             btn.onclick = () => {
+              dmLastSeenByThread[item.threadId] = Date.now();
+              dmLastNotifiedTimeByThread[item.threadId] = Date.now();
               selectDmThread(item.threadId, item.withUid, item.withUsername || item.withUid);
+              if (hasUnread) {
+                dmUnreadThreads = Math.max(dmUnreadThreads - 1, 0);
+                updateDmBadge();
+              }
             };
             dmConversationList.appendChild(btn);
           });
+
+          dmUnreadThreads = unreadThreadsCount;
+          updateDmBadge();
+          dmInboxInitialLoaded = true;
         });
       }
 
@@ -2161,19 +2402,29 @@
         activeDMTarget = { uid: targetUid, username: resolvedUsername };
         dmActiveUser.textContent = resolvedUsername;
         dmError.textContent = "";
+        dmLastSeenByThread[threadId] = Date.now();
+        dmLastNotifiedTimeByThread[threadId] = Date.now();
+        updateNotifBadge();
+        
+        // Ensure self is participant and create own inbox entry
+        const now = Date.now();
+        await Promise.all([
+          db.ref("dms/" + threadId + "/participants/" + currentUserId).set(true).catch(() => {}),
+          db.ref("dmInbox/" + currentUserId + "/" + threadId).set({
+            withUid: targetUid,
+            withUsername: resolvedUsername || targetUid,
+            lastTime: now
+          }).catch(() => {})
+        ]);
+        
         startDmMessagesListener(threadId);
       }
 
       async function ensureDmThread(targetUid, targetUsername) {
         const threadId = makeThreadId(currentUserId, targetUid);
+        // Create/ensure DM thread and add self as participant
         const participantsRef = db.ref("dms/" + threadId + "/participants");
-        await participantsRef.update({ [currentUserId]: true, [targetUid]: true });
-        // Seed inbox entries
-        const now = Date.now();
-        const inboxSelf = db.ref("dmInbox/" + currentUserId + "/" + threadId);
-        const inboxOther = db.ref("dmInbox/" + targetUid + "/" + threadId);
-        await inboxSelf.update({ withUid: targetUid, withUsername: targetUsername || targetUid, lastTime: now });
-        await inboxOther.update({ withUid: currentUserId, withUsername: currentUsername || currentUserId, lastTime: now });
+        await participantsRef.child(currentUserId).set(true);
         return threadId;
       }
 
@@ -2390,22 +2641,6 @@
           } catch (e) {
             console.warn("[login] could not ensure paths:", e);
             // Continue anyway - these aren't critical
-          }
-
-          // Save "remember me" stuff ONLY for login form next time
-          try {
-            if (remember) {
-              localStorage.setItem("rememberMe", "true");
-              localStorage.setItem("rememberedUsername", username);
-            } else {
-              localStorage.removeItem("rememberMe");
-              localStorage.removeItem("rememberedUsername");
-            }
-          } catch (err) {
-            console.error(
-              "[login] error writing rememberMe to localStorage",
-              err
-            );
           }
 
           // DO NOT show chat here. onAuthStateChanged will do it.
@@ -2790,6 +3025,33 @@
         renderMessage(msg, { ...options, messageId: key });
       }
 
+      function removeMessageById(messageId) {
+        if (!messageId) return;
+        const rows = messagesDiv.querySelectorAll("[data-message-id]");
+        rows.forEach((row) => {
+          if (row.dataset.messageId === messageId) {
+            row.remove();
+          }
+        });
+        seenMessageKeys.delete(messageId);
+      }
+
+      function previewText(text, max = 80) {
+        if (!text) return "";
+        const t = text.toString();
+        return t.length > max ? t.slice(0, max) + "…" : t;
+      }
+
+      function updateDmBadge() {
+        if (!sidePanelDMBadge) return;
+        if (dmUnreadThreads > 0) {
+          sidePanelDMBadge.textContent = dmUnreadThreads;
+          sidePanelDMBadge.classList.remove("hidden");
+        } else {
+          sidePanelDMBadge.classList.add("hidden");
+        }
+      }
+
       // Batch render messages for better performance
       function batchRenderMessages(messages, options = {}) {
         const fragment = document.createDocumentFragment();
@@ -2995,6 +3257,24 @@
                 if (newestTime === null || t > newestTime) {
                   newestTime = t;
                 }
+
+                // Notify if a friend posts in global chat
+                const chatHidden = chatInterface.classList.contains("hidden");
+                const dmOpen = dmModal.classList.contains("modal-open");
+                const pageHidden = document.hidden;
+                const shouldNotifyFriendGlobal = chatHidden || dmOpen || pageHidden;
+                if (
+                  msg.userId &&
+                  friendsCache.has(msg.userId) &&
+                  msg.userId !== currentUserId &&
+                  shouldNotifyFriendGlobal
+                ) {
+                  addNotification(
+                    "Friend in Global Chat",
+                    `${msg.user || "Friend"}: ${previewText(msg.text || "(no text)", 80)}`,
+                    { threadId: null }
+                  );
+                }
                 renderMessageOnce(key, msg);
               };
 
@@ -3004,6 +3284,21 @@
                 (error) => {
                   console.error("[messages] listener error:", error);
                 }
+              );
+
+              // Listen for deletions to remove messages live
+              if (messagesRemoveRef && messagesRemoveListener) {
+                messagesRemoveRef.off("child_removed", messagesRemoveListener);
+              }
+              messagesRemoveRef = db.ref("messages");
+              messagesRemoveListener = (snap) => {
+                const removedId = snap.key;
+                removeMessageById(removedId);
+              };
+              messagesRemoveRef.on(
+                "child_removed",
+                messagesRemoveListener,
+                (error) => console.error("[messages] remove listener error:", error)
               );
             },
             (error) => {
@@ -3023,11 +3318,16 @@
           if (messagesRef && messagesListener) {
             messagesRef.off("child_added", messagesListener);
           }
+          if (messagesRemoveRef && messagesRemoveListener) {
+            messagesRemoveRef.off("child_removed", messagesRemoveListener);
+          }
         } catch (err) {
           console.error("[messages] error while stopping listener:", err);
         }
         messagesRef = null;
         messagesListener = null;
+        messagesRemoveRef = null;
+        messagesRemoveListener = null;
         seenMessageKeys.clear();
 
         detachScrollListener();
@@ -3215,6 +3515,14 @@
             console.log("[auth] starting messages listener from auth state change");
             startMessagesListener();
             startTypingListener();
+            await loadFriendsCache();
+
+            // Load user settings (theme, message size) from Firebase
+            const settings = await loadUserSettings();
+            setActiveThemeButton(settings.theme);
+            applyTheme(settings.theme, false);
+            setActiveSizeButton(settings.messageSize);
+            applyMessageSize(settings.messageSize, false);
           } catch (err) {
             console.error("[auth] error in onAuthStateChanged:", err);
             // Show error and sign out
@@ -3236,6 +3544,13 @@
           currentUserId = null;
           currentUsername = null;
           messagesDiv.innerHTML = "";
+          friendsCache.clear();
+          dmLastSeenByThread = {};
+          dmLastNotifiedTimeByThread = {};
+          dmInboxInitialLoaded = false;
+          dmUnreadThreads = 0;
+          updateDmBadge();
+          clearNotifications();
           activeDMThread = null;
           activeDMTarget = null;
           clearDmMessages();
@@ -3282,15 +3597,7 @@
           msgInput.value = "";
           loginPasswordInput.value = "";
           clearLoginMessages();
-
-          const remember = localStorage.getItem("rememberMe") === "true";
-          if (!remember) {
-            localStorage.removeItem("rememberedUsername");
-            loginUsernameInput.value = "";
-          } else {
-            const savedUsername = localStorage.getItem("rememberedUsername");
-            loginUsernameInput.value = savedUsername || "";
-          }
+          loginUsernameInput.value = "";
         } catch (err) {
           console.error("[logout] error during logout:", err);
           alert("Error logging out. Try refreshing the page.");
@@ -3545,6 +3852,7 @@
       const sidePanelFriendRequests = document.getElementById("sidePanelFriendRequests");
       const sidePanelFriends = document.getElementById("sidePanelFriends");
       const sidePanelDMs = document.getElementById("sidePanelDMs");
+      const sidePanelDMBadge = document.getElementById("sidePanelDMBadge");
       const sidePanelBlocked = document.getElementById("sidePanelBlocked");
       const sidePanelFriendBadge = document.getElementById("sidePanelFriendBadge");
 
@@ -3561,6 +3869,14 @@
       const dmActiveUser = document.getElementById("dmActiveUser");
       const dmError = document.getElementById("dmError");
       const dmBlockBtn = document.getElementById("dmBlockBtn");
+
+      // Notifications
+      const notifBellBtn = document.getElementById("notifBellBtn");
+      const notifBellBadge = document.getElementById("notifBellBadge");
+      const notifModal = document.getElementById("notifModal");
+      const notifCloseBtn = document.getElementById("notifCloseBtn");
+      const notifClearBtn = document.getElementById("notifClearBtn");
+      const notifList = document.getElementById("notifList");
 
       // Blocked Users Elements
       const blockedUsersModal = document.getElementById("blockedUsersModal");
@@ -3635,6 +3951,31 @@
           privacySettingsModal.classList.remove("modal-open");
           privacySettingsModal.classList.add("modal-closed");
         }
+      });
+
+      notifBellBtn.addEventListener("click", () => {
+        clearNotifications();
+        renderNotificationHistory();
+        notifModal.classList.remove("modal-closed");
+        notifModal.classList.add("modal-open");
+      });
+
+      notifCloseBtn.addEventListener("click", () => {
+        notifModal.classList.remove("modal-open");
+        notifModal.classList.add("modal-closed");
+      });
+
+      notifModal.addEventListener("click", (e) => {
+        if (e.target === notifModal) {
+          notifModal.classList.remove("modal-open");
+          notifModal.classList.add("modal-closed");
+        }
+      });
+
+      notifClearBtn.addEventListener("click", () => {
+        notificationHistory = [];
+        clearNotifications();
+        renderNotificationHistory();
       });
 
       // Load Privacy Settings
@@ -3752,10 +4093,10 @@
         clearTimeout(dmSearchTimeout);
         const query = (dmUserSearch.value || "").trim();
 
-        if (query.length < 2) {
-          // Restore inbox view
-          dmConversationList.innerHTML = "";
-          loadDmInbox();
+        if (!query) {
+          // Show all friends by default
+          dmConversationList.innerHTML = '';
+          showDmFriendsDefault();
           return;
         }
 
@@ -3764,6 +4105,41 @@
           await searchDmUsers(query);
         }, 300);
       });
+
+      async function showDmFriendsDefault() {
+        const uid = auth.currentUser?.uid;
+        if (!uid) return;
+
+        try {
+          const snap = await db.ref("friends/" + uid).once("value");
+          const friends = snap.val() || {};
+          const friendsList = Object.keys(friends);
+
+          if (friendsList.length === 0) {
+            dmConversationList.innerHTML = '<p class="text-xs text-slate-400 p-2">No friends yet</p>';
+            return;
+          }
+
+          dmConversationList.innerHTML = '';
+
+          for (const friendUid of friendsList) {
+            const userSnap = await db.ref("users/" + friendUid + "/username").once("value");
+            const username = userSnap.val() || friendUid;
+
+            const btn = document.createElement("button");
+            btn.className = "w-full text-left px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors";
+            btn.textContent = username;
+            btn.onclick = () => {
+              dmUserSearch.value = username;
+              startDmWithUsername(username);
+            };
+            dmConversationList.appendChild(btn);
+          }
+        } catch (err) {
+          console.error("[dm] error showing friends:", err);
+          dmConversationList.innerHTML = '<p class="text-xs text-red-400 p-2">Error loading friends</p>';
+        }
+      }
 
       async function searchDmUsers(query) {
         if (!currentUserId) return;
@@ -3891,20 +4267,17 @@
 
           await db.ref("dms/" + threadId + "/messages").push(msg);
 
-          // Update inbox metadata for both users
-          await db.ref("dmInbox/" + currentUserId + "/" + threadId).update({
+          // Update own inbox and ensure target is participant
+          const inboxUpdate = {
             withUid: activeDMTarget.uid,
             withUsername: activeDMTarget.username || activeDMTarget.uid,
             lastMsg: text,
             lastTime: now,
-          });
-
-          await db.ref("dmInbox/" + activeDMTarget.uid + "/" + threadId).update({
-            withUid: currentUserId,
-            withUsername: currentUsername || currentUserId,
-            lastMsg: text,
-            lastTime: now,
-          });
+          };
+          await Promise.all([
+            db.ref("dmInbox/" + currentUserId + "/" + threadId).set(inboxUpdate),
+            db.ref("dms/" + threadId + "/participants/" + activeDMTarget.uid).set(true).catch(() => {})
+          ]);
 
           dmInput.value = "";
           dmSendBtn.disabled = false;
@@ -3941,62 +4314,66 @@
 
       dmBlockBtn.addEventListener("click", blockActiveDmUser);
 
+      function applyMessageSize(size, persist = true) {
+        const messagesContainer = document.getElementById("messages");
+        messagesContainer.classList.remove("msg-small", "msg-large");
+        if (size === "small") messagesContainer.classList.add("msg-small");
+        if (size === "large") messagesContainer.classList.add("msg-large");
+        if (persist) saveUserSetting("messageSize", size);
+        console.log("[settings] message size set to", size);
+      }
+
+      function setActiveSizeButton(size) {
+        document.querySelectorAll(".size-btn").forEach((b) => {
+          const isActive = b.getAttribute("data-size") === size;
+          b.classList.remove("active", "bg-sky-600", "hover:bg-sky-700", "text-white");
+          b.classList.add("bg-slate-700", "hover:bg-slate-600", "text-slate-200");
+          if (isActive) {
+            b.classList.remove("bg-slate-700", "hover:bg-slate-600", "text-slate-200");
+            b.classList.add("active", "bg-sky-600", "hover:bg-sky-700", "text-white");
+          }
+        });
+      }
+
       // Message size buttons
       document.querySelectorAll(".size-btn").forEach((btn) => {
         btn.addEventListener("click", () => {
           const size = btn.getAttribute("data-size");
-          document.querySelectorAll(".size-btn").forEach((b) => {
-            b.classList.remove("active", "bg-sky-600", "hover:bg-sky-700", "text-white");
-            b.classList.add("bg-slate-700", "hover:bg-slate-600", "text-slate-200");
-          });
-          btn.classList.remove("bg-slate-700", "hover:bg-slate-600", "text-slate-200");
-          btn.classList.add("active", "bg-sky-600", "hover:bg-sky-700", "text-white");
-
-          // Apply message size
-          const messagesContainer = document.getElementById("messages");
-          messagesContainer.classList.remove("msg-small", "msg-large");
-          if (size === "small") messagesContainer.classList.add("msg-small");
-          if (size === "large") messagesContainer.classList.add("msg-large");
-
-          localStorage.setItem("messageSize", size);
-          console.log("[settings] message size set to", size);
+          setActiveSizeButton(size);
+          applyMessageSize(size, true);
         });
       });
 
       // Theme buttons with light mode implementation
-      function applyTheme(theme) {
+      function applyTheme(theme, persist = true) {
         if (theme === "light") {
           document.body.classList.add("light-mode");
         } else {
           document.body.classList.remove("light-mode");
         }
-        localStorage.setItem("theme", theme);
+        if (persist) saveUserSetting("theme", theme);
         console.log("[settings] theme applied:", theme);
+      }
+
+      function setActiveThemeButton(theme) {
+        document.querySelectorAll(".theme-btn").forEach((b) => {
+          const isActive = b.getAttribute("data-theme") === theme;
+          b.classList.remove("active", "bg-sky-600", "hover:bg-sky-700", "text-white");
+          b.classList.add("bg-slate-700", "hover:bg-slate-600", "text-slate-200");
+          if (isActive) {
+            b.classList.remove("bg-slate-700", "hover:bg-slate-600", "text-slate-200");
+            b.classList.add("active", "bg-sky-600", "hover:bg-sky-700", "text-white");
+          }
+        });
       }
 
       document.querySelectorAll(".theme-btn").forEach((btn) => {
         btn.addEventListener("click", () => {
           const theme = btn.getAttribute("data-theme");
-          document.querySelectorAll(".theme-btn").forEach((b) => {
-            b.classList.remove("active", "bg-sky-600", "hover:bg-sky-700", "text-white");
-            b.classList.add("bg-slate-700", "hover:bg-slate-600", "text-slate-200");
-          });
-          btn.classList.remove("bg-slate-700", "hover:bg-slate-600", "text-slate-200");
-          btn.classList.add("active", "bg-sky-600", "hover:bg-sky-700", "text-white");
-
+          setActiveThemeButton(theme);
           applyTheme(theme);
         });
       });
-
-      // Load saved theme on startup
-      (function initTheme() {
-        const savedTheme = localStorage.getItem("theme") || "dark";
-        const themeBtn = document.querySelector(`[data-theme="${savedTheme}"]`);
-        if (themeBtn) {
-          themeBtn.click();
-        }
-        applyTheme(savedTheme);
-      })();
 
       // Upload profile picture
       uploadPicBtn.addEventListener("click", () => {
@@ -4093,6 +4470,8 @@
                 }
               }
               currentUserData = { ...data };
+              originalProfilePic = data.profilePic || null;
+              originalProfilePicDeleteToken = data.profilePicDeleteToken || null;
               console.log("[profile] loaded successfully");
             } else {
               // Auto-create empty profile
@@ -4100,6 +4479,8 @@
               profileBio.value = "";
               setDefaultProfileIcon(profilePicPreview, 40);
               currentUserData = {};
+              originalProfilePic = null;
+              originalProfilePicDeleteToken = null;
             }
           },
           (err) => {
@@ -4246,16 +4627,6 @@
             sendFriendRequestBtn.style.background = "rgb(100, 116, 139)";
             sendFriendRequestBtn.textContent = "↩ Incoming";
             setFriendRequestStatus("They sent you a friend request. Check your requests.", "info");
-            return;
-          }
-
-          // Not friends - check if we previously detected a block for this user
-          const blockedStatusSnap = await db.ref("userBlockedStatus/" + uid + "/" + targetUid).once("value");
-          if (blockedStatusSnap.exists()) {
-            sendFriendRequestBtn.disabled = true;
-            sendFriendRequestBtn.style.background = "rgb(185, 28, 28)";
-            sendFriendRequestBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="inline mr-1"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>You Have Been Blocked';
-            setFriendRequestStatus("You have been blocked by this user.", "error");
             return;
           }
 
@@ -4429,6 +4800,23 @@
 
             await db.ref().update(updates);
 
+            // If profile picture changed and we have an old delete token, delete old asset
+            if (
+              originalProfilePic &&
+              originalProfilePic !== currentUserData.profilePic &&
+              originalProfilePicDeleteToken
+            ) {
+              try {
+                await deleteFromCloudinary(originalProfilePicDeleteToken);
+                console.log("[profile] deleted old profile image");
+              } catch (e) {
+                console.warn("[profile] failed to delete old profile image:", e);
+              }
+            }
+
+            originalProfilePic = currentUserData.profilePic || originalProfilePic;
+            originalProfilePicDeleteToken = currentUserData.profilePicDeleteToken || null;
+
             console.log("[profile] saved successfully with new username:", newUsername);
             currentUsername = newUsername;
             updateChatUserLabel(newUsername);
@@ -4460,6 +4848,23 @@
             };
 
             await db.ref("userProfiles/" + uid).set(userData);
+
+            // If profile picture changed and we have an old delete token, delete old asset
+            if (
+              originalProfilePic &&
+              originalProfilePic !== currentUserData.profilePic &&
+              originalProfilePicDeleteToken
+            ) {
+              try {
+                await deleteFromCloudinary(originalProfilePicDeleteToken);
+                console.log("[profile] deleted old profile image");
+              } catch (e) {
+                console.warn("[profile] failed to delete old profile image:", e);
+              }
+            }
+
+            originalProfilePic = currentUserData.profilePic || originalProfilePic;
+            originalProfilePicDeleteToken = currentUserData.profilePicDeleteToken || null;
 
             console.log("[profile] saved successfully (no username change)");
             
@@ -4506,13 +4911,6 @@
           }, 1500);
         }
       });
-
-      // Load message size preference on startup
-      const savedSize = localStorage.getItem("messageSize") || "medium";
-      const sizeBtn = document.querySelector(`[data-size="${savedSize}"]`);
-      if (sizeBtn) {
-        sizeBtn.click();
-      }
 
       // ===== FRIEND REQUESTS =====
       let currentViewingUsername = null;
@@ -4777,15 +5175,6 @@
           sendFriendRequestBtn.textContent = "✓ Sent!";
           sendFriendRequestBtn.style.background = "rgb(34, 197, 94)";
           
-          // Clear any cached block status since request went through
-          if (targetUid) {
-            try {
-              await db.ref("userBlockedStatus/" + uid + "/" + targetUid).remove();
-            } catch (e) {
-              console.log("[friends] could not clear block status:", e);
-            }
-          }
-          
           setFriendRequestStatus("Friend request sent", "success");
           setTimeout(() => {
             sendFriendRequestBtn.disabled = false;
@@ -4808,17 +5197,6 @@
             // If we got past privacy check and still got permission denied, it's likely a block
             isBlocked = true;
             errorMsg = "You have been blocked by this user.";
-            
-            // Store that we detected a block for this user in Firebase
-            if (targetUid) {
-              try {
-                await db.ref("userBlockedStatus/" + uid + "/" + targetUid).set({
-                  detectedAt: firebase.database.ServerValue.TIMESTAMP
-                });
-              } catch (e) {
-                console.error("[friends] could not save block status:", e);
-              }
-            }
             
             // Update button to reflect blocked state
             sendFriendRequestBtn.disabled = true;
