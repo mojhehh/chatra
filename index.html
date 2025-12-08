@@ -513,7 +513,29 @@
           Register
         </button>
 
+        <!-- Terms and Privacy Policy -->
         <p class="mt-4 text-xs text-gray-300 text-center">
+          By signing up you agree to our
+          <button
+            type="button"
+            id="termsLink"
+            onclick="document.getElementById('termsModal').classList.remove('modal-closed');document.getElementById('termsModal').classList.add('modal-open');"
+            class="font-bold text-sky-300 hover:text-sky-200 underline underline-offset-4 bg-none border-none cursor-pointer"
+          >
+            Terms of Service
+          </button>
+          and
+          <button
+            type="button"
+            id="privacyLink"
+            onclick="document.getElementById('privacyModal').classList.remove('modal-closed');document.getElementById('privacyModal').classList.add('modal-open');"
+            class="font-bold text-sky-300 hover:text-sky-200 underline underline-offset-4 bg-none border-none cursor-pointer"
+          >
+            Privacy Policy
+          </button>
+        </p>
+
+        <p class="mt-3 text-xs text-gray-300 text-center">
           Already have an account?
           <a
             href="#"
@@ -522,6 +544,317 @@
             >Login here</a
           >
         </p>
+      </div>
+    </div>
+
+    <!-- Terms of Service Modal (global) -->
+    <div
+      id="termsModal"
+      class="modal-overlay fixed inset-0 z-50 modal-closed items-center justify-center px-4"
+    >
+      <div class="glass-card max-w-2xl w-full rounded-2xl p-6 sm:p-8 max-h-[90vh] overflow-y-auto">
+        <div class="flex justify-between items-center mb-4">
+          <h3 class="text-2xl font-semibold text-slate-100">Terms of Service</h3>
+          <button
+            id="termsCloseBtn"
+            onclick="document.getElementById('termsModal').classList.add('modal-closed');document.getElementById('termsModal').classList.remove('modal-open');"
+            class="p-1 hover:bg-slate-700 rounded-lg transition-colors"
+          >
+            ✕
+          </button>
+        </div>
+
+        <!-- Terms content - EDIT THIS SECTION WITH YOUR OWN TERMS -->
+<div id="termsContent" class="text-sm text-slate-300 space-y-3 leading-relaxed">
+  <p>
+    <strong>Last Updated:</strong> December 7, 2025
+  </p>
+
+  <h4 class="font-semibold text-slate-200 mt-4">1. Acceptance of Terms</h4>
+  <p>
+    By creating an account and using Chatra, you agree to comply with these Terms of Service.
+    If you do not agree to these terms, please do not use our service.
+  </p>
+
+  <h4 class="font-semibold text-slate-200 mt-4">2. User Accounts</h4>
+  <p>
+    You are responsible for maintaining the confidentiality of your account password and for all activities
+    that occur under your account. You agree to provide accurate information when creating an account.
+  </p>
+
+  <h4 class="font-semibold text-slate-200 mt-4">3. User Conduct</h4>
+  <p>
+    You agree not to use Chatra for any unlawful purpose or in any way that violates these Terms.
+    This includes but is not limited to: harassment, hate speech, spam, or sharing inappropriate content.
+  </p>
+
+  <h4 class="font-semibold text-slate-200 mt-4">4. Content</h4>
+  <p>
+    You retain all rights to any content you post on Chatra. By posting content, you grant Chatra
+    a license to display and store that content to provide our services.
+  </p>
+
+  <h4 class="font-semibold text-slate-200 mt-4">5. Limitation of Liability</h4>
+  <p>
+    Chatra is provided "as is" without warranties of any kind. We are not liable for any indirect,
+    incidental, special, or consequential damages resulting from your use of the service.
+  </p>
+
+  <h4 class="font-semibold text-slate-200 mt-4">6. Changes to Terms</h4>
+  <p>
+    We reserve the right to modify these Terms of Service at any time. Continued use of Chatra
+    after changes constitute your acceptance of the new Terms.
+  </p>
+
+  <h4 class="font-semibold text-slate-200 mt-4">7. Acceptable Use Policy (AUP)</h4>
+  <p>
+    To keep Chatra safe for everyone, you agree not to use the Service to:
+  </p>
+
+  <h5 class="font-semibold text-slate-200 mt-4">Safety & Respect</h5>
+  <p>
+    - Harass, threaten, bully, or encourage harm,  
+    - Post hate speech, racism, slurs, or discrimination,  
+    - Target or attack people based on gender, identity, nationality, religion, disability, or similar traits.
+  </p>
+
+  <h5 class="font-semibold text-slate-200 mt-4">Content Rules</h5>
+  <p>
+    - Share pornography, sexual content, nudity, or graphic violence,  
+    - Post extremely disturbing or dangerous content,  
+    - Upload copyrighted content you do not own,  
+    - Spread false information that could harm others.
+  </p>
+
+  <h5 class="font-semibold text-slate-200 mt-4">Security & Misuse</h5>
+  <p>
+    - Spread malware, scams, or harmful links,  
+    - Attempt to hack, overload, abuse, or reverse-engineer the Service,  
+    - Use bots, exploits, or automate features without permission,  
+    - Manipulate or break security or moderation systems.
+  </p>
+
+  <h4 class="font-semibold text-slate-200 mt-4">8. Privacy and Safety</h4>
+  <p>
+    Chatra stores limited information — such as usernames, messages, and timestamps — to provide chat features.
+    Private chats and DMs are visible only to people in the conversation.
+    However, authorized administrators may review stored content for moderation, safety checks, legal requests, or technical fixes.
+    For details on how your data is handled, please read our Privacy Policy.
+  </p>
+
+  <h4 class="font-semibold text-slate-200 mt-4">9. Moderation</h4>
+  <p>
+    We reserve the right to:
+    - Remove or edit messages, usernames, or other content,  
+    - Temporarily or permanently ban users,  
+    - Limit or disable features that are being abused.
+    These actions may be taken without prior notice to protect users and maintain a safe environment.
+  </p>
+
+  <h4 class="font-semibold text-slate-200 mt-4">10. Service Availability</h4>
+  <p>
+    Chatra is provided “as is.”  
+    While we try to keep the Service running smoothly, we cannot guarantee:
+    - The Service will always be online or error-free,  
+    - That all messages or data will always send or save correctly,  
+    - That downtime or bugs will never happen.  
+    We are not responsible for losses or issues caused by outages, errors, or misuse.
+  </p>
+
+  <h4 class="font-semibold text-slate-200 mt-4">11. DMCA / Copyright Policy</h4>
+  <p>
+    Chatra respects copyright laws, including the Digital Millennium Copyright Act (DMCA).  
+    If you believe something on Chatra uses your copyrighted work without permission, you may send a DMCA takedown request. We will review the request and remove the content if required.
+  </p>
+  <p>
+    A valid DMCA request must include:
+    - Your name and contact information,  
+    - A description of the copyrighted work,  
+    - A link or description of where the content appears on Chatra,  
+    - A statement explaining you believe the use is not authorized,  
+    - A statement that the information in your request is true,  
+    - Your signature (typed name is okay).
+  </p>
+  <p>
+    Send DMCA requests to:  
+    📧 **chatrahelpcenter@gmail.com**
+  </p>
+  <p>
+    If your content is removed and you believe this was a mistake, you may send a counter-notice explaining why the content is permitted.  
+    We may disable accounts that repeatedly violate copyright laws.
+  </p>
+
+  <h4 class="font-semibold text-slate-200 mt-4">12. Changes to These Terms</h4>
+  <p>
+    We may update these Terms from time to time to improve clarity or follow new laws.  
+    When we do, we will update the “Last updated” date above.  
+    If you continue using Chatra after updates, that means you accept the new Terms.
+  </p>
+
+  <h4 class="font-semibold text-slate-200 mt-4">13. Contact Us</h4>
+  <p>
+    If you have questions, need help, or want to report a problem, contact us at:  
+    📧 **chatrahelpcenter@gmail.com**
+  </p>
+
+</div>
+
+
+        <button
+          id="termsCloseBtn2"
+          onclick="document.getElementById('termsModal').classList.add('modal-closed');document.getElementById('termsModal').classList.remove('modal-open');"
+          class="w-full mt-6 px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-700 transition-colors font-medium text-slate-100"
+        >
+          Close
+        </button>
+      </div>
+    </div>
+
+    <!-- Privacy Policy Modal (global) -->
+    <div
+      id="privacyModal"
+      class="modal-overlay fixed inset-0 z-50 modal-closed items-center justify-center px-4"
+    >
+      <div class="glass-card max-w-2xl w-full rounded-2xl p-6 sm:p-8 max-h-[90vh] overflow-y-auto">
+        <div class="flex justify-between items-center mb-4">
+          <h3 class="text-2xl font-semibold text-slate-100">Privacy Policy</h3>
+          <button
+            id="privacyCloseBtn"
+            onclick="document.getElementById('privacyModal').classList.add('modal-closed');document.getElementById('privacyModal').classList.remove('modal-open');"
+            class="p-1 hover:bg-slate-700 rounded-lg transition-colors"
+          >
+            ✕
+          </button>
+        </div>
+
+        <!-- Privacy content - EDIT THIS SECTION WITH YOUR OWN PRIVACY POLICY -->
+        <div id="privacyContent" class="text-sm text-slate-300 space-y-3 leading-relaxed">
+          <p>
+            <strong>Last Updated:</strong> December 6, 2025
+          </p>
+
+          <h4 class="font-semibold text-slate-200 mt-4">1. Information We Collect</h4>
+          <p>
+            We collect the information you provide directly, such as your username and password when you create an account.
+            We also collect information about your interactions with our service, including messages and account settings.
+          </p>
+
+          <h4 class="font-semibold text-slate-200 mt-4">1.1 Account Information</h4>
+          <p>When you create an account, we collect:</p>
+          <ul class="list-disc pl-5 space-y-1">
+            <li>Username</li>
+            <li>Password (stored securely and never visible to us)</li>
+          </ul>
+          <p>We do not require your real name, phone number, or email.</p>
+
+          <h4 class="font-semibold text-slate-200 mt-4">1.2 Messages</h4>
+          <p>Chatra stores:</p>
+          <ul class="list-disc pl-5 space-y-1">
+            <li>Messages you send</li>
+            <li>Timestamps</li>
+            <li>Sender and recipient information</li>
+            <li>Group chat participation</li>
+          </ul>
+          <p>
+            Messages are not end-to-end encrypted, which means we can technically access them if needed for safety or moderation.
+            We never sell or share your messages with advertisers.
+          </p>
+
+          <h4 class="font-semibold text-slate-200 mt-4">1.3 Usage Information</h4>
+          <p>We may collect basic technical data such as:</p>
+          <ul class="list-disc pl-5 space-y-1">
+            <li>Device type</li>
+            <li>Browser information</li>
+            <li>IP address</li>
+            <li>App performance and crash data</li>
+          </ul>
+          <p>This helps us keep Chatra running smoothly.</p>
+
+          <h4 class="font-semibold text-slate-200 mt-4">2. How We Use Your Information</h4>
+          <p>We use your information to:</p>
+          <ul class="list-disc pl-5 space-y-1">
+            <li>Provide chat features (messages, DMs, group chats)</li>
+            <li>Keep the Service safe and functioning properly</li>
+            <li>Prevent spam, abuse, and violations of our Terms</li>
+            <li>Fix bugs and improve performance</li>
+          </ul>
+          <p>We do not sell your information or use it for targeted advertising.</p>
+
+          <h4 class="font-semibold text-slate-200 mt-4">3. Who Can See Your Information?</h4>
+
+          <h5 class="font-semibold text-slate-200 mt-4">3.1 Other Users</h5>
+          <ul class="list-disc pl-5 space-y-1">
+            <li>Messages in public or group chats are visible to everyone in that chat.</li>
+            <li>Direct Messages (DMs) are visible only to the people in the conversation.</li>
+          </ul>
+
+          <h5 class="font-semibold text-slate-200 mt-4">3.2 Administrators</h5>
+          <p>Authorized administrators may access stored data only when necessary, such as:</p>
+          <ul class="list-disc pl-5 space-y-1">
+            <li>Investigating abuse, threats, or unsafe behavior</li>
+            <li>Handling reports or fixing technical issues</li>
+            <li>Enforcing the Terms of Service</li>
+            <li>Complying with legal requirements</li>
+          </ul>
+
+          <h5 class="font-semibold text-slate-200 mt-4">3.3 Third Parties</h5>
+          <p>
+            We do not sell, rent, or trade your data with third parties.
+            We may use trusted services (such as Firebase) to store data securely.
+          </p>
+
+          <h4 class="font-semibold text-slate-200 mt-4">4. Data Safety</h4>
+          <p>We take reasonable steps to protect your information, including:</p>
+          <ul class="list-disc pl-5 space-y-1">
+            <li>Secure password storage</li>
+            <li>Database rules that restrict access</li>
+            <li>Monitoring for abuse or attacks</li>
+            <li>Regular system updates</li>
+          </ul>
+          <p>However, no online service is 100% secure, and we cannot guarantee absolute protection.</p>
+
+          <h4 class="font-semibold text-slate-200 mt-4">5. Your Choices and Controls</h4>
+          <p>You may:</p>
+          <ul class="list-disc pl-5 space-y-1">
+            <li>Change your username or account information</li>
+            <li>Request message deletion</li>
+            <li>Request account deletion</li>
+            <li>Stop using Chatra at any time</li>
+          </ul>
+          <p>
+            Deleting your account permanently removes your username and profile data.
+            Some message logs may be kept temporarily for safety or legal reasons.
+          </p>
+
+          <h4 class="font-semibold text-slate-200 mt-4">6. Children’s Privacy</h4>
+          <p>
+            Chatra is for users <strong>13 years or older</strong>.
+            We do not knowingly collect data from children under 13.
+            If we learn a user under 13 has created an account, we will remove it.
+          </p>
+
+          <h4 class="font-semibold text-slate-200 mt-4">7. Changes to This Policy</h4>
+          <p>
+            We may update this Privacy Policy from time to time.
+            When we do, we will update the “Last updated” date above.
+            If you continue using Chatra after changes, you accept the updated Policy.
+          </p>
+
+          <h4 class="font-semibold text-slate-200 mt-4">8. Contact Us</h4>
+          <p>
+            If you have questions or need help with your data, contact us at:
+            📧 <strong>chatrahelpcenter@gmail.com</strong>
+          </p>
+        </div>
+
+
+        <button
+          id="privacyCloseBtn2"
+          onclick="document.getElementById('privacyModal').classList.add('modal-closed');document.getElementById('privacyModal').classList.remove('modal-open');"
+          class="w-full mt-6 px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-700 transition-colors font-medium text-slate-100"
+        >
+          Close
+        </button>
       </div>
     </div>
 
@@ -563,41 +896,7 @@
             Logout
           </button>
 
-          <!-- Dropdown Menu -->
-          <div
-            id="settingsMenu"
-            class="absolute top-14 left-4 w-48 glass-card rounded-xl z-50 menu-closed flex flex-col overflow-hidden" style="display: none;"
-          >
-            <button
-              id="settingsOpenBtn"
-              class="px-4 py-2.5 text-left text-sm text-slate-100 hover:bg-slate-700/50 transition-colors border-b border-slate-700/50 flex items-center gap-2"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-slate-300"><circle cx="12" cy="12" r="1"/><path d="M12 1v6m0 6v4M4.22 4.22l4.24 4.24m3.08 3.08l4.24 4.24M1 12h6m6 0h4M4.22 19.78l4.24-4.24m-3.08-3.08l-4.24-4.24M19.78 19.78l-4.24-4.24m-3.08-3.08l-4.24-4.24"/></svg>
-              Settings
-            </button>
-            <button
-              id="profileOpenBtn"
-              class="px-4 py-2.5 text-left text-sm text-slate-100 hover:bg-slate-700/50 transition-colors flex items-center gap-2"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" class="text-slate-300"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
-              My Profile
-            </button>
-            <button
-              id="friendsRequestsBtn"
-              class="px-4 py-2.5 text-left text-sm text-slate-100 hover:bg-slate-700/50 transition-colors border-t border-slate-700/50 flex items-center gap-2 relative"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-slate-300"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-              Friend Requests
-              <span id="friendRequestBadge" class="ml-auto bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center hidden">0</span>
-            </button>
-            <button
-              id="friendsListBtn"
-              class="px-4 py-2.5 text-left text-sm text-slate-100 hover:bg-slate-700/50 transition-colors flex items-center gap-2"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" class="text-slate-300"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
-              Friends
-            </button>
-          </div>
+
         </div>
 
         <!-- Settings Modal -->
@@ -779,6 +1078,24 @@
               Add Friend
             </button>
 
+            <!-- Block Button -->
+            <button
+              id="blockUserBtn"
+              class="w-full px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 transition-colors font-medium text-sm text-white mb-2 flex items-center justify-center gap-2"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
+              </svg>
+              Block User
+            </button>
+
+            <div
+              id="friendRequestStatus"
+              class="hidden text-xs text-slate-200 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 mb-3 text-left"
+              role="status"
+            ></div>
+
             <!-- Close Button (Bottom) -->
             <button
               id="viewProfileCloseBtn2"
@@ -913,12 +1230,55 @@
           </button>
         </div>
 
-        <div id="friendsList" class="space-y-2">
-          <!-- Friends will be rendered here -->
+        <!-- Search Users -->
+        <div class="mb-4">
+          <input
+            id="searchUsersInput"
+            type="text"
+            placeholder="Search users..."
+            class="w-full px-4 py-2 bg-slate-700 text-slate-100 rounded-lg placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-600"
+          />
+          <div id="searchResults" class="mt-2 space-y-2 max-h-60 overflow-y-auto">
+            <!-- Search results will appear here -->
+          </div>
         </div>
 
-        <p id="noFriendsMsg" class="text-center text-slate-400 text-sm mt-4">
-          No friends yet
+        <!-- Friends List -->
+        <div class="border-t border-slate-700 pt-4">
+          <h4 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-2">Your Friends</h4>
+          <div id="friendsList" class="space-y-2">
+            <!-- Friends will be rendered here -->
+          </div>
+
+          <p id="noFriendsMsg" class="text-center text-slate-400 text-sm mt-4">
+            No friends yet
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Blocked Users Modal -->
+    <div
+      id="blockedUsersModal"
+      class="modal-overlay fixed inset-0 z-50 modal-closed items-center justify-center px-4"
+    >
+      <div class="glass-card max-w-md w-full rounded-2xl p-6 max-h-[90vh] overflow-y-auto">
+        <div class="flex justify-between items-center mb-4">
+          <h3 class="text-lg font-semibold text-slate-100">Blocked Users</h3>
+          <button
+            id="blockedUsersCloseBtn"
+            class="p-1 hover:bg-slate-700 rounded-lg transition-colors"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div id="blockedUsersList" class="space-y-2">
+          <!-- Blocked users will be rendered here -->
+        </div>
+
+        <p id="noBlockedUsersMsg" class="text-center text-slate-400 text-sm mt-4">
+          No blocked users
         </p>
       </div>
     </div>
@@ -943,6 +1303,250 @@
         class="max-w-[95vw] max-h-[95vh] object-contain"
         style="cursor: zoom-out;"
       />
+    </div>
+
+    <!-- Side Panel -->
+    <div
+      id="sidePanel"
+      class="fixed top-0 left-0 h-full w-72 glass-card z-50 flex flex-col transition-transform duration-300"
+      style="transform: translateX(-100%);"
+    >
+      <!-- Side Panel Header -->
+      <div class="flex justify-between items-center p-4 border-b border-slate-700/50">
+        <div>
+          <h3 class="text-lg font-semibold text-slate-100">Menu</h3>
+          <p id="sidePanelUsername" class="text-xs text-slate-400"></p>
+        </div>
+        <button
+          id="sidePanelClose"
+          class="p-1.5 hover:bg-slate-700 rounded-lg transition-colors"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Side Panel Content -->
+      <div class="flex-1 overflow-y-auto p-4 space-y-6">
+        <!-- Profile Section -->
+        <div>
+          <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Profile</h4>
+          <div class="space-y-1">
+            <button
+              id="sidePanelProfile"
+              class="w-full px-4 py-2.5 text-left text-sm text-slate-100 hover:bg-slate-700/50 rounded-lg transition-colors flex items-center gap-3"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" class="text-slate-300">
+                <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+              </svg>
+              My Profile
+            </button>
+            <button
+              id="sidePanelSettings"
+              class="w-full px-4 py-2.5 text-left text-sm text-slate-100 hover:bg-slate-700/50 rounded-lg transition-colors flex items-center gap-3"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-slate-300">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M12 1v6m0 6v10M5.64 5.64l4.24 4.24m4.24 4.24l4.24 4.24M1 12h6m10 0h6M5.64 18.36l4.24-4.24m4.24-4.24l4.24-4.24"/>
+              </svg>
+              Settings
+            </button>
+            <button
+              id="sidePanelPrivacy"
+              class="w-full px-4 py-2.5 text-left text-sm text-slate-100 hover:bg-slate-700/50 rounded-lg transition-colors flex items-center gap-3"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-slate-300">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+              </svg>
+              Privacy Settings
+            </button>
+          </div>
+        </div>
+
+        <!-- Social Section -->
+        <div>
+          <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Social</h4>
+          <div class="space-y-1">
+            <button
+              id="sidePanelFriendRequests"
+              class="w-full px-4 py-2.5 text-left text-sm text-slate-100 hover:bg-slate-700/50 rounded-lg transition-colors flex items-center gap-3 relative"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-slate-300">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                <circle cx="9" cy="7" r="4"/>
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+              </svg>
+              Friend Requests
+              <span id="sidePanelFriendBadge" class="ml-auto bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center hidden">0</span>
+            </button>
+            <button
+              id="sidePanelFriends"
+              class="w-full px-4 py-2.5 text-left text-sm text-slate-100 hover:bg-slate-700/50 rounded-lg transition-colors flex items-center gap-3"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" class="text-slate-300">
+                <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/>
+              </svg>
+              Friends
+            </button>
+            <button
+              id="sidePanelDMs"
+              class="w-full px-4 py-2.5 text-left text-sm text-slate-100 hover:bg-slate-700/50 rounded-lg transition-colors flex items-center gap-3"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-slate-300">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+              </svg>
+              Direct Messages
+            </button>
+            <button
+              id="sidePanelBlocked"
+              class="w-full px-4 py-2.5 text-left text-sm text-slate-100 hover:bg-slate-700/50 rounded-lg transition-colors flex items-center gap-3"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-slate-300">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
+              </svg>
+              Blocked Users
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Side Panel Overlay -->
+    <div
+      id="sidePanelOverlay"
+      class="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 hidden"
+    ></div>
+
+    <!-- Direct Messages Modal -->
+    <div
+      id="dmModal"
+      class="modal-overlay fixed inset-0 z-50 modal-closed items-center justify-center px-4"
+    >
+      <div class="glass-card w-full max-w-5xl rounded-2xl p-4 sm:p-6 max-h-[90vh] overflow-hidden flex flex-col gap-4">
+        <div class="flex justify-between items-center">
+          <h3 class="text-xl font-semibold text-slate-100">Direct Messages</h3>
+          <button
+            id="dmCloseBtn"
+            class="p-1 hover:bg-slate-700 rounded-lg transition-colors"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div class="flex flex-col sm:flex-row gap-4 min-h-[60vh]">
+          <!-- Conversations list -->
+          <div class="sm:w-1/3 bg-slate-900/70 border border-slate-800 rounded-xl p-3 flex flex-col gap-3">
+            <div class="flex items-center gap-2">
+              <input
+                id="dmUserSearch"
+                type="text"
+                placeholder="Search users..."
+                class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/50 outline-none text-sm"
+              />
+              <button
+                id="dmStartBtn"
+                class="px-3 py-2 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-sm"
+              >
+                Start
+              </button>
+            </div>
+
+            <div class="flex-1 overflow-y-auto space-y-2" id="dmConversationList">
+              <!-- Conversations injected here -->
+            </div>
+          </div>
+
+          <!-- Message view -->
+          <div class="sm:flex-1 bg-slate-900/70 border border-slate-800 rounded-xl flex flex-col min-h-[50vh]">
+            <div class="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
+              <div>
+                <p class="text-sm text-slate-400">Chatting with</p>
+                <p id="dmActiveUser" class="text-base text-slate-100 font-semibold">Select a conversation</p>
+              </div>
+              <button
+                id="dmBlockBtn"
+                class="text-xs px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white"
+              >
+                Block
+              </button>
+            </div>
+
+            <div id="dmMessages" class="flex-1 overflow-y-auto px-4 py-3 space-y-2 bg-slate-900"></div>
+
+            <form id="dmForm" class="p-3 border-t border-slate-800 flex items-center gap-2">
+              <input
+                id="dmInput"
+                class="flex-1 px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/50 outline-none text-sm"
+                placeholder="Type a message..."
+                autocomplete="off"
+              />
+              <button
+                id="dmSendBtn"
+                type="submit"
+                class="px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-sm font-medium"
+              >
+                Send
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <p id="dmError" class="text-xs text-red-400 min-h-[1rem]"></p>
+      </div>
+    </div>
+
+    <!-- Privacy Settings Modal -->
+    <div
+      id="privacySettingsModal"
+      class="fixed inset-0 z-50 modal-closed flex items-center justify-center px-4 bg-black/50 backdrop-blur-sm"
+    >
+      <div class="glass-card max-w-md w-full rounded-2xl p-6">
+        <div class="flex justify-between items-center mb-4">
+          <h3 class="text-lg font-semibold text-slate-100">Privacy Settings</h3>
+          <button
+            id="privacySettingsCloseBtn"
+            class="p-1 hover:bg-slate-700 rounded-lg transition-colors"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div class="space-y-4">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-sm font-medium text-slate-100">Allow Friend Requests</p>
+              <p class="text-xs text-slate-400">Let others send you friend requests</p>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" id="allowFriendRequestsToggle" class="sr-only peer" checked>
+              <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-600"></div>
+            </label>
+          </div>
+
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-sm font-medium text-slate-100">Allow Direct Messages</p>
+              <p class="text-xs text-slate-400">Let friends send you DMs</p>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" id="allowDMsToggle" class="sr-only peer" checked>
+              <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-600"></div>
+            </label>
+          </div>
+        </div>
+
+        <button
+          id="savePrivacyBtn"
+          class="w-full mt-6 px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-lg transition-colors font-medium"
+        >
+          Save Settings
+        </button>
+      </div>
     </div>
 
     <!-- Delete Message Confirmation Modal -->
@@ -1073,10 +1677,19 @@
       let currentUsername = null; // SINGLE SOURCE for username
       let currentUserId = null;
 
+      // DM state
+      let activeDMThread = null;
+      let activeDMTarget = null; // { uid, username }
+      let dmMessagesRef = null;
+      let dmMessagesListener = null;
+      let dmInboxRef = null;
+      let dmInboxListener = null;
+
       // Real-time messages
       let messagesRef = null;      // realtime ref for new messages
       let messagesListener = null; // child_added listener
       const seenMessageKeys = new Set();
+      let blockedUsersCache = new Set(); // Cache of blocked user UIDs
 
       // Pagination / infinite scroll
       const PAGE_SIZE = 75; // Optimized balance between speed and data
@@ -1085,6 +1698,33 @@
       let isLoadingOlder = false;
       let allHistoryLoaded = false;
       let scrollListenerAttached = false;
+
+      // Load blocked users into cache
+      async function loadBlockedUsersCache() {
+        const uid = auth.currentUser?.uid;
+        if (!uid) return;
+
+        try {
+          const snap = await db.ref("blockedUsers/" + uid).once("value");
+          blockedUsersCache.clear();
+          
+          if (snap.exists()) {
+            const blocked = snap.val();
+            Object.keys(blocked).forEach(blockedUid => {
+              blockedUsersCache.add(blockedUid);
+            });
+            console.log("[block] loaded", blockedUsersCache.size, "blocked users into cache");
+          }
+        } catch (err) {
+          console.error("[block] error loading blocked users cache:", err);
+        }
+      }
+
+      // Check if a message is from a blocked user
+      function isMessageFromBlockedUser(msg) {
+        if (!msg || !msg.userId) return false;
+        return blockedUsersCache.has(msg.userId);
+      }
 
       // Typing status
       let typingTimeoutId = null;
@@ -1311,9 +1951,278 @@
         console.log("[ui] switched to login form");
       };
 
+      // Get modal elements
+      const termsModal = document.getElementById("termsModal");
+      const privacyModal = document.getElementById("privacyModal");
+      const termsLink = document.getElementById("termsLink");
+      const privacyLink = document.getElementById("privacyLink");
+      const termsCloseBtn = document.getElementById("termsCloseBtn");
+      const termsCloseBtn2 = document.getElementById("termsCloseBtn2");
+      const privacyCloseBtn = document.getElementById("privacyCloseBtn");
+      const privacyCloseBtn2 = document.getElementById("privacyCloseBtn2");
+
+      // Terms of Service modal handlers (guarded for safety)
+      if (termsLink && termsModal && termsCloseBtn && termsCloseBtn2) {
+        termsLink.onclick = (e) => {
+          e.preventDefault();
+          termsModal.classList.remove("modal-closed");
+          termsModal.classList.add("modal-open");
+          console.log("[ui] opened terms modal");
+        };
+
+        termsCloseBtn.onclick = () => {
+          termsModal.classList.add("modal-closed");
+          termsModal.classList.remove("modal-open");
+          console.log("[ui] closed terms modal");
+        };
+
+        termsCloseBtn2.onclick = () => {
+          termsModal.classList.add("modal-closed");
+          termsModal.classList.remove("modal-open");
+          console.log("[ui] closed terms modal");
+        };
+
+        termsModal.onclick = (e) => {
+          if (e.target === termsModal) {
+            termsModal.classList.add("modal-closed");
+            termsModal.classList.remove("modal-open");
+          }
+        };
+      } else {
+        console.warn("[ui] terms modal elements missing");
+      }
+
+      // Privacy Policy modal handlers (guarded for safety)
+      if (privacyLink && privacyModal && privacyCloseBtn && privacyCloseBtn2) {
+        privacyLink.onclick = (e) => {
+          e.preventDefault();
+          privacyModal.classList.remove("modal-closed");
+          privacyModal.classList.add("modal-open");
+          console.log("[ui] opened privacy modal");
+        };
+
+        privacyCloseBtn.onclick = () => {
+          privacyModal.classList.add("modal-closed");
+          privacyModal.classList.remove("modal-open");
+          console.log("[ui] closed privacy modal");
+        };
+
+        privacyCloseBtn2.onclick = () => {
+          privacyModal.classList.add("modal-closed");
+          privacyModal.classList.remove("modal-open");
+          console.log("[ui] closed privacy modal");
+        };
+
+        privacyModal.onclick = (e) => {
+          if (e.target === privacyModal) {
+            privacyModal.classList.add("modal-closed");
+            privacyModal.classList.remove("modal-open");
+          }
+        };
+      } else {
+        console.warn("[ui] privacy modal elements missing");
+      }
+
       // Helper: make fake email from username
       function makeEmailFromUsername(username) {
         return username.toLowerCase() + "@gmail.com";
+      }
+
+      // Helper: fetch UID by username
+      async function getUidByUsername(username) {
+        const snap = await db
+          .ref("users")
+          .orderByChild("username")
+          .equalTo(username)
+          .limitToFirst(1)
+          .once("value");
+        if (!snap.exists()) return null;
+        const val = snap.val();
+        const uid = Object.keys(val)[0];
+        return uid || null;
+      }
+
+      // Helper: sorted thread id for two UIDs
+      function makeThreadId(uidA, uidB) {
+        return [uidA, uidB].sort().join("__");
+      }
+
+      function clearDmMessages() {
+        dmMessages.innerHTML = "";
+      }
+
+      function detachDmMessagesListener() {
+        if (dmMessagesRef && dmMessagesListener) {
+          dmMessagesRef.off("child_added", dmMessagesListener);
+        }
+        dmMessagesRef = null;
+        dmMessagesListener = null;
+      }
+
+      function detachDmInboxListener() {
+        if (dmInboxRef && dmInboxListener) {
+          dmInboxRef.off("value", dmInboxListener);
+        }
+        dmInboxRef = null;
+        dmInboxListener = null;
+      }
+
+      function renderDmMessage(msg) {
+        const mine = msg.fromUid === currentUserId;
+        const row = document.createElement("div");
+        row.className = mine ? "flex justify-end" : "flex justify-start";
+
+        const bubble = document.createElement("div");
+        bubble.className = `message-bubble-anim max-w-[80%] px-4 py-2 rounded-2xl text-sm border ${
+          mine
+            ? "mine bg-gradient-to-r from-sky-500 to-blue-600 text-white border-sky-600 shadow-lg shadow-sky-900/40"
+            : "bg-slate-800/90 text-slate-100 border-slate-700"
+        }`;
+        bubble.textContent = msg.text || "";
+        row.appendChild(bubble);
+
+        dmMessages.appendChild(row);
+        dmMessages.scrollTop = dmMessages.scrollHeight;
+      }
+
+      async function isBlockedByTarget(targetUid) {
+        if (!currentUserId || !targetUid) return false;
+        try {
+          const snap = await db
+            .ref("blockedUsers/" + targetUid + "/" + currentUserId)
+            .once("value");
+          return snap.exists();
+        } catch (e) {
+          // If permission denied (expected due to rules), treat as not knowable and let server-side rules enforce
+          if (e?.code === "PERMISSION_DENIED") {
+            return false;
+          }
+          console.warn("[dm] blockedBy check failed", e);
+          return false;
+        }
+      }
+
+      function startDmMessagesListener(threadId) {
+        detachDmMessagesListener();
+        clearDmMessages();
+        dmMessagesRef = db.ref("dms/" + threadId + "/messages");
+        dmMessagesListener = dmMessagesRef
+          .orderByChild("time")
+          .limitToLast(200)
+          .on("child_added", (snap) => {
+            const msg = snap.val();
+            if (!msg) return;
+            renderDmMessage(msg);
+          });
+      }
+
+      async function loadDmInbox() {
+        if (!currentUserId) return;
+        detachDmInboxListener();
+        dmConversationList.innerHTML = "Loading...";
+        dmInboxRef = db.ref("dmInbox/" + currentUserId);
+        dmInboxListener = dmInboxRef.on("value", async (snap) => {
+          const data = snap.val() || {};
+          const entries = Object.entries(data)
+            .map(([threadId, info]) => ({ threadId, ...info }))
+            .sort((a, b) => (b.lastTime || 0) - (a.lastTime || 0));
+
+          dmConversationList.innerHTML = "";
+          if (!entries.length) {
+            dmConversationList.innerHTML = '<p class="text-xs text-slate-400">No conversations yet</p>';
+            return;
+          }
+
+          entries.forEach((item) => {
+            const btn = document.createElement("button");
+            btn.className = "w-full text-left px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors";
+            btn.innerHTML = `<div class="text-sm text-slate-100">${item.withUsername || item.withUid || "Unknown"}</div>
+              <div class="text-xs text-slate-400 truncate">${item.lastMsg || "(no message)"}</div>`;
+            btn.onclick = () => {
+              selectDmThread(item.threadId, item.withUid, item.withUsername || item.withUid);
+            };
+            dmConversationList.appendChild(btn);
+          });
+        });
+      }
+
+      async function selectDmThread(threadId, targetUid, targetUsername) {
+        if (!currentUserId) return;
+        let resolvedUsername = targetUsername;
+        if (!resolvedUsername && targetUid) {
+          try {
+            const nameSnap = await db.ref("users/" + targetUid + "/username").once("value");
+            resolvedUsername = nameSnap.val() || targetUid;
+          } catch (e) {
+            resolvedUsername = targetUid;
+          }
+        }
+        activeDMThread = threadId;
+        activeDMTarget = { uid: targetUid, username: resolvedUsername };
+        dmActiveUser.textContent = resolvedUsername;
+        dmError.textContent = "";
+        startDmMessagesListener(threadId);
+      }
+
+      async function ensureDmThread(targetUid, targetUsername) {
+        const threadId = makeThreadId(currentUserId, targetUid);
+        const participantsRef = db.ref("dms/" + threadId + "/participants");
+        await participantsRef.update({ [currentUserId]: true, [targetUid]: true });
+        // Seed inbox entries
+        const now = Date.now();
+        const inboxSelf = db.ref("dmInbox/" + currentUserId + "/" + threadId);
+        const inboxOther = db.ref("dmInbox/" + targetUid + "/" + threadId);
+        await inboxSelf.update({ withUid: targetUid, withUsername: targetUsername || targetUid, lastTime: now });
+        await inboxOther.update({ withUid: currentUserId, withUsername: currentUsername || currentUserId, lastTime: now });
+        return threadId;
+      }
+
+      async function startDmWithUsername(username) {
+        if (!currentUserId) {
+          dmError.textContent = "Please log in.";
+          return;
+        }
+        const target = (username || "").trim();
+        if (!target) {
+          dmError.textContent = "Enter a username.";
+          return;
+        }
+        if (target === currentUsername) {
+          dmError.textContent = "You cannot DM yourself.";
+          return;
+        }
+        dmError.textContent = "";
+        try {
+          const targetUid = await getUidByUsername(target);
+          if (!targetUid) {
+            dmError.textContent = "User not found.";
+            return;
+          }
+          if (blockedUsersCache.has(targetUid)) {
+            dmError.textContent = "You blocked this user.";
+            return;
+          }
+
+          if (await isBlockedByTarget(targetUid)) {
+            dmError.textContent = "You are blocked by this user.";
+            return;
+          }
+
+          const allowSnap = await db
+            .ref("userPrivacy/" + targetUid + "/allowDMs")
+            .once("value");
+          if (allowSnap.exists() && allowSnap.val() === false) {
+            dmError.textContent = "This user is not accepting DMs.";
+            return;
+          }
+          const threadId = await ensureDmThread(targetUid, target);
+          await selectDmThread(threadId, targetUid, target);
+          dmModal.classList.add("modal-open");
+          dmModal.classList.remove("modal-closed");
+        } catch (err) {
+          console.error("[dm] start error", err);
+          dmError.textContent = err.message || "Could not start DM.";
+        }
       }
 
       // 🔍 Check if username is already taken in DB
@@ -1870,6 +2779,13 @@
           return;
         }
         if (seenMessageKeys.has(key)) return;
+        
+        // Filter out messages from blocked users
+        if (isMessageFromBlockedUser(msg)) {
+          seenMessageKeys.add(key); // Mark as seen but don't render
+          return;
+        }
+        
         seenMessageKeys.add(key);
         renderMessage(msg, { ...options, messageId: key });
       }
@@ -1881,6 +2797,13 @@
 
         messages.forEach(({ key, msg }) => {
           if (key && seenMessageKeys.has(key)) return;
+          
+          // Filter out messages from blocked users
+          if (isMessageFromBlockedUser(msg)) {
+            if (key) seenMessageKeys.add(key); // Mark as seen but don't render
+            return;
+          }
+          
           if (key) seenMessageKeys.add(key);
 
           const row = createMessageRow(msg, key);
@@ -1997,7 +2920,7 @@
           );
       }
 
-      function startMessagesListener() {
+      async function startMessagesListener() {
         console.log("[messages] startMessagesListener called");
         stopMessagesListener();
         seenMessageKeys.clear();
@@ -2007,6 +2930,9 @@
         newestTime = null;
         allHistoryLoaded = false;
         isLoadingOlder = false;
+
+        // Load blocked users cache first
+        await loadBlockedUsersCache();
 
         try {
           const baseRef = db.ref("messages").orderByChild("time");
@@ -2310,6 +3236,14 @@
           currentUserId = null;
           currentUsername = null;
           messagesDiv.innerHTML = "";
+          activeDMThread = null;
+          activeDMTarget = null;
+          clearDmMessages();
+          dmConversationList.innerHTML = "";
+          detachDmMessagesListener();
+          detachDmInboxListener();
+          dmModal.classList.add("modal-closed");
+          dmModal.classList.remove("modal-open");
 
           chatInterface.classList.add("hidden");
           loginForm.classList.remove("hidden");
@@ -2581,12 +3515,9 @@
 
       // ===== SETTINGS MENU & MODALS =====
       const menuToggle = document.getElementById("menuToggle");
-      const settingsMenu = document.getElementById("settingsMenu");
       const settingsModal = document.getElementById("settingsModal");
       const profileModal = document.getElementById("profileModal");
       const viewProfileModal = document.getElementById("viewProfileModal");
-      const settingsOpenBtn = document.getElementById("settingsOpenBtn");
-      const profileOpenBtn = document.getElementById("profileOpenBtn");
       const settingsCloseBtn = document.getElementById("settingsCloseBtn");
       const profileCloseBtn = document.getElementById("profileCloseBtn");
       const saveProfileBtn = document.getElementById("saveProfileBtn");
@@ -2603,34 +3534,69 @@
 
       let currentUserData = {};
 
-      // Toggle menu
-      menuToggle.addEventListener("click", (e) => {
-        e.stopPropagation(); // Prevent event from bubbling
-        settingsMenu.classList.toggle("menu-open");
-        settingsMenu.classList.toggle("menu-closed");
-      });
+      // Side Panel Elements
+      const sidePanel = document.getElementById("sidePanel");
+      const sidePanelOverlay = document.getElementById("sidePanelOverlay");
+      const sidePanelClose = document.getElementById("sidePanelClose");
+      const sidePanelUsername = document.getElementById("sidePanelUsername");
+      const sidePanelProfile = document.getElementById("sidePanelProfile");
+      const sidePanelSettings = document.getElementById("sidePanelSettings");
+      const sidePanelPrivacy = document.getElementById("sidePanelPrivacy");
+      const sidePanelFriendRequests = document.getElementById("sidePanelFriendRequests");
+      const sidePanelFriends = document.getElementById("sidePanelFriends");
+      const sidePanelDMs = document.getElementById("sidePanelDMs");
+      const sidePanelBlocked = document.getElementById("sidePanelBlocked");
+      const sidePanelFriendBadge = document.getElementById("sidePanelFriendBadge");
 
-      // Close menu when clicking outside
-      document.addEventListener("click", (e) => {
-        // Only close if clicking outside BOTH menu and toggle button
-        if (!settingsMenu.contains(e.target) && !menuToggle.contains(e.target)) {
-          settingsMenu.classList.remove("menu-open");
-          settingsMenu.classList.add("menu-closed");
+      // DM Elements
+      const dmModal = document.getElementById("dmModal");
+      const dmCloseBtn = document.getElementById("dmCloseBtn");
+      const dmUserSearch = document.getElementById("dmUserSearch");
+      const dmStartBtn = document.getElementById("dmStartBtn");
+      const dmConversationList = document.getElementById("dmConversationList");
+      const dmMessages = document.getElementById("dmMessages");
+      const dmForm = document.getElementById("dmForm");
+      const dmInput = document.getElementById("dmInput");
+      const dmSendBtn = document.getElementById("dmSendBtn");
+      const dmActiveUser = document.getElementById("dmActiveUser");
+      const dmError = document.getElementById("dmError");
+      const dmBlockBtn = document.getElementById("dmBlockBtn");
+
+      // Blocked Users Elements
+      const blockedUsersModal = document.getElementById("blockedUsersModal");
+      const blockedUsersCloseBtn = document.getElementById("blockedUsersCloseBtn");
+      const blockedUsersList = document.getElementById("blockedUsersList");
+      const noBlockedUsersMsg = document.getElementById("noBlockedUsersMsg");
+      const blockUserBtn = document.getElementById("blockUserBtn");
+
+      // User Search Elements
+      const searchUsersInput = document.getElementById("searchUsersInput");
+      const searchResults = document.getElementById("searchResults");
+
+      // Privacy Settings Elements
+      const privacySettingsModal = document.getElementById("privacySettingsModal");
+      const privacySettingsCloseBtn = document.getElementById("privacySettingsCloseBtn");
+      const allowFriendRequestsToggle = document.getElementById("allowFriendRequestsToggle");
+      const allowDMsToggle = document.getElementById("allowDMsToggle");
+      const savePrivacyBtn = document.getElementById("savePrivacyBtn");
+
+      // Open/Close Side Panel
+      function openSidePanel() {
+        sidePanel.style.transform = "translateX(0)";
+        sidePanelOverlay.classList.remove("hidden");
+        if (currentUsername) {
+          sidePanelUsername.textContent = currentUsername;
         }
-      });
+      }
 
-      // Prevent closing when clicking inside menu
-      settingsMenu.addEventListener("click", (e) => {
-        e.stopPropagation();
-      });
+      function closeSidePanel() {
+        sidePanel.style.transform = "translateX(-100%)";
+        sidePanelOverlay.classList.add("hidden");
+      }
 
-      // Open settings modal
-      settingsOpenBtn.addEventListener("click", () => {
-        settingsMenu.classList.remove("menu-open");
-        settingsMenu.classList.add("menu-closed");
-        settingsModal.classList.remove("modal-closed");
-        settingsModal.classList.add("modal-open");
-      });
+      menuToggle.addEventListener("click", openSidePanel);
+      sidePanelClose.addEventListener("click", closeSidePanel);
+      sidePanelOverlay.addEventListener("click", closeSidePanel);
 
       // Close settings modal
       settingsCloseBtn.addEventListener("click", () => {
@@ -2645,14 +3611,335 @@
         }
       });
 
-      // Open profile modal
-      profileOpenBtn.addEventListener("click", () => {
-        settingsMenu.classList.remove("menu-open");
-        settingsMenu.classList.add("menu-closed");
-        loadUserProfile();
-        profileModal.classList.remove("modal-closed");
-        profileModal.classList.add("modal-open");
+      // Blocked Users Modal
+      blockedUsersCloseBtn.addEventListener("click", () => {
+        blockedUsersModal.classList.remove("modal-open");
+        blockedUsersModal.classList.add("modal-closed");
       });
+
+      blockedUsersModal.addEventListener("click", (e) => {
+        if (e.target === blockedUsersModal) {
+          blockedUsersModal.classList.remove("modal-open");
+          blockedUsersModal.classList.add("modal-closed");
+        }
+      });
+
+      // Privacy Settings Modal
+      privacySettingsCloseBtn.addEventListener("click", () => {
+        privacySettingsModal.classList.remove("modal-open");
+        privacySettingsModal.classList.add("modal-closed");
+      });
+
+      privacySettingsModal.addEventListener("click", (e) => {
+        if (e.target === privacySettingsModal) {
+          privacySettingsModal.classList.remove("modal-open");
+          privacySettingsModal.classList.add("modal-closed");
+        }
+      });
+
+      // Load Privacy Settings
+      async function loadPrivacySettings() {
+        const uid = auth.currentUser?.uid;
+        if (!uid) {
+          console.log("[privacy] no uid");
+          return;
+        }
+
+        try {
+          console.log("[privacy] loading settings for uid:", uid);
+          const snap = await db.ref("userPrivacy/" + uid).once("value");
+          const privacy = snap.val() || {};
+          
+          console.log("[privacy] loaded:", privacy);
+          allowFriendRequestsToggle.checked = privacy.allowFriendRequests !== false;
+          allowDMsToggle.checked = privacy.allowDMs !== false;
+        } catch (err) {
+          console.error("[privacy] error loading settings:", err);
+        }
+      }
+
+      // Save Privacy Settings
+      savePrivacyBtn.addEventListener("click", async () => {
+        const uid = auth.currentUser?.uid;
+        if (!uid) {
+          alert("Not logged in");
+          return;
+        }
+
+        savePrivacyBtn.disabled = true;
+        savePrivacyBtn.textContent = "Saving...";
+
+        try {
+          console.log("[privacy] saving settings for uid:", uid);
+          await db.ref("userPrivacy/" + uid).set({
+            allowFriendRequests: allowFriendRequestsToggle.checked,
+            allowDMs: allowDMsToggle.checked,
+            updatedAt: firebase.database.ServerValue.TIMESTAMP
+          });
+
+          console.log("[privacy] saved successfully");
+          savePrivacyBtn.textContent = "✓ Saved!";
+          savePrivacyBtn.style.background = "rgb(34, 197, 94)";
+
+          setTimeout(() => {
+            savePrivacyBtn.textContent = "Save Settings";
+            savePrivacyBtn.style.background = "";
+            savePrivacyBtn.disabled = false;
+            privacySettingsModal.classList.remove("modal-open");
+            privacySettingsModal.classList.add("modal-closed");
+          }, 1500);
+        } catch (err) {
+          console.error("[privacy] error saving:", err);
+          alert("Failed to save privacy settings: " + err.message);
+          savePrivacyBtn.textContent = "Save Settings";
+          savePrivacyBtn.disabled = false;
+        }
+      });
+
+      // ===== DIRECT MESSAGES =====
+      function openDmModal() {
+        if (!currentUserId) {
+          dmError.textContent = "Please log in.";
+          return;
+        }
+        dmError.textContent = "";
+        dmModal.classList.remove("modal-closed");
+        dmModal.classList.add("modal-open");
+        dmActiveUser.textContent = activeDMTarget?.username || "Select a conversation";
+        loadDmInbox();
+      }
+
+      function closeDmModal() {
+        dmModal.classList.remove("modal-open");
+        dmModal.classList.add("modal-closed");
+        dmActiveUser.textContent = "Select a conversation";
+        dmUserSearch.value = "";
+        dmError.textContent = "";
+        activeDMThread = null;
+        activeDMTarget = null;
+        dmConversationList.innerHTML = "";
+        clearDmMessages();
+        detachDmMessagesListener();
+        detachDmInboxListener();
+      }
+
+      dmCloseBtn.addEventListener("click", closeDmModal);
+      dmModal.addEventListener("click", (e) => {
+        if (e.target === dmModal) {
+          closeDmModal();
+        }
+      });
+
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && dmModal.classList.contains("modal-open")) {
+          closeDmModal();
+        }
+      });
+
+      dmStartBtn.addEventListener("click", () => {
+        startDmWithUsername(dmUserSearch.value);
+      });
+
+      dmUserSearch.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          startDmWithUsername(dmUserSearch.value);
+        }
+      });
+
+      let dmSearchTimeout = null;
+      dmUserSearch.addEventListener("input", () => {
+        clearTimeout(dmSearchTimeout);
+        const query = (dmUserSearch.value || "").trim();
+
+        if (query.length < 2) {
+          // Restore inbox view
+          dmConversationList.innerHTML = "";
+          loadDmInbox();
+          return;
+        }
+
+        dmConversationList.innerHTML = '<p class="text-xs text-slate-400 p-2">Searching...</p>';
+        dmSearchTimeout = setTimeout(async () => {
+          await searchDmUsers(query);
+        }, 300);
+      });
+
+      async function searchDmUsers(query) {
+        if (!currentUserId) return;
+        try {
+          // Fetch usernames
+          const usersSnap = await db.ref("users").once("value");
+          const allUsers = usersSnap.val() || {};
+          // Fetch profiles for avatars/bios
+          const profilesSnap = await db.ref("userProfiles").once("value");
+          const allProfiles = profilesSnap.val() || {};
+
+          const q = query.toLowerCase();
+          const matches = [];
+          Object.entries(allUsers).forEach(([uid, val]) => {
+            const uname = val?.username || "";
+            if (!uname) return;
+            if (uid === currentUserId) return;
+            if (uname.toLowerCase().includes(q)) {
+              const prof = allProfiles[uid] || {};
+              matches.push({ uid, username: uname, bio: prof.bio, profilePic: prof.profilePic });
+            }
+          });
+
+          if (!matches.length) {
+            dmConversationList.innerHTML = '<p class="text-xs text-slate-400 p-2">No users found.</p>';
+            return;
+          }
+
+          dmConversationList.innerHTML = "";
+          matches.slice(0, 30).forEach((item) => {
+            const btn = document.createElement("button");
+            btn.className = "w-full text-left px-3 py-3 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors flex items-center gap-3";
+            const avatar = document.createElement("div");
+            avatar.className = "h-10 w-10 rounded-full bg-slate-700 flex items-center justify-center text-sm font-semibold text-slate-200 overflow-hidden";
+            if (item.profilePic) {
+              const img = document.createElement("img");
+              img.src = item.profilePic;
+              img.className = "h-full w-full object-cover";
+              img.onerror = () => {
+                avatar.textContent = (item.username || "?").charAt(0).toUpperCase();
+              };
+              avatar.appendChild(img);
+            } else {
+              avatar.textContent = (item.username || "?").charAt(0).toUpperCase();
+            }
+
+            const info = document.createElement("div");
+            info.className = "flex-1 min-w-0";
+            const name = document.createElement("div");
+            name.className = "text-sm text-slate-100 font-semibold truncate";
+            name.textContent = item.username;
+            const bio = document.createElement("div");
+            bio.className = "text-xs text-slate-400 truncate";
+            bio.textContent = item.bio || "Tap to view profile";
+            info.appendChild(name);
+            info.appendChild(bio);
+
+            const cta = document.createElement("span");
+            cta.className = "text-[11px] text-slate-300";
+            cta.textContent = "View & DM";
+
+            btn.appendChild(avatar);
+            btn.appendChild(info);
+            btn.appendChild(cta);
+
+            btn.onclick = () => {
+              viewUserProfile(item.username, { silent: true });
+              startDmWithUsername(item.username);
+            };
+            dmConversationList.appendChild(btn);
+          });
+        } catch (err) {
+          console.error("[dm] search error", err);
+          dmConversationList.innerHTML = '<p class="text-xs text-red-400 p-2">Search failed.</p>';
+        }
+      }
+
+      dmForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        if (!currentUserId) {
+          dmError.textContent = "Please log in.";
+          return;
+        }
+        if (!activeDMTarget) {
+          dmError.textContent = "Select a conversation first.";
+          return;
+        }
+        if (blockedUsersCache.has(activeDMTarget.uid)) {
+          dmError.textContent = "You blocked this user.";
+          return;
+        }
+
+        if (await isBlockedByTarget(activeDMTarget.uid)) {
+          dmError.textContent = "You are blocked by this user.";
+          return;
+        }
+
+        const text = (dmInput.value || "").trim();
+        if (!text) return;
+
+        dmError.textContent = "";
+        dmSendBtn.disabled = true;
+
+        try {
+          const allowSnap = await db
+            .ref("userPrivacy/" + activeDMTarget.uid + "/allowDMs")
+            .once("value");
+          if (allowSnap.exists() && allowSnap.val() === false) {
+            dmError.textContent = "This user is not accepting DMs.";
+            dmSendBtn.disabled = false;
+            return;
+          }
+
+          const threadId =
+            activeDMThread || (await ensureDmThread(activeDMTarget.uid, activeDMTarget.username));
+          const now = Date.now();
+          const msg = {
+            fromUid: currentUserId,
+            toUid: activeDMTarget.uid,
+            text,
+            time: now,
+            fromUsername: currentUsername || "",
+            toUsername: activeDMTarget.username || "",
+          };
+
+          await db.ref("dms/" + threadId + "/messages").push(msg);
+
+          // Update inbox metadata for both users
+          await db.ref("dmInbox/" + currentUserId + "/" + threadId).update({
+            withUid: activeDMTarget.uid,
+            withUsername: activeDMTarget.username || activeDMTarget.uid,
+            lastMsg: text,
+            lastTime: now,
+          });
+
+          await db.ref("dmInbox/" + activeDMTarget.uid + "/" + threadId).update({
+            withUid: currentUserId,
+            withUsername: currentUsername || currentUserId,
+            lastMsg: text,
+            lastTime: now,
+          });
+
+          dmInput.value = "";
+          dmSendBtn.disabled = false;
+        } catch (err) {
+          console.error("[dm] send error", err);
+          dmError.textContent = err.message || "Failed to send DM.";
+          dmSendBtn.disabled = false;
+        }
+      });
+
+      async function blockActiveDmUser() {
+        if (!currentUserId || !activeDMTarget?.uid) {
+          dmError.textContent = "No conversation selected.";
+          return;
+        }
+        const targetUid = activeDMTarget.uid;
+        const targetUsername = activeDMTarget.username || "this user";
+        if (!confirm(`Block ${targetUsername}?`)) return;
+
+        try {
+          await db.ref("blockedUsers/" + currentUserId + "/" + targetUid).set({
+            blockedAt: firebase.database.ServerValue.TIMESTAMP,
+            blockedUsername: targetUsername,
+          });
+
+          await loadBlockedUsersCache();
+          dmError.textContent = `${targetUsername} blocked. You will not receive their DMs.`;
+          closeDmModal();
+        } catch (err) {
+          console.error("[dm] block error", err);
+          dmError.textContent = err.message || "Failed to block user.";
+        }
+      }
+
+      dmBlockBtn.addEventListener("click", blockActiveDmUser);
 
       // Message size buttons
       document.querySelectorAll(".size-btn").forEach((btn) => {
@@ -2825,14 +4112,29 @@
       }
 
       // View another user's profile
-      function viewUserProfile(username) {
+      async function viewUserProfile(username, options = {}) {
         console.log("[profile] viewing profile for", username);
         
         if (username === currentUsername) {
           // If it's their own profile, open the edit modal
-          profileOpenBtn.click();
+          if (!options.silent) {
+            profileOpenBtn.click();
+          }
           return;
         }
+
+        // Reset inline status message
+        setFriendRequestStatus("");
+        
+        // Reset button states immediately
+        sendFriendRequestBtn.disabled = false;
+        sendFriendRequestBtn.style.background = "";
+        sendFriendRequestBtn.textContent = "Add Friend";
+        blockUserBtn.disabled = false;
+        blockUserBtn.style.background = "";
+        blockUserBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg> Block User';
+        delete blockUserBtn.dataset.action;
+        delete blockUserBtn.dataset.targetUid;
 
         // For other users, show custom read-only view
         viewProfileName.textContent = username || "-";
@@ -2841,32 +4143,39 @@
 
         // Fetch user profile (non-blocking)
         setTimeout(() => {
-          fetchUserProfile(username).then(profile => {
-            if (profile?.profilePic) {
-              try {
-                viewProfilePic.innerHTML = "";
-                const img = document.createElement("img");
-                img.src = profile.profilePic;
-                img.className = "h-full w-full object-cover rounded-full";
-                img.onerror = () => {
-                  setDefaultProfileIcon(viewProfilePic, 64);
-                };
-                viewProfilePic.appendChild(img);
-              } catch (e) {
-                // Keep default
+          fetchUserProfile(username)
+            .then((profile) => {
+              if (profile?.profilePic) {
+                try {
+                  viewProfilePic.innerHTML = "";
+                  const img = document.createElement("img");
+                  img.src = profile.profilePic;
+                  img.className = "h-full w-full object-cover rounded-full";
+                  img.onerror = () => {
+                    setDefaultProfileIcon(viewProfilePic, 64);
+                  };
+                  viewProfilePic.appendChild(img);
+                } catch (e) {
+                  // Keep default
+                }
               }
-            }
-            viewProfileBio.textContent = profile?.bio || "No bio yet";
-          }).catch(() => {
-            viewProfileBio.textContent = "No bio yet";
-          });
+              viewProfileBio.textContent = profile?.bio || "No bio yet";
+            })
+            .catch(() => {
+              viewProfileBio.textContent = "No bio yet";
+            });
         }, 0);
 
-        // Check friendship status and update button
-        checkFriendshipStatus(username);
+        // Check if you blocked them first (shows unblock button)
+        await checkIfBlocked(username);
+        
+        // Then check friendship status and detect if they blocked you
+        await checkFriendshipStatus(username);
 
-        viewProfileModal.classList.remove("modal-closed");
-        viewProfileModal.classList.add("modal-open");
+        if (!options.silent) {
+          viewProfileModal.classList.remove("modal-closed");
+          viewProfileModal.classList.add("modal-open");
+        }
       }
 
       // Check if you're already friends and update the button
@@ -2884,6 +4193,31 @@
           }
 
           const targetUid = Object.keys(snap.val())[0];
+          // Store for later use in button handlers
+          sendFriendRequestBtn.dataset.targetUid = targetUid;
+          sendFriendRequestBtn.dataset.targetUsername = targetUsername;
+
+          // Check if you blocked them
+          const youBlockedThem = await db.ref("blockedUsers/" + uid + "/" + targetUid).once("value");
+          if (youBlockedThem.exists()) {
+            sendFriendRequestBtn.disabled = true;
+            sendFriendRequestBtn.style.background = "rgb(100, 116, 139)";
+            sendFriendRequestBtn.textContent = "Blocked";
+            setFriendRequestStatus("You have blocked this user.", "warn");
+            return;
+          }
+          
+          // Check target's privacy settings
+          const privacySnap = await db.ref("userPrivacy/" + targetUid).once("value");
+          const privacy = privacySnap.val() || {};
+          
+          if (privacy.allowFriendRequests === false) {
+            sendFriendRequestBtn.disabled = true;
+            sendFriendRequestBtn.style.background = "rgb(100, 116, 139)";
+            sendFriendRequestBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="inline mr-1"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Requests Disabled';
+            setFriendRequestStatus("This user has disabled friend requests.", "warn");
+            return;
+          }
 
           // Check if already friends
           const friendsSnap = await db.ref("friends/" + uid + "/" + targetUid).once("value");
@@ -2892,8 +4226,6 @@
             sendFriendRequestBtn.style.background = "rgb(220, 38, 38)";
             sendFriendRequestBtn.textContent = "Unfriend";
             sendFriendRequestBtn.dataset.action = "unfriend";
-            sendFriendRequestBtn.dataset.targetUid = targetUid;
-            sendFriendRequestBtn.dataset.targetUsername = targetUsername;
             return;
           }
 
@@ -2903,6 +4235,7 @@
             sendFriendRequestBtn.disabled = true;
             sendFriendRequestBtn.style.background = "rgb(100, 116, 139)";
             sendFriendRequestBtn.textContent = "⏳ Pending";
+            setFriendRequestStatus("Friend request already sent.", "info");
             return;
           }
 
@@ -2912,13 +4245,25 @@
             sendFriendRequestBtn.disabled = true;
             sendFriendRequestBtn.style.background = "rgb(100, 116, 139)";
             sendFriendRequestBtn.textContent = "↩ Incoming";
+            setFriendRequestStatus("They sent you a friend request. Check your requests.", "info");
             return;
           }
 
-          // Not friends - enable add button
+          // Not friends - check if we previously detected a block for this user
+          const blockedStatusSnap = await db.ref("userBlockedStatus/" + uid + "/" + targetUid).once("value");
+          if (blockedStatusSnap.exists()) {
+            sendFriendRequestBtn.disabled = true;
+            sendFriendRequestBtn.style.background = "rgb(185, 28, 28)";
+            sendFriendRequestBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="inline mr-1"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>You Have Been Blocked';
+            setFriendRequestStatus("You have been blocked by this user.", "error");
+            return;
+          }
+
+          // Not blocked, not friends - enable add button
           sendFriendRequestBtn.disabled = false;
           sendFriendRequestBtn.style.background = "";
           sendFriendRequestBtn.textContent = "Add Friend";
+          setFriendRequestStatus("");
         } catch (err) {
           console.error("[profile] error checking friendship status:", err);
           sendFriendRequestBtn.disabled = false;
@@ -3176,16 +4521,29 @@
       const friendRequestsCloseBtn = document.getElementById("friendRequestsCloseBtn");
       const friendRequestsList = document.getElementById("friendRequestsList");
       const noFriendRequestsMsg = document.getElementById("noFriendRequestsMsg");
-      const friendRequestBadge = document.getElementById("friendRequestBadge");
       const sendFriendRequestBtn = document.getElementById("sendFriendRequestBtn");
-      const friendsRequestsBtn = document.getElementById("friendsRequestsBtn");
+      const friendRequestStatus = document.getElementById("friendRequestStatus");
 
-      // Open friend requests modal
-      friendsRequestsBtn.addEventListener("click", () => {
-        friendRequestsModal.classList.remove("modal-closed");
-        friendRequestsModal.classList.add("modal-open");
-        loadFriendRequests();
-      });
+      function setFriendRequestStatus(text, variant = "info") {
+        if (!friendRequestStatus) return;
+        if (!text) {
+          friendRequestStatus.classList.add("hidden");
+          friendRequestStatus.textContent = "";
+          return;
+        }
+
+        const variants = {
+          info: "text-slate-200 bg-slate-800 border-slate-700",
+          success: "text-emerald-100 bg-emerald-900/40 border-emerald-700/60",
+          warn: "text-amber-100 bg-amber-900/30 border-amber-700/60",
+          error: "text-rose-100 bg-rose-900/40 border-rose-700/60",
+        };
+
+        // Reset classes then apply
+        friendRequestStatus.className = "text-xs rounded-lg px-3 py-2 mb-3 text-left border " + (variants[variant] || variants.info);
+        friendRequestStatus.textContent = text;
+        friendRequestStatus.classList.remove("hidden");
+      }
 
       friendRequestsCloseBtn.addEventListener("click", () => {
         friendRequestsModal.classList.remove("modal-open");
@@ -3222,12 +4580,12 @@
 
           if (requestArray.length === 0) {
             noFriendRequestsMsg.style.display = "block";
-            friendRequestBadge.classList.add("hidden");
-            friendRequestBadge.textContent = "0";
+            sidePanelFriendBadge.classList.add("hidden");
+            sidePanelFriendBadge.textContent = "0";
           } else {
             noFriendRequestsMsg.style.display = "none";
-            friendRequestBadge.classList.remove("hidden");
-            friendRequestBadge.textContent = requestArray.length;
+            sidePanelFriendBadge.classList.remove("hidden");
+            sidePanelFriendBadge.textContent = requestArray.length;
 
             // Load usernames for each request
             for (const req of requestArray) {
@@ -3285,7 +4643,7 @@
         const uid = auth.currentUser?.uid;
         if (!uid) {
           logDetailedError("sendFriendRequest", new Error("Not logged in"));
-          alert("Not logged in");
+          setFriendRequestStatus("Not logged in", "error");
           return;
         }
         
@@ -3312,10 +4670,11 @@
               delete sendFriendRequestBtn.dataset.targetUid;
               delete sendFriendRequestBtn.dataset.targetUsername;
               
-              alert("Unfriended successfully");
+              setFriendRequestStatus("Unfriended successfully", "success");
+              setTimeout(() => setFriendRequestStatus(""), 2000);
             } catch (err) {
               logDetailedError("unfriend", err, { targetUid, targetUsername });
-              alert("Error unfriending: " + err.message);
+              setFriendRequestStatus("Error unfriending: " + err.message, "error");
             }
           }
           return;
@@ -3323,15 +4682,16 @@
         
         if (!currentViewingUsername) {
           logDetailedError("sendFriendRequest", new Error("No username selected"));
-          alert("No profile selected");
+          setFriendRequestStatus("No profile selected", "error");
           return;
         }
 
         if (currentViewingUsername === currentUsername) {
-          alert("You can't send a friend request to yourself!");
+          setFriendRequestStatus("You can't send a request to yourself!", "warn");
           return;
         }
 
+        let targetUid = null;
         try {
           console.log("[friends] sending request from:", currentUsername, "to:", currentViewingUsername);
           sendFriendRequestBtn.disabled = true;
@@ -3347,17 +4707,40 @@
             return;
           }
 
-          const targetUid = Object.keys(snap.val())[0];
+          targetUid = Object.keys(snap.val())[0];
           console.log("[friends] found target uid:", targetUid);
 
-          // Try to ensure target's incoming path exists (best-effort)
-          await ensureTargetFriendRequestsIncoming(targetUid);
+          // Check target's privacy settings
+          console.log("[friends] checking privacy settings for:", targetUid);
+          const privacySnap = await db.ref("userPrivacy/" + targetUid).once("value");
+          const privacy = privacySnap.val() || {};
+          
+          if (privacy.allowFriendRequests === false) {
+            setFriendRequestStatus("This user has disabled friend requests.", "warn");
+            sendFriendRequestBtn.disabled = false;
+            sendFriendRequestBtn.textContent = "Add Friend";
+            return;
+          }
+          console.log("[friends] privacy check passed");
+
+          // Check if you blocked them
+          console.log("[friends] checking if you blocked them");
+          const youBlockedThem = await db.ref("blockedUsers/" + uid + "/" + targetUid).once("value");
+          if (youBlockedThem.exists()) {
+            setFriendRequestStatus("You have blocked this user. Unblock them first.", "warn");
+            sendFriendRequestBtn.disabled = false;
+            sendFriendRequestBtn.textContent = "Add Friend";
+            return;
+          }
+
+          // Check if they blocked you (by trying to read their blocked list - but we can't, so we rely on server rules)
+          // The server rules will reject if they blocked you, we just handle the error
 
           // Check if already friends
           console.log("[friends] checking if already friends");
           const alreadyFriends = await db.ref("friends/" + uid + "/" + targetUid).once("value");
           if (alreadyFriends.exists()) {
-            alert("You're already friends!");
+            setFriendRequestStatus("You're already friends!", "info");
             sendFriendRequestBtn.disabled = false;
             sendFriendRequestBtn.textContent = "Add Friend";
             return;
@@ -3367,7 +4750,7 @@
           console.log("[friends] checking for existing request at: friendRequests/" + targetUid + "/incoming/" + uid);
           const existingReq = await db.ref("friendRequests/" + targetUid + "/incoming/" + uid).once("value");
           if (existingReq.exists()) {
-            alert("Friend request already sent!");
+            setFriendRequestStatus("Friend request already sent!", "info");
             sendFriendRequestBtn.disabled = false;
             sendFriendRequestBtn.textContent = "Add Friend";
             return;
@@ -3377,13 +4760,13 @@
           console.log("[friends] checking for reverse request at: friendRequests/" + uid + "/incoming/" + targetUid);
           const reverseReq = await db.ref("friendRequests/" + uid + "/incoming/" + targetUid).once("value");
           if (reverseReq.exists()) {
-            alert("They already sent you a friend request! Check your requests.");
+            setFriendRequestStatus("They already sent you a friend request. Check your requests.", "info");
             sendFriendRequestBtn.disabled = false;
             sendFriendRequestBtn.textContent = "Add Friend";
             return;
           }
 
-          // Send request
+          // Send request (do NOT use ensureTargetFriendRequestsIncoming - it causes permission issues)
           console.log("[friends] writing request to: friendRequests/" + targetUid + "/incoming/" + uid);
           await db.ref("friendRequests/" + targetUid + "/incoming/" + uid).set({
             fromUid: uid,
@@ -3393,31 +4776,63 @@
           console.log("[friends] request sent successfully");
           sendFriendRequestBtn.textContent = "✓ Sent!";
           sendFriendRequestBtn.style.background = "rgb(34, 197, 94)";
+          
+          // Clear any cached block status since request went through
+          if (targetUid) {
+            try {
+              await db.ref("userBlockedStatus/" + uid + "/" + targetUid).remove();
+            } catch (e) {
+              console.log("[friends] could not clear block status:", e);
+            }
+          }
+          
+          setFriendRequestStatus("Friend request sent", "success");
           setTimeout(() => {
             sendFriendRequestBtn.disabled = false;
             sendFriendRequestBtn.textContent = "Add Friend";
             sendFriendRequestBtn.style.background = "";
+            setFriendRequestStatus("");
           }, 2000);
         } catch (err) {
           const errorInfo = logDetailedError("sendFriendRequest", err, {
             targetUsername: currentViewingUsername,
             currentUser: currentUsername,
             uid,
-            path: "friendRequests/" + (uid ? "targetUid" : "?") + "/incoming/" + uid
+            targetUid: targetUid || "unknown"
           });
 
           let errorMsg = "Error sending request";
-          if (err.message?.includes("permission_denied")) {
-            errorMsg = "Permission denied - check Firebase rules for /friendRequests\n\nMake sure your rules allow writing to incoming requests.";
+          let isBlocked = false;
+          
+          if (err.message?.includes("permission_denied") || err.code === "PERMISSION_DENIED") {
+            // If we got past privacy check and still got permission denied, it's likely a block
+            isBlocked = true;
+            errorMsg = "You have been blocked by this user.";
+            
+            // Store that we detected a block for this user in Firebase
+            if (targetUid) {
+              try {
+                await db.ref("userBlockedStatus/" + uid + "/" + targetUid).set({
+                  detectedAt: firebase.database.ServerValue.TIMESTAMP
+                });
+              } catch (e) {
+                console.error("[friends] could not save block status:", e);
+              }
+            }
+            
+            // Update button to reflect blocked state
+            sendFriendRequestBtn.disabled = true;
+            sendFriendRequestBtn.style.background = "rgb(185, 28, 28)";
+            sendFriendRequestBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="inline mr-1"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>You Have Been Blocked';
           } else if (err.message?.includes("network")) {
             errorMsg = "Network error - check your connection";
-          } else if (err.code === "PERMISSION_DENIED") {
-            errorMsg = "You don't have permission to send requests - check Firebase rules";
           }
 
-          alert(errorMsg + "\n\n(Check console for details)");
-          sendFriendRequestBtn.disabled = false;
-          sendFriendRequestBtn.textContent = "Add Friend";
+          setFriendRequestStatus(errorMsg, isBlocked ? "error" : "error");
+          if (!isBlocked) {
+            sendFriendRequestBtn.disabled = false;
+            sendFriendRequestBtn.textContent = "Add Friend";
+          }
         }
       });
 
@@ -3519,6 +4934,16 @@
           noFriendsMsg.style.display = "none";
 
           for (const [friendUid, friendData] of Object.entries(friends)) {
+            // Check if you blocked them - skip if blocked
+            const youBlockedThem = await db.ref("blockedUsers/" + uid + "/" + friendUid).once("value");
+            
+            if (youBlockedThem.exists()) {
+              console.log("[friends] skipping blocked user:", friendUid);
+              continue;
+            }
+            
+            // Note: Can't check if they blocked you due to Firebase rules - but blocking already removes friendship
+
             const addedAt = new Date(friendData.addedAt).toLocaleDateString();
 
             const div = document.createElement("div");
@@ -3596,18 +5021,260 @@
         }
       }
 
-      // Friends list button event listeners
-      const friendsListBtn = document.getElementById("friendsListBtn");
+      // ===== BLOCKING =====
+      
+      // Block/Unblock user
+      blockUserBtn.addEventListener("click", async () => {
+        const uid = auth.currentUser?.uid;
+        if (!uid || !currentViewingUsername) {
+          alert("No profile selected");
+          return;
+        }
+
+        if (currentViewingUsername === currentUsername) {
+          alert("You can't block yourself!");
+          return;
+        }
+
+        // Check if this is an unblock action
+        if (blockUserBtn.dataset.action === "unblock") {
+          const targetUid = blockUserBtn.dataset.targetUid;
+          
+          if (!confirm(`Unblock ${currentViewingUsername}?`)) {
+            return;
+          }
+
+          try {
+            console.log("[block] unblocking user:", currentViewingUsername);
+            blockUserBtn.disabled = true;
+            blockUserBtn.textContent = "Unblocking...";
+
+            await db.ref("blockedUsers/" + uid + "/" + targetUid).remove();
+
+            console.log("[block] user unblocked successfully");
+            blockUserBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg> Block User';
+            blockUserBtn.style.background = "";
+            delete blockUserBtn.dataset.action;
+            delete blockUserBtn.dataset.targetUid;
+            blockUserBtn.disabled = false;
+
+            // Reload cache and refresh messages
+            await loadBlockedUsersCache();
+            startMessagesListener();
+
+            // Re-check friendship status
+            checkFriendshipStatus(currentViewingUsername);
+
+            alert("User unblocked successfully");
+          } catch (err) {
+            console.error("[block] error unblocking user:", err);
+            alert("Error unblocking user: " + err.message);
+            blockUserBtn.disabled = false;
+          }
+          return;
+        }
+
+        if (!confirm(`Block ${currentViewingUsername}? They won't be able to send you messages or friend requests.`)) {
+          return;
+        }
+
+        try {
+          console.log("[block] blocking user:", currentViewingUsername);
+          blockUserBtn.disabled = true;
+          blockUserBtn.textContent = "Blocking...";
+
+          // Get target UID
+          const snap = await db.ref("users").orderByChild("username").equalTo(currentViewingUsername).once("value");
+          if (!snap.exists()) {
+            alert("User not found");
+            blockUserBtn.disabled = false;
+            blockUserBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg> Block User';
+            return;
+          }
+
+          const targetUid = Object.keys(snap.val())[0];
+
+          // Remove any pending friend requests FIRST (before blocking, so rules don't reject removal)
+          try {
+            await db.ref("friendRequests/" + uid + "/incoming/" + targetUid).remove();
+          } catch (e) {
+            console.log("[block] no incoming request from target");
+          }
+          try {
+            await db.ref("friendRequests/" + targetUid + "/incoming/" + uid).remove();
+          } catch (e) {
+            console.log("[block] no outgoing request to target");
+          }
+
+          // Remove from friends if friends (both sides)
+          await db.ref("friends/" + uid + "/" + targetUid).remove();
+          await db.ref("friends/" + targetUid + "/" + uid).remove();
+
+          // Add to blocked list LAST (so other removals don't get blocked by rules)
+          await db.ref("blockedUsers/" + uid + "/" + targetUid).set({
+            blockedAt: firebase.database.ServerValue.TIMESTAMP,
+            blockedUsername: currentViewingUsername
+          });
+
+          console.log("[block] user blocked successfully");
+          blockUserBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg> Unblock User';
+          blockUserBtn.style.background = "rgb(100, 116, 139)";
+          blockUserBtn.dataset.action = "unblock";
+          blockUserBtn.dataset.targetUid = targetUid;
+          blockUserBtn.disabled = false;
+
+          sendFriendRequestBtn.disabled = true;
+          sendFriendRequestBtn.style.background = "rgb(100, 116, 139)";
+          sendFriendRequestBtn.textContent = "Blocked";
+
+          // Reload cache and refresh messages to hide blocked user's messages
+          await loadBlockedUsersCache();
+          startMessagesListener();
+
+          alert("User blocked successfully");
+        } catch (err) {
+          console.error("[block] error blocking user:", err);
+          alert("Error blocking user: " + err.message);
+          blockUserBtn.disabled = false;
+          blockUserBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg> Block User';
+        }
+      });
+
+      // Load blocked users list
+      async function loadBlockedUsers() {
+        const uid = auth.currentUser?.uid;
+        if (!uid) {
+          console.error("[block] not logged in");
+          return;
+        }
+
+        try {
+          console.log("[block] loading blocked users for uid:", uid);
+          const snap = await db.ref("blockedUsers/" + uid).once("value");
+          
+          blockedUsersList.innerHTML = "";
+
+          if (!snap.exists()) {
+            noBlockedUsersMsg.style.display = "block";
+            console.log("[block] no blocked users");
+            return;
+          }
+
+          const blocked = snap.val();
+          const blockedArray = Object.keys(blocked).map(blockedUid => ({
+            blockedUid,
+            ...blocked[blockedUid]
+          }));
+
+          console.log("[block] loaded", blockedArray.length, "blocked users");
+
+          if (blockedArray.length === 0) {
+            noBlockedUsersMsg.style.display = "block";
+          } else {
+            noBlockedUsersMsg.style.display = "none";
+
+            for (const item of blockedArray) {
+              const div = document.createElement("div");
+              div.className = "flex items-center justify-between p-3 bg-slate-700/50 rounded-lg";
+              div.innerHTML = `
+                <span class="text-sm font-medium text-slate-100">Loading...</span>
+                <button class="unblock-btn px-3 py-1 bg-sky-600 hover:bg-sky-700 text-white text-xs rounded-lg transition-colors" data-blocked-uid="${item.blockedUid}">
+                  Unblock
+                </button>
+              `;
+
+              blockedUsersList.appendChild(div);
+
+              // Load username
+              (async () => {
+                try {
+                  const usernameSnap = await db.ref("users/" + item.blockedUid + "/username").once("value");
+                  const username = usernameSnap.val() || "Unknown User";
+                  const blockedDate = new Date(item.blockedAt).toLocaleDateString();
+                  
+                  div.innerHTML = `
+                    <div>
+                      <span class="text-sm font-medium text-slate-100">${username}</span>
+                      <span class="text-xs text-slate-400 block">Blocked ${blockedDate}</span>
+                    </div>
+                    <button class="unblock-btn px-3 py-1 bg-sky-600 hover:bg-sky-700 text-white text-xs rounded-lg transition-colors" data-blocked-uid="${item.blockedUid}">
+                      Unblock
+                    </button>
+                  `;
+
+                  // Unblock handler
+                  const unblockBtn = div.querySelector(".unblock-btn");
+                  unblockBtn.addEventListener("click", async () => {
+                    if (!confirm(`Unblock ${username}?`)) return;
+
+                    try {
+                      console.log("[block] unblocking:", username);
+                      await db.ref("blockedUsers/" + uid + "/" + item.blockedUid).remove();
+                      console.log("[block] unblocked successfully");
+                      
+                      // Reload cache and refresh messages
+                      await loadBlockedUsersCache();
+                      startMessagesListener();
+                      
+                      // Reload blocked users list
+                      loadBlockedUsers();
+                    } catch (err) {
+                      console.error("[block] error unblocking:", err);
+                      alert("Error unblocking user: " + err.message);
+                    }
+                  });
+                } catch (err) {
+                  console.error("[block] error loading username:", err);
+                  div.innerHTML = `
+                    <span class="text-sm font-medium text-slate-100">Unknown User</span>
+                    <button class="unblock-btn px-3 py-1 bg-sky-600 hover:bg-sky-700 text-white text-xs rounded-lg transition-colors" data-blocked-uid="${item.blockedUid}">
+                      Unblock
+                    </button>
+                  `;
+                }
+              })();
+            }
+          }
+        } catch (err) {
+          console.error("[block] error loading blocked users:", err);
+          alert("Error loading blocked users: " + err.message);
+        }
+      }
+
+      // Check if viewing a blocked user
+      async function checkIfBlocked(targetUsername) {
+        const uid = auth.currentUser?.uid;
+        if (!uid) return false;
+
+        try {
+          const snap = await db.ref("users").orderByChild("username").equalTo(targetUsername).once("value");
+          if (!snap.exists()) return false;
+
+          const targetUid = Object.keys(snap.val())[0];
+          const blockedSnap = await db.ref("blockedUsers/" + uid + "/" + targetUid).once("value");
+          
+          if (blockedSnap.exists()) {
+            blockUserBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg> Unblock User';
+            blockUserBtn.style.background = "rgb(100, 116, 139)";
+            blockUserBtn.dataset.action = "unblock";
+            blockUserBtn.dataset.targetUid = targetUid;
+            return true;
+          } else {
+            blockUserBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg> Block User';
+            blockUserBtn.style.background = "";
+            delete blockUserBtn.dataset.action;
+            delete blockUserBtn.dataset.targetUid;
+            return false;
+          }
+        } catch (err) {
+          console.error("[block] error checking blocked status:", err);
+          return false;
+        }
+      }
+
+      // Friends list modal
       const friendsListModal = document.getElementById("friendsListModal");
       const friendsListCloseBtn = document.getElementById("friendsListCloseBtn");
-
-      friendsListBtn.addEventListener("click", () => {
-        settingsMenu.classList.remove("menu-open");
-        settingsMenu.classList.add("menu-closed");
-        friendsListModal.classList.remove("modal-closed");
-        friendsListModal.classList.add("modal-open");
-        loadFriendsList();
-      });
 
       friendsListCloseBtn.addEventListener("click", () => {
         friendsListModal.classList.remove("modal-open");
@@ -3620,6 +5287,196 @@
           friendsListModal.classList.add("modal-closed");
         }
       });
+
+      // ===== USER SEARCH =====
+      let searchTimeout = null;
+
+      searchUsersInput.addEventListener("input", () => {
+        clearTimeout(searchTimeout);
+        const query = searchUsersInput.value.trim();
+
+        if (query.length === 0) {
+          searchResults.innerHTML = "";
+          return;
+        }
+
+        if (query.length < 2) {
+          searchResults.innerHTML = '<p class="text-xs text-slate-400 p-2">Type at least 2 characters...</p>';
+          return;
+        }
+
+        searchResults.innerHTML = '<p class="text-xs text-slate-400 p-2">Searching...</p>';
+
+        searchTimeout = setTimeout(async () => {
+          await searchUsers(query);
+        }, 300);
+      });
+
+      async function searchUsers(query) {
+        const uid = auth.currentUser?.uid;
+        if (!uid) return;
+
+        try {
+          console.log("[search] searching for:", query);
+          
+          // Search by username (case-insensitive partial match)
+          const snap = await db.ref("users").once("value");
+          const users = snap.val();
+          
+          if (!users) {
+            searchResults.innerHTML = '<p class="text-xs text-slate-400 p-2">No users found</p>';
+            return;
+          }
+
+          const results = [];
+          const queryLower = query.toLowerCase();
+
+          for (const [userId, userData] of Object.entries(users)) {
+            if (userId === uid) continue; // Skip self
+            
+            const username = userData.username || "";
+            if (username.toLowerCase().includes(queryLower)) {
+              results.push({ uid: userId, username });
+            }
+          }
+
+          if (results.length === 0) {
+            searchResults.innerHTML = '<p class="text-xs text-slate-400 p-2">No users found</p>';
+            return;
+          }
+
+          console.log("[search] found", results.length, "users");
+
+          // Sort by username
+          results.sort((a, b) => a.username.localeCompare(b.username));
+
+          // Render results
+          searchResults.innerHTML = "";
+
+          for (const user of results) {
+            const div = document.createElement("div");
+            div.className = "flex items-center justify-between p-3 bg-slate-700/50 rounded-lg hover:bg-slate-700 transition-colors cursor-pointer";
+            
+            // Get profile pic
+            const profileSnap = await db.ref("userProfiles/" + user.uid).once("value");
+            const profile = profileSnap.val() || {};
+            
+            const avatarHTML = profile.profilePic
+              ? `<img src="${profile.profilePic}" class="h-10 w-10 rounded-full object-cover" />`
+              : generateDefaultAvatar(user.username);
+
+            div.innerHTML = `
+              <div class="flex items-center gap-3 flex-1">
+                <div class="h-10 w-10 rounded-full overflow-hidden">
+                  ${avatarHTML}
+                </div>
+                <div>
+                  <p class="text-sm font-medium text-slate-100">${user.username}</p>
+                  <p class="text-xs text-slate-400">${profile.bio || "No bio"}</p>
+                </div>
+              </div>
+              <button class="add-friend-btn px-3 py-1 bg-sky-600 hover:bg-sky-700 text-white text-xs rounded-lg transition-colors" data-username="${user.username}">
+                Add Friend
+              </button>
+            `;
+
+            // Click on div to view profile
+            const userInfoDiv = div.querySelector("div.flex-1");
+            userInfoDiv.addEventListener("click", () => {
+              viewUserProfile(user.username);
+            });
+
+            // Add friend button
+            const addBtn = div.querySelector(".add-friend-btn");
+            
+            // Check friendship status
+            (async () => {
+              try {
+                // Check if you blocked them
+                const youBlockedThem = await db.ref("blockedUsers/" + uid + "/" + user.uid).once("value");
+                if (youBlockedThem.exists()) {
+                  addBtn.disabled = true;
+                  addBtn.style.background = "rgb(100, 116, 139)";
+                  addBtn.textContent = "Blocked";
+                  return;
+                }
+
+                // Check privacy
+                const privacySnap = await db.ref("userPrivacy/" + user.uid).once("value");
+                const privacy = privacySnap.val() || {};
+                
+                if (privacy.allowFriendRequests === false) {
+                  addBtn.disabled = true;
+                  addBtn.style.background = "rgb(100, 116, 139)";
+                  addBtn.textContent = "Disabled";
+                  return;
+                }
+
+                // Check if already friends
+                const friendsSnap = await db.ref("friends/" + uid + "/" + user.uid).once("value");
+                if (friendsSnap.exists()) {
+                  addBtn.disabled = true;
+                  addBtn.style.background = "rgb(34, 197, 94)";
+                  addBtn.textContent = "✓ Friends";
+                  return;
+                }
+
+                // Check if request already sent
+                const sentReqSnap = await db.ref("friendRequests/" + user.uid + "/incoming/" + uid).once("value");
+                if (sentReqSnap.exists()) {
+                  addBtn.disabled = true;
+                  addBtn.style.background = "rgb(100, 116, 139)";
+                  addBtn.textContent = "Pending";
+                  return;
+                }
+
+                // Check if they sent you a request
+                const reverseReqSnap = await db.ref("friendRequests/" + uid + "/incoming/" + user.uid).once("value");
+                if (reverseReqSnap.exists()) {
+                  addBtn.disabled = true;
+                  addBtn.style.background = "rgb(100, 116, 139)";
+                  addBtn.textContent = "Incoming";
+                  return;
+                }
+              } catch (err) {
+                console.error("[search] error checking status:", err);
+              }
+            })();
+
+            addBtn.addEventListener("click", async (e) => {
+              e.stopPropagation();
+              
+              try {
+                addBtn.disabled = true;
+                addBtn.textContent = "Sending...";
+
+                await db.ref("friendRequests/" + user.uid + "/incoming/" + uid).set({
+                  fromUid: uid,
+                  timestamp: firebase.database.ServerValue.TIMESTAMP
+                });
+
+                addBtn.style.background = "rgb(34, 197, 94)";
+                addBtn.textContent = "✓ Sent!";
+                
+                setTimeout(() => {
+                  addBtn.style.background = "rgb(100, 116, 139)";
+                  addBtn.textContent = "Pending";
+                }, 1500);
+              } catch (err) {
+                console.error("[search] error sending request:", err);
+                alert("Error sending friend request: " + err.message);
+                addBtn.disabled = false;
+                addBtn.textContent = "Add Friend";
+              }
+            });
+
+            searchResults.appendChild(div);
+          }
+        } catch (err) {
+          console.error("[search] error:", err);
+          searchResults.innerHTML = '<p class="text-xs text-red-400 p-2">Error searching users</p>';
+        }
+      }
 
       // Image Viewer
       const imageViewerModal = document.getElementById("imageViewerModal");
@@ -3718,6 +5575,55 @@
         if (e.key === "Escape" && deleteMessageModal.classList.contains("modal-open")) {
           closeDeleteMessageModal();
         }
+      });
+
+      // ===== SIDE PANEL MENU ITEMS =====
+      // Initialize side panel menu items after all modals are declared
+      
+      sidePanelProfile.addEventListener("click", () => {
+        closeSidePanel();
+        loadUserProfile();
+        profileModal.classList.remove("modal-closed");
+        profileModal.classList.add("modal-open");
+      });
+
+      sidePanelSettings.addEventListener("click", () => {
+        closeSidePanel();
+        settingsModal.classList.remove("modal-closed");
+        settingsModal.classList.add("modal-open");
+      });
+
+      sidePanelPrivacy.addEventListener("click", () => {
+        closeSidePanel();
+        loadPrivacySettings();
+        privacySettingsModal.classList.remove("modal-closed");
+        privacySettingsModal.classList.add("modal-open");
+      });
+
+      sidePanelFriendRequests.addEventListener("click", () => {
+        closeSidePanel();
+        friendRequestsModal.classList.remove("modal-closed");
+        friendRequestsModal.classList.add("modal-open");
+        loadFriendRequests();
+      });
+
+      sidePanelFriends.addEventListener("click", () => {
+        closeSidePanel();
+        friendsListModal.classList.remove("modal-closed");
+        friendsListModal.classList.add("modal-open");
+        loadFriendsList();
+      });
+
+      sidePanelDMs.addEventListener("click", () => {
+        closeSidePanel();
+        openDmModal();
+      });
+
+      sidePanelBlocked.addEventListener("click", () => {
+        closeSidePanel();
+        blockedUsersModal.classList.remove("modal-closed");
+        blockedUsersModal.classList.add("modal-open");
+        loadBlockedUsers();
       });
     </script>
   </body>
