@@ -3813,7 +3813,17 @@
       });
 
       // Cancel media button
-      cancelMediaBtn.addEventListener("click", () => {
+      cancelMediaBtn.addEventListener("click", async () => {
+        // Delete the uploaded file from Cloudinary if it exists
+        if (pendingMediaToken) {
+          try {
+            console.log("[media] deleting uploaded file from Cloudinary");
+            await deleteFromCloudinary(pendingMediaToken);
+          } catch (err) {
+            console.error("[media] error deleting from Cloudinary:", err);
+          }
+        }
+        
         pendingMediaUrl = null;
         pendingMediaToken = null;
         mediaPreview.classList.add("hidden");
