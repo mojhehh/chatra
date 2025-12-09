@@ -1889,6 +1889,20 @@
           notificationHistory = notificationHistory.slice(-50);
         }
         bumpNotification();
+        
+        // Show browser notification if supported and permitted
+        if ("Notification" in window && Notification.permission === "granted") {
+          try {
+            new Notification(title, {
+              body: body,
+              icon: "/favicon.ico",
+              badge: "/favicon.ico",
+              tag: extra.threadId || "chatra-notif"
+            });
+          } catch (err) {
+            console.warn("[notif] browser notification failed:", err);
+          }
+        }
       }
 
       // Check if a message is from a blocked user
@@ -3475,11 +3489,26 @@
             loginForm.classList.add("hidden");
             registerForm.classList.add("hidden");
             chatInterface.classList.remove("hidden");
-            // Show loading screen while fetching messages
-            loadingScreen.classList.remove("hidden");
+            
+            // Ensure messages container is always visible
+            if (messagesDiv) {
+              messagesDiv.style.display = '';
+            }
+            
+            // Only show loading screen if messages container is empty
+            if (!messagesDiv || messagesDiv.children.length === 0) {
+              loadingScreen.classList.remove("hidden");
+            }
             
             // Show notification bell when logged in
             notifBellBtn.classList.remove("hidden");
+            
+            // Request notification permission
+            if ("Notification" in window && Notification.permission === "default") {
+              Notification.requestPermission().catch(err => {
+                console.warn("[notif] permission request failed:", err);
+              });
+            }
 
             console.log("[auth] starting messages listener from auth state change");
             startMessagesListener();
