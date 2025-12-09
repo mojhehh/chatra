@@ -1732,9 +1732,8 @@
       let dmInboxRef = null;
       let dmInboxListener = null;
       let dmLastSeenByThread = {};
-      let dmLastNotifiedTimeByThread = {};
+      let dmLastUpdateTimeByThread = {}; // Track last update time per thread to avoid duplicate notifs
       let dmInboxInitialLoaded = false;
-      let dmUnreadThreads = 0;
 
       // User settings stored in Firebase (no localStorage)
       let userSettingsRef = null;
@@ -1766,10 +1765,25 @@
 
       // Friends + notifications
       let friendsCache = new Set();
-      let notificationsCount = 0;
       let notificationHistory = [];
-
-      // Track original profile pic for cleanup
+      let clearedNotificationThreads = new Set(); // Track cleared DM threads
+      
+      function loadClearedNotifications() {
+        if (!currentUserId) return;
+        db.ref("userSettings/" + currentUserId + "/clearedNotifications").once("value", (snap) => {
+          const cleared = snap.val() || [];
+          clearedNotificationThreads = new Set(Array.isArray(cleared) ? cleared : []);
+        }).catch(() => {
+          clearedNotificationThreads = new Set();
+        });
+      }
+      
+      async function saveClearedNotifications() {
+        if (!currentUserId) return;
+        try {
+          await db.ref("userSettings/" + currentUserId + "/clearedNotifications").set(Array.from(clearedNotificationThreads));
+        } catch (err) {}
+      }
       let originalProfilePic = null;
       let originalProfilePicDeleteToken = null;
 
@@ -1829,23 +1843,30 @@
       }
 
       function updateNotifBadge() {
-        if (!notifBellBadge) return;
-        if (notificationsCount > 0) {
-          notifBellBadge.textContent = notificationsCount;
+        if (!notifBellBadge || !currentUserId) {
+          notifBellBadge?.classList.add("hidden");
+          return;
+        }
+        const count = notificationHistory.filter(n => n.isDM).length;
+        if (count > 0) {
+          notifBellBadge.textContent = count;
           notifBellBadge.classList.remove("hidden");
         } else {
           notifBellBadge.classList.add("hidden");
         }
       }
 
-      function bumpNotification() {
-        notificationsCount += 1;
+      async function clearNotifications() {
+        // Mark all current DM notifications as cleared
+        notificationHistory.forEach(n => {
+          if (n.isDM && n.threadId) {
+            clearedNotificationThreads.add(n.threadId);
+          }
+        });
+        await saveClearedNotifications();
+        
         updateNotifBadge();
-      }
-
-      function clearNotifications() {
-        notificationsCount = 0;
-        updateNotifBadge();
+        renderNotificationHistory();
       }
 
       function renderNotificationHistory() {
@@ -1888,20 +1909,16 @@
         if (notificationHistory.length > 50) {
           notificationHistory = notificationHistory.slice(-50);
         }
-        bumpNotification();
-        
-        // Show browser notification if supported and permitted
+        updateNotifBadge();
+        renderNotificationHistory();
         if ("Notification" in window && Notification.permission === "granted") {
           try {
             new Notification(title, {
               body: body,
-              icon: "/favicon.ico",
-              badge: "/favicon.ico",
+              icon: "https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/1f4ac.png",
               tag: extra.threadId || "chatra-notif"
             });
-          } catch (err) {
-            console.warn("[notif] browser notification failed:", err);
-          }
+          } catch (err) {}
         }
       }
 
@@ -2306,12 +2323,57 @@
           });
       }
 
+      function verifyNotificationsLoaded() {
+        if (!currentUserId) return;
+        updateNotifBadge();
+      }
+
       async function loadDmInbox() {
         if (!currentUserId) return;
         detachDmInboxListener();
-        // Don't clear UI - this now runs in background for notifications
+        
         dmInboxRef = db.ref("dmInbox/" + currentUserId);
-        dmInboxListener = dmInboxRef.on("value", async (snap) => {
+        
+        // First, load all existing threads into notifications history on initial load
+        if (!dmInboxInitialLoaded) {
+          try {
+            const snapshot = await dmInboxRef.once("value");
+            const data = snapshot.val() || {};
+            const entries = Object.entries(data)
+              .map(([threadId, info]) => ({ threadId, ...info }))
+              .sort((a, b) => (b.lastTime || 0) - (a.lastTime || 0));
+            
+            // Add all threads as notifications for notification history
+            entries.forEach((item) => {
+              // Skip if this thread was already cleared
+              if (clearedNotificationThreads.has(item.threadId)) return;
+              // Skip if no last message recorded (prevents false notifs on empty threads)
+              if (!item.lastMsg) return;
+
+              const who = item.withUsername || item.withUid || "Someone";
+              const preview = previewText(item.lastMsg, 80);
+              
+              // Check if we already have this notification
+              const exists = notificationHistory.some(n => n.threadId === item.threadId);
+              if (!exists) {
+                addNotification(who, preview, {
+                  threadId: item.threadId,
+                  withUid: item.withUid,
+                  withUsername: item.withUsername,
+                  isDM: true,
+                  loaded: true
+                });
+              }
+
+              // Track last update time so we only notify on newer messages later
+              dmLastUpdateTimeByThread[item.threadId] = item.lastTime || 0;
+            });
+          } catch (err) {
+            console.error("[dmInbox] Error loading initial notifications:", err);
+          }
+        }
+        
+        dmInboxListener = dmInboxRef.on("value", (snap) => {
           const data = snap.val() || {};
           const entries = Object.entries(data)
             .map(([threadId, info]) => ({ threadId, ...info }))
@@ -2322,46 +2384,39 @@
           entries.forEach((item) => {
             const lastTime = item.lastTime || 0;
             const lastSeen = dmLastSeenByThread[item.threadId] || 0;
-            const lastNotified = dmLastNotifiedTimeByThread[item.threadId] || 0;
-            const isActiveThread =
-              activeDMThread === item.threadId && dmModal.classList.contains("modal-open");
+            const isActiveThread = activeDMThread === item.threadId && dmModal.classList.contains("modal-open");
 
             // Mark active thread as seen
             if (isActiveThread && lastTime > lastSeen) {
               dmLastSeenByThread[item.threadId] = lastTime;
             }
 
-            // Fire notification for new DM unless user is already viewing this thread
-            if (!isActiveThread && lastTime > lastNotified && dmInboxInitialLoaded) {
+            // Fire notification only for new messages with a lastMsg and only if not viewing this thread
+            const lastNotifiedTime = dmLastUpdateTimeByThread[item.threadId] || 0;
+            if (!isActiveThread && dmInboxInitialLoaded && lastTime > lastNotifiedTime && item.lastMsg) {
               const who = item.withUsername || item.withUid || "Someone";
-              const preview = previewText(item.lastMsg || "New message", 80);
-              addNotification("New DM", `${who}: ${preview}`, {
+              const preview = previewText(item.lastMsg, 80);
+              addNotification(who, preview, {
                 threadId: item.threadId,
                 withUid: item.withUid,
                 withUsername: item.withUsername,
+                isDM: true
               });
-              dmLastNotifiedTimeByThread[item.threadId] = lastTime;
             }
 
             if (isActiveThread) {
-              dmLastNotifiedTimeByThread[item.threadId] = lastTime;
+              dmLastSeenByThread[item.threadId] = lastTime;
             }
 
-            if (!dmInboxInitialLoaded && lastTime > lastNotified) {
-              dmLastNotifiedTimeByThread[item.threadId] = lastTime;
-            }
+            // Update last notified/seen time to current lastTime (only if we have a message)
+            dmLastUpdateTimeByThread[item.threadId] = Math.max(item.lastMsg ? lastTime : 0, dmLastUpdateTimeByThread[item.threadId] || 0);
 
-            const effectiveLastSeen = dmLastSeenByThread[item.threadId] || lastSeen;
-            const hasUnread = lastTime > effectiveLastSeen && !isActiveThread;
-
+            const hasUnread = lastTime > lastSeen && !isActiveThread;
             if (hasUnread) {
               unreadThreadsCount += 1;
             }
           });
 
-          // Just update notification state without UI changes
-          dmUnreadThreads = unreadThreadsCount;
-          updateDmBadge();
           dmInboxInitialLoaded = true;
         });
       }
@@ -2381,12 +2436,16 @@
         activeDMTarget = { uid: targetUid, username: resolvedUsername };
         dmActiveUser.textContent = resolvedUsername;
         dmError.textContent = "";
-        dmLastSeenByThread[threadId] = Date.now();
-        dmLastNotifiedTimeByThread[threadId] = Date.now();
+        
+        const now = Date.now();
+        dmLastSeenByThread[threadId] = now;
+        
+        // Clear DM notifications for this thread
+        notificationHistory = notificationHistory.filter(n => n.threadId !== threadId);
         updateNotifBadge();
+        renderNotificationHistory();
         
         // Ensure self is participant and create own inbox entry
-        const now = Date.now();
         await Promise.all([
           db.ref("dms/" + threadId + "/participants/" + currentUserId).set(true).catch(() => {}),
           db.ref("dmInbox/" + currentUserId + "/" + threadId).set({
@@ -3017,21 +3076,6 @@
         return t.length > max ? t.slice(0, max) + "…" : t;
       }
 
-      function updateDmBadge() {
-        if (!sidePanelDMBadge) return;
-        // Hide badge when not logged in
-        if (!currentUserId) {
-          sidePanelDMBadge.classList.add("hidden");
-          return;
-        }
-        if (dmUnreadThreads > 0) {
-          sidePanelDMBadge.textContent = dmUnreadThreads;
-          sidePanelDMBadge.classList.remove("hidden");
-        } else {
-          sidePanelDMBadge.classList.add("hidden");
-        }
-      }
-
       // Batch render messages for better performance
       function batchRenderMessages(messages, options = {}) {
         const fragment = document.createDocumentFragment();
@@ -3462,6 +3506,9 @@
         if (user) {
           try {
             currentUserId = user.uid;
+            
+            // Load cleared notifications from localStorage
+            loadClearedNotifications();
 
             // Get username from DB (ONE PLACE)
             currentUsername = await fetchUsername(
@@ -3505,9 +3552,7 @@
             
             // Request notification permission
             if ("Notification" in window && Notification.permission === "default") {
-              Notification.requestPermission().catch(err => {
-                console.warn("[notif] permission request failed:", err);
-              });
+              Notification.requestPermission();
             }
 
             console.log("[auth] starting messages listener from auth state change");
@@ -3516,7 +3561,12 @@
             await loadFriendsCache();
             
             // Start DM inbox listener for notifications
-            loadDmInbox();
+            await loadDmInbox();
+            
+            // Wait a moment for initial notifications to load, then verify
+            setTimeout(() => {
+              verifyNotificationsLoaded();
+            }, 500);
 
             // Load user settings (theme, message size) from Firebase
             const settings = await loadUserSettings();
@@ -3546,11 +3596,9 @@
           currentUsername = null;
           messagesDiv.innerHTML = "";
           friendsCache.clear();
+          clearedNotificationThreads.clear();
           dmLastSeenByThread = {};
-          dmLastNotifiedTimeByThread = {};
           dmInboxInitialLoaded = false;
-          dmUnreadThreads = 0;
-          updateDmBadge();
           clearNotifications();
           activeDMThread = null;
           activeDMTarget = null;
@@ -3560,10 +3608,6 @@
           detachDmInboxListener();
           dmModal.classList.add("modal-closed");
           dmModal.classList.remove("modal-open");
-          
-          // Clear DM unread count and hide badge
-          dmUnreadThreads = 0;
-          updateDmBadge();
 
           chatInterface.classList.add("hidden");
           loginForm.classList.remove("hidden");
@@ -3972,8 +4016,8 @@
         }
       });
 
-      notifBellBtn.addEventListener("click", () => {
-        clearNotifications();
+      notifBellBtn.addEventListener("click", async () => {
+        await clearNotifications();
         renderNotificationHistory();
         notifModal.classList.remove("modal-closed");
         notifModal.classList.add("modal-open");
@@ -4298,15 +4342,24 @@
 
           await db.ref("dms/" + threadId + "/messages").push(msg);
 
-          // Update own inbox and ensure target is participant
-          const inboxUpdate = {
+          // Update BOTH inboxes so recipient gets notified
+          const myInboxUpdate = {
             withUid: activeDMTarget.uid,
             withUsername: activeDMTarget.username || activeDMTarget.uid,
             lastMsg: text,
             lastTime: now,
           };
+          
+          const theirInboxUpdate = {
+            withUid: currentUserId,
+            withUsername: currentUsername || currentUserId,
+            lastMsg: text,
+            lastTime: now,
+          };
+          
           await Promise.all([
-            db.ref("dmInbox/" + currentUserId + "/" + threadId).set(inboxUpdate),
+            db.ref("dmInbox/" + currentUserId + "/" + threadId).set(myInboxUpdate),
+            db.ref("dmInbox/" + activeDMTarget.uid + "/" + threadId).set(theirInboxUpdate),
             db.ref("dms/" + threadId + "/participants/" + activeDMTarget.uid).set(true).catch(() => {})
           ]);
 
