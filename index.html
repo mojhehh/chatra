@@ -2562,15 +2562,11 @@
             console.warn("[register] could not create paths:", e);
           }
 
-          // Log them out so they still go through login flow
-          await auth.signOut();
-          console.log("[register] signed out after registration");
-
-          // Switch back to login, show success message
+          // Keep them logged in after registration
+          console.log("[register] registration complete, staying logged in");
+          
+          // Hide the register form
           registerForm.classList.add("hidden");
-          loginForm.classList.remove("hidden");
-          clearLoginMessages();
-          loginInfo.textContent = "Account created! You can log in now.";
         } catch (error) {
           console.error("[register] Error registering:", error);
           if (error.code === "auth/email-already-in-use") {
@@ -4402,6 +4398,13 @@
         });
 
         const json = await res.json();
+        
+        // Check for Cloudinary error
+        if (json.error) {
+          console.error("[cloudinary] upload error:", json.error);
+          throw new Error(json.error.message || "Cloudinary upload failed");
+        }
+        
         return json;
       }
 
