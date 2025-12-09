@@ -366,7 +366,7 @@
       <div class="flex items-center gap-2">
         <button
           id="notifBellBtn"
-          class="relative px-3 py-2 rounded-full bg-slate-800/70 border border-slate-700/70 text-slate-200 hover:bg-slate-700/70 transition-colors"
+          class="hidden relative px-3 py-2 rounded-full bg-slate-800/70 border border-slate-700/70 text-slate-200 hover:bg-slate-700/70 transition-colors"
           title="Notifications"
         >
           <span class="sr-only">Notifications</span>
@@ -2295,7 +2295,7 @@
       async function loadDmInbox() {
         if (!currentUserId) return;
         detachDmInboxListener();
-        dmConversationList.innerHTML = "Loading...";
+        // Don't clear UI - this now runs in background for notifications
         dmInboxRef = db.ref("dmInbox/" + currentUserId);
         dmInboxListener = dmInboxRef.on("value", async (snap) => {
           const data = snap.val() || {};
@@ -2345,42 +2345,7 @@
             }
           });
 
-          dmConversationList.innerHTML = "";
-          if (!entries.length) {
-            dmConversationList.innerHTML = '<p class="text-xs text-slate-400">No conversations yet</p>';
-            dmUnreadThreads = 0;
-            updateDmBadge();
-            dmInboxInitialLoaded = true;
-            return;
-          }
-
-          entries.forEach((item) => {
-            const lastTime = item.lastTime || 0;
-            const lastSeen = dmLastSeenByThread[item.threadId] || 0;
-            const isActiveThread =
-              activeDMThread === item.threadId && dmModal.classList.contains("modal-open");
-            const hasUnread = lastTime > lastSeen && !isActiveThread;
-
-            const btn = document.createElement("button");
-            btn.className = "w-full text-left px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors";
-            if (hasUnread) {
-              btn.classList.add("border", "border-sky-600/60");
-            }
-
-            btn.innerHTML = `<div class="text-sm text-slate-100">${item.withUsername || item.withUid || "Unknown"}</div>
-              <div class="text-xs text-slate-400 truncate">${item.lastMsg || "(no message)"}</div>`;
-            btn.onclick = () => {
-              dmLastSeenByThread[item.threadId] = Date.now();
-              dmLastNotifiedTimeByThread[item.threadId] = Date.now();
-              selectDmThread(item.threadId, item.withUid, item.withUsername || item.withUid);
-              if (hasUnread) {
-                dmUnreadThreads = Math.max(dmUnreadThreads - 1, 0);
-                updateDmBadge();
-              }
-            };
-            dmConversationList.appendChild(btn);
-          });
-
+          // Just update notification state without UI changes
           dmUnreadThreads = unreadThreadsCount;
           updateDmBadge();
           dmInboxInitialLoaded = true;
@@ -3040,6 +3005,11 @@
 
       function updateDmBadge() {
         if (!sidePanelDMBadge) return;
+        // Hide badge when not logged in
+        if (!currentUserId) {
+          sidePanelDMBadge.classList.add("hidden");
+          return;
+        }
         if (dmUnreadThreads > 0) {
           sidePanelDMBadge.textContent = dmUnreadThreads;
           sidePanelDMBadge.classList.remove("hidden");
@@ -3507,11 +3477,17 @@
             chatInterface.classList.remove("hidden");
             // Show loading screen while fetching messages
             loadingScreen.classList.remove("hidden");
+            
+            // Show notification bell when logged in
+            notifBellBtn.classList.remove("hidden");
 
             console.log("[auth] starting messages listener from auth state change");
             startMessagesListener();
             startTypingListener();
             await loadFriendsCache();
+            
+            // Start DM inbox listener for notifications
+            loadDmInbox();
 
             // Load user settings (theme, message size) from Firebase
             const settings = await loadUserSettings();
@@ -3555,11 +3531,19 @@
           detachDmInboxListener();
           dmModal.classList.add("modal-closed");
           dmModal.classList.remove("modal-open");
+          
+          // Clear DM unread count and hide badge
+          dmUnreadThreads = 0;
+          updateDmBadge();
 
           chatInterface.classList.add("hidden");
           loginForm.classList.remove("hidden");
           // Hide loading screen if not logged in
           loadingScreen.classList.add("hidden");
+          
+          // Hide notification bell when not logged in
+          notifBellBtn.classList.add("hidden");
+          
           updateChatUserLabel("");
         }
       });
@@ -4053,7 +4037,10 @@
         dmModal.classList.remove("modal-closed");
         dmModal.classList.add("modal-open");
         dmActiveUser.textContent = activeDMTarget?.username || "Select a conversation";
-        loadDmInbox();
+        
+        // Show friends by default
+        dmConversationList.innerHTML = '';
+        showDmFriendsDefault();
       }
 
       function closeDmModal() {
@@ -4131,10 +4118,19 @@
           for (const friendUid of friendsList) {
             const userSnap = await db.ref("users/" + friendUid + "/username").once("value");
             const username = userSnap.val() || friendUid;
+            
+            const profileSnap = await db.ref("userProfiles/" + friendUid).once("value");
+            const profile = profileSnap.val() || {};
+            const profilePic = profile.profilePic || '';
 
             const btn = document.createElement("button");
-            btn.className = "w-full text-left px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors";
-            btn.textContent = username;
+            btn.className = "w-full text-left px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors flex items-center gap-3";
+            btn.innerHTML = `
+              <div class="w-10 h-10 rounded-full bg-slate-700 flex-shrink-0 overflow-hidden">
+                ${profilePic ? `<img src="${profilePic}" class="w-full h-full object-cover">` : `<div class="w-full h-full flex items-center justify-center text-slate-400 text-sm">${username.charAt(0).toUpperCase()}</div>`}
+              </div>
+              <div class="text-sm text-slate-100">${username}</div>
+            `;
             btn.onclick = () => {
               dmUserSearch.value = username;
               startDmWithUsername(username);
