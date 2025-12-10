@@ -1173,7 +1173,7 @@
           <div
             class="input-shell flex items-center gap-1.5 sm:gap-2 bg-slate-800 rounded-lg px-2 sm:px-3 py-1.5 sm:py-2"
           >
-            <input type="file" id="mediaInput" accept="image/*,video/*" class="hidden" />
+            <input type="file" id="imageInput" accept="image/*,video/*" class="hidden" />
             <button
               type="button"
               id="mediaUploadBtn"
@@ -1202,6 +1202,30 @@
             </button>
           </div>
         </form>
+      </div>
+    </div>
+
+    <!-- Warning Popup -->
+    <div
+      id="warningPopup"
+      class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center hidden"
+    >
+      <div class="bg-slate-900 border border-slate-700 p-6 rounded-xl w-80 text-center shadow-2xl">
+        <h2 class="text-xl font-bold text-red-400 mb-3">⚠️ You Have Been Warned</h2>
+        <p id="warningReason" class="mb-4 text-slate-200"></p>
+
+        <label class="flex items-center space-x-2 justify-center mb-4 select-none">
+          <input type="checkbox" id="warningAgree" class="accent-red-500" />
+          <span class="text-sm text-slate-300">I understand and agree</span>
+        </label>
+
+        <button
+          id="closeWarningBtn"
+          class="bg-red-500 px-4 py-2 rounded-md opacity-50 cursor-not-allowed text-white w-full"
+          disabled
+        >
+          Close
+        </button>
       </div>
     </div>
 
@@ -1714,6 +1738,10 @@
       const messageForm = document.getElementById("messageForm");
       const sendWarningEl = document.getElementById("sendWarning");
       const typingIndicatorEl = document.getElementById("typingIndicator");
+      const warningPopup = document.getElementById("warningPopup");
+      const warningReason = document.getElementById("warningReason");
+      const warningAgree = document.getElementById("warningAgree");
+      const closeWarningBtn = document.getElementById("closeWarningBtn");
 
       const registerLink = document.getElementById("registerLink");
       const loginLink = document.getElementById("loginLink");
@@ -1734,6 +1762,18 @@
       let dmLastSeenByThread = {};
       let dmLastUpdateTimeByThread = {}; // Track last update time per thread to avoid duplicate notifs
       let dmInboxInitialLoaded = false;
+
+      // Moderation state
+      let isAdmin = false;
+      let isMuted = false;
+      let adminRef = null;
+      let adminListener = null;
+      let muteRef = null;
+      let muteListener = null;
+      let warningRef = null;
+      let warningListener = null;
+      let banRef = null;
+      let banListener = null;
 
       // User settings stored in Firebase (no localStorage)
       let userSettingsRef = null;
@@ -1840,6 +1880,144 @@
         } catch (err) {
           console.error("[friends] error loading friends cache:", err);
         }
+      }
+
+      // --- Moderation helpers (admin, ban, mute, warnings) ---
+      function detachModerationListeners() {
+        if (adminRef && adminListener) adminRef.off("value", adminListener);
+        if (muteRef && muteListener) muteRef.off("value", muteListener);
+        if (warningRef && warningListener) warningRef.off("value", warningListener);
+        if (banRef && banListener) banRef.off("value", banListener);
+        adminRef = muteRef = warningRef = banRef = null;
+        adminListener = muteListener = warningListener = banListener = null;
+        isAdmin = false;
+        isMuted = false;
+        if (msgInput) {
+          msgInput.disabled = false;
+          msgInput.placeholder = "Type a message...";
+        }
+        if (sendBtn) sendBtn.disabled = false;
+        if (warningPopup) warningPopup.classList.add("hidden");
+        if (warningAgree) warningAgree.checked = false;
+        if (closeWarningBtn) {
+          closeWarningBtn.disabled = true;
+          closeWarningBtn.classList.add("opacity-50", "cursor-not-allowed");
+        }
+      }
+
+      function checkAdmin() {
+        const uid = firebase.auth().currentUser?.uid;
+        if (!uid) return;
+        console.log("[admin] checking admin status for uid:", uid);
+        adminRef = firebase.database().ref("admins/" + uid);
+        adminListener = (snap) => {
+          isAdmin = snap.exists();
+          console.log("[admin] admin check result:", { uid, isAdmin, exists: snap.exists() });
+        };
+        adminRef.on("value", adminListener);
+      }
+
+      function banUser(uid) {
+        if (!isAdmin || !uid) return;
+        firebase.database().ref("bannedUsers/" + uid).set(true).catch((err) => {
+          console.error("[ban] failed to ban user", err);
+        });
+      }
+
+      function watchBanStatus(uid) {
+        if (!uid) return;
+        banRef = firebase.database().ref("bannedUsers/" + uid);
+        banListener = (snap) => {
+          if (snap.exists()) {
+            alert("You have been banned.");
+            auth.signOut().catch(() => {});
+          }
+        };
+        banRef.on("value", banListener);
+      }
+
+      function muteUser(uid, minutes = 10) {
+        if (!isAdmin || !uid) return;
+        const until = Date.now() + minutes * 60 * 1000;
+        firebase.database().ref("mutedUsers/" + uid + "/until").set(until);
+      }
+
+      function watchMuteStatus(uid) {
+        if (!uid) return;
+        muteRef = firebase.database().ref("mutedUsers/" + uid + "/until");
+        muteListener = (snap) => {
+          const until = snap.val();
+          const now = Date.now();
+          const active = until && until > now;
+          isMuted = !!active;
+
+          if (active) {
+            const timeLeft = Math.ceil((until - now) / 1000);
+            msgInput.disabled = true;
+            sendBtn.disabled = true;
+            msgInput.placeholder = "You are muted for " + timeLeft + "s";
+            const msLeft = until - now;
+            setTimeout(() => {
+              if (isMuted && Date.now() >= until) {
+                msgInput.disabled = false;
+                sendBtn.disabled = false;
+                msgInput.placeholder = "Type a message...";
+              }
+            }, Math.min(msLeft, 60000));
+          } else {
+            msgInput.disabled = false;
+            sendBtn.disabled = false;
+            msgInput.placeholder = "Type a message...";
+          }
+        };
+        muteRef.on("value", muteListener);
+      }
+
+      function warnUser(uid, reason) {
+        if (!isAdmin || !uid) return;
+        firebase.database().ref("warnings/" + uid).set({
+          active: true,
+          reason: reason || "Rule break",
+        });
+      }
+
+      function watchWarnings(uid) {
+        if (!uid) return;
+        warningRef = firebase.database().ref("warnings/" + uid);
+        warningListener = (snap) => {
+          const data = snap.val();
+          if (data && data.active) {
+            warningReason.textContent = "Reason: " + (data.reason || "Rule break");
+            warningPopup.classList.remove("hidden");
+            closeWarningBtn.disabled = true;
+            closeWarningBtn.classList.add("opacity-50", "cursor-not-allowed");
+          } else {
+            warningPopup.classList.add("hidden");
+            warningAgree.checked = false;
+            closeWarningBtn.disabled = true;
+            closeWarningBtn.classList.add("opacity-50", "cursor-not-allowed");
+          }
+        };
+        warningRef.on("value", warningListener);
+      }
+
+      if (warningAgree && closeWarningBtn) {
+        warningAgree.addEventListener("change", () => {
+          if (warningAgree.checked) {
+            closeWarningBtn.disabled = false;
+            closeWarningBtn.classList.remove("opacity-50", "cursor-not-allowed");
+          } else {
+            closeWarningBtn.disabled = true;
+            closeWarningBtn.classList.add("opacity-50", "cursor-not-allowed");
+          }
+        });
+
+        closeWarningBtn.addEventListener("click", () => {
+          const uid = firebase.auth().currentUser?.uid;
+          if (!uid) return;
+          firebase.database().ref("warnings/" + uid + "/active").set(false).catch(() => {});
+          warningPopup.classList.add("hidden");
+        });
       }
 
       function updateNotifBadge() {
@@ -2869,6 +3047,12 @@
         // Add media if present (image or video)
         if (msg.media) {
           const mediaUrl = msg.media;
+          console.log("[render] rendering media:", {
+            mediaUrl,
+            messageId,
+            isMine,
+            isGif: mediaUrl.toLowerCase().includes('.gif'),
+          });
           const isVideo = mediaUrl.includes('.mp4') || mediaUrl.includes('video') || mediaUrl.includes('.mov') || mediaUrl.includes('.webm');
           const isGif = mediaUrl.toLowerCase().includes('.gif');
           
@@ -2924,6 +3108,7 @@
             const observer = new IntersectionObserver((entries) => {
               entries.forEach(entry => {
                 if (entry.isIntersecting && img.dataset.src) {
+                  console.log("[render] lazy loading GIF:", img.dataset.src);
                   img.src = img.dataset.src;
                   delete img.dataset.src;
                   observer.unobserve(img);
@@ -2968,6 +3153,7 @@
             const observer = new IntersectionObserver((entries) => {
               entries.forEach(entry => {
                 if (entry.isIntersecting && img.dataset.src) {
+                  console.log("[render] lazy loading image:", img.dataset.src);
                   img.src = img.dataset.src;
                   delete img.dataset.src;
                   observer.unobserve(img);
@@ -3017,6 +3203,41 @@
         }
         
         column.appendChild(bubbleContainer);
+
+        // Admin actions
+        if (isAdmin) {
+          const targetUid = msg.userId || msg.uid || null;
+          console.log("[admin] rendering admin buttons:", {
+            isAdmin,
+            targetUid,
+            currentUserId,
+            shouldShow: targetUid && targetUid !== currentUserId,
+          });
+          if (targetUid && targetUid !== currentUserId) {
+            const adminActions = document.createElement("div");
+            adminActions.className = "flex gap-2 mt-1 text-[11px]";
+
+            const banBtn = document.createElement("button");
+            banBtn.textContent = "Ban";
+            banBtn.className = "text-red-400 hover:text-red-300";
+            banBtn.onclick = () => banUser(targetUid);
+
+            const muteBtn = document.createElement("button");
+            muteBtn.textContent = "Mute 10m";
+            muteBtn.className = "text-yellow-400 hover:text-yellow-300";
+            muteBtn.onclick = () => muteUser(targetUid, 10);
+
+            const warnBtn = document.createElement("button");
+            warnBtn.textContent = "Warn";
+            warnBtn.className = "text-blue-400 hover:text-blue-300";
+            warnBtn.onclick = () => warnUser(targetUid, "Rule break");
+
+            adminActions.appendChild(banBtn);
+            adminActions.appendChild(muteBtn);
+            adminActions.appendChild(warnBtn);
+            column.appendChild(adminActions);
+          }
+        }
         row.appendChild(column);
         return row;
       }
@@ -3559,6 +3780,12 @@
             startMessagesListener();
             startTypingListener();
             await loadFriendsCache();
+
+            // Moderation hooks
+            checkAdmin();
+            watchBanStatus(user.uid);
+            watchMuteStatus(user.uid);
+            watchWarnings(user.uid);
             
             // Start DM inbox listener for notifications
             await loadDmInbox();
@@ -3599,6 +3826,7 @@
           clearedNotificationThreads.clear();
           dmLastSeenByThread = {};
           dmInboxInitialLoaded = false;
+          detachModerationListeners();
           clearNotifications();
           activeDMThread = null;
           activeDMTarget = null;
@@ -3686,6 +3914,11 @@
             currentWarningText = "";
             updateStatusBar();
           }, 3000);
+          return;
+        }
+
+        if (isMuted) {
+          alert("You are muted and cannot send messages right now.");
           return;
         }
 
@@ -3793,7 +4026,199 @@
 
       // Media upload handlers
       const mediaUploadBtn = document.getElementById("mediaUploadBtn");
-      const mediaInput = document.getElementById("mediaInput");
+      const mediaInput = document.getElementById("imageInput");
+      const imageInput = mediaInput;
+
+      // ImageKit upload with lightweight auth tag
+      async function uploadToImageKit(file) {
+        // Cloudflare Worker URL
+        const workerUrl = "https://chatra.modmojheh.workers.dev";
+
+        if (!workerUrl || workerUrl.includes("your-worker-subdomain")) {
+          const err = "Cloudflare Worker URL not configured. Update the workerUrl in the code.";
+          console.error("[imagekit] configuration error:", err);
+          throw new Error(err);
+        }
+
+        const formData = new FormData();
+        formData.append("file", file);
+
+        console.log("[imagekit] starting upload to worker:", workerUrl);
+        console.log("[imagekit] file:", {
+          name: file.name,
+          size: file.size,
+          type: file.type,
+        });
+
+        try {
+          const startTime = Date.now();
+
+          const res = await fetch(workerUrl, {
+            method: "POST",
+            body: formData,
+          });
+
+          const duration = Date.now() - startTime;
+          console.log("[imagekit] response received after", duration, "ms, status:", res.status);
+
+          let data;
+          try {
+            data = await res.json();
+          } catch (jsonErr) {
+            console.error("[imagekit] failed to parse response as JSON:", jsonErr);
+            const text = await res.text();
+            console.error("[imagekit] response text:", text);
+            throw new Error(`Invalid response from worker: ${res.status} ${text.substring(0, 100)}`);
+          }
+
+          if (!res.ok) {
+            const errorMsg = data?.error || `HTTP ${res.status}`;
+            console.error("[imagekit] worker returned error:", {
+              status: res.status,
+              error: errorMsg,
+              data: data,
+            });
+            throw new Error(`Upload failed: ${errorMsg}`);
+          }
+
+          if (!data?.url) {
+            console.error("[imagekit] success response missing URL:", data);
+            throw new Error(data?.error || "Upload failed: no URL returned from worker");
+          }
+
+          console.log("[imagekit] upload success:", {
+            url: data.url,
+            fileId: data.fileId,
+            duration: duration,
+          });
+
+          return data.url;
+        } catch (err) {
+          const errorDetails = {
+            message: err.message,
+            name: err.name,
+            stack: err.stack,
+            file: file.name,
+            fileSize: file.size,
+            workerUrl: workerUrl,
+          };
+
+          console.error("[imagekit] upload failed with detailed error:", errorDetails);
+
+          // Provide user-friendly error messages
+          let userMessage = "Upload failed";
+          if (err.message.includes("Failed to fetch")) {
+            userMessage = "Cannot reach upload server. Check your internet connection or worker URL.";
+          } else if (err.message.includes("not configured")) {
+            userMessage = "Upload not configured. Contact support.";
+          } else if (err.message.includes("HTTP 401")) {
+            userMessage = "Upload authentication failed. Check ImageKit credentials.";
+          } else if (err.message.includes("HTTP 403")) {
+            userMessage = "Upload permission denied. Check ImageKit settings.";
+          } else if (err.message.includes("HTTP 500")) {
+            userMessage = "Server error. Please try again later.";
+          } else if (err.message.includes("HTTP 413")) {
+            userMessage = "File too large. Maximum size is 25MB.";
+          } else {
+            userMessage = err.message;
+          }
+
+          console.error("[imagekit] user-friendly message:", userMessage);
+          throw new Error(userMessage);
+        }
+      }
+
+      // Persist per-user upload cooldown timestamps
+      function storeUploadTime() {
+        const uid = firebase.auth().currentUser?.uid;
+        if (!uid) return;
+        firebase.database().ref("uploadTimes/" + uid).set(Date.now()).catch(() => {});
+      }
+
+      async function canUpload() {
+        const uid = firebase.auth().currentUser?.uid;
+        if (!uid) return false;
+        const snap = await firebase.database().ref("uploadTimes/" + uid).get();
+        if (!snap.exists()) return true;
+        return Date.now() - snap.val() > 5000; // 5s cooldown
+      }
+
+      // Basic image compression helper
+      async function compressImage(file, quality = 0.7) {
+        return new Promise((resolve, reject) => {
+          const img = new Image();
+          const reader = new FileReader();
+
+          reader.onload = () => {
+            img.onload = () => {
+              const canvas = document.createElement("canvas");
+              const ctx = canvas.getContext("2d");
+              canvas.width = img.width;
+              canvas.height = img.height;
+              ctx.drawImage(img, 0, 0);
+              canvas.toBlob(
+                (blob) => {
+                  if (!blob) {
+                    reject(new Error("Compression failed"));
+                    return;
+                  }
+                  const compressed = new File([blob], file.name || "upload.jpg", {
+                    type: blob.type || "image/jpeg",
+                    lastModified: Date.now(),
+                  });
+                  resolve(compressed);
+                },
+                "image/jpeg",
+                quality
+              );
+            };
+            img.onerror = () => reject(new Error("Could not load image for compression"));
+            img.src = reader.result;
+          };
+
+          reader.onerror = () => reject(new Error("Failed to read file"));
+          reader.readAsDataURL(file);
+        });
+      }
+
+      async function prepareFileForUpload(file) {
+        const type = (file?.type || "").toLowerCase();
+
+        if (type.includes("gif")) {
+          console.log("[upload] GIF detected – skipping compression.");
+          return file;
+        }
+
+        if (type.includes("video")) {
+          console.log("[upload] video detected – skipping compression.");
+          return file;
+        }
+
+        console.log("[upload] compressing image...");
+        return await compressImage(file, 0.7);
+      }
+
+      async function sendImageMessage(file) {
+        const userObj = auth.currentUser;
+        if (!userObj || !currentUsername) return;
+        if (!(await canUpload())) {
+          alert("Slow down! Wait a few seconds.");
+          return;
+        }
+
+        const processed = await prepareFileForUpload(file);
+        const url = await uploadToImageKit(processed);
+        storeUploadTime();
+
+        const messageData = {
+          user: currentUsername,
+          userId: userObj.uid,
+          media: url,
+          time: firebase.database.ServerValue.TIMESTAMP,
+        };
+
+        return db.ref("messages").push(messageData);
+      }
 
       mediaUploadBtn.addEventListener("click", () => {
         mediaInput.click();
@@ -3816,15 +4241,23 @@
           return;
         }
 
+        if (!(await canUpload())) {
+          alert("Slow down! Wait a few seconds.");
+          mediaInput.value = "";
+          return;
+        }
+
         try {
           // Show uploading state
           mediaUploadBtn.disabled = true;
           mediaUploadBtn.innerHTML = '<svg class="animate-spin" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" stroke-opacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10" stroke-opacity="0.75"/></svg>';
 
-          // Upload to Cloudinary with optimization
-          const upload = await uploadToCloudinary(file);
-          pendingMediaUrl = upload.secure_url;
-          pendingMediaToken = upload.delete_token;
+          const processedFile = await prepareFileForUpload(file);
+          const imageKitUrl = await uploadToImageKit(processedFile);
+          storeUploadTime();
+
+          pendingMediaUrl = imageKitUrl;
+          pendingMediaToken = null;
 
           // Show preview
           mediaPreviewContent.innerHTML = "";
@@ -3867,7 +4300,7 @@
 
       // Cancel media button
       cancelMediaBtn.addEventListener("click", async () => {
-        // Delete the uploaded file from Cloudinary if it exists
+        // Delete the uploaded file from Cloudinary if it exists (legacy uploads only)
         if (pendingMediaToken) {
           try {
             console.log("[media] deleting uploaded file from Cloudinary");
