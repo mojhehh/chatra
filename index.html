@@ -1467,6 +1467,70 @@
       </div>
     </div>
 
+    <!-- Rating Prompt Modal -->
+    <div
+      id="ratingModal"
+      class="modal-overlay fixed inset-0 z-50 modal-closed items-center justify-center px-4"
+    >
+      <div class="glass-card max-w-sm w-full rounded-2xl p-6 space-y-4">
+        <div class="flex justify-between items-center">
+          <h3 class="text-lg font-semibold text-slate-100">Rate Chatra</h3>
+          <button
+            id="ratingCloseBtn"
+            class="p-1 hover:bg-slate-700 rounded-lg transition-colors"
+            aria-label="Close rating dialog"
+          >
+            ✕
+          </button>
+        </div>
+
+        <p class="text-sm text-slate-300">How is your experience going?</p>
+
+        <div id="ratingStars" class="flex justify-center gap-2">
+          <button class="rating-star h-10 w-10 rounded-full bg-slate-800 text-amber-300 text-lg" data-star="1">★</button>
+          <button class="rating-star h-10 w-10 rounded-full bg-slate-800 text-amber-300 text-lg" data-star="2">★</button>
+          <button class="rating-star h-10 w-10 rounded-full bg-slate-800 text-amber-300 text-lg" data-star="3">★</button>
+          <button class="rating-star h-10 w-10 rounded-full bg-slate-800 text-amber-300 text-lg" data-star="4">★</button>
+          <button class="rating-star h-10 w-10 rounded-full bg-slate-800 text-amber-300 text-lg" data-star="5">★</button>
+        </div>
+
+        <div id="ratingFeedbackWrap" class="hidden space-y-2">
+          <label class="text-xs text-slate-300">What should we improve?</label>
+          <textarea
+            id="ratingFeedback"
+            class="w-full min-h-[96px] rounded-lg bg-slate-800 text-slate-100 p-3 border border-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-600"
+            placeholder="Optional: tell us more"
+          ></textarea>
+        </div>
+
+        <label class="flex items-center gap-2 text-sm text-slate-300">
+          <input
+            type="checkbox"
+            id="ratingDontShow"
+            class="h-4 w-4 rounded border-slate-500 bg-slate-800/90"
+          />
+          <span>Don't show again</span>
+        </label>
+
+        <p id="ratingError" class="text-xs text-rose-400 min-h-[1rem]"></p>
+
+        <div class="flex gap-2">
+          <button
+            id="ratingLaterBtn"
+            class="flex-1 px-4 py-2 rounded-lg bg-slate-700 text-slate-200 hover:bg-slate-600 transition-colors"
+          >
+            Maybe later
+          </button>
+          <button
+            id="ratingSubmitBtn"
+            class="flex-1 px-4 py-2 rounded-lg bg-sky-600 text-white hover:bg-sky-500 transition-colors"
+          >
+            Submit
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Friend Requests Modal -->
     <div
       id="friendRequestsModal"
@@ -1982,6 +2046,15 @@
       const closeWarningBtn = document.getElementById("closeWarningBtn");
       const muteInlineBanner = document.getElementById("muteInlineBanner");
       const muteInlineText = document.getElementById("muteInlineText");
+      const ratingModal = document.getElementById("ratingModal");
+      const ratingStars = Array.from(document.querySelectorAll("#ratingStars .rating-star"));
+      const ratingFeedbackWrap = document.getElementById("ratingFeedbackWrap");
+      const ratingFeedbackInput = document.getElementById("ratingFeedback");
+      const ratingDontShowCheckbox = document.getElementById("ratingDontShow");
+      const ratingErrorEl = document.getElementById("ratingError");
+      const ratingCloseBtn = document.getElementById("ratingCloseBtn");
+      const ratingLaterBtn = document.getElementById("ratingLaterBtn");
+      const ratingSubmitBtn = document.getElementById("ratingSubmitBtn");
 
       const registerLink = document.getElementById("registerLink");
       const loginLink = document.getElementById("loginLink");
@@ -2030,7 +2103,7 @@
       }
 
       async function loadUserSettings() {
-        if (!currentUserId) return { theme: "dark", messageSize: "medium", fastMode: false };
+        if (!currentUserId) return { theme: "dark", messageSize: "medium", fastMode: false, ratingOptOut: false, ratingLastPrompt: 0 };
         userSettingsRef = db.ref("userSettings/" + currentUserId);
         try {
           const snap = await userSettingsRef.once("value");
@@ -2039,10 +2112,12 @@
             theme: data.theme || "dark",
             messageSize: data.messageSize || "medium",
             fastMode: data.fastMode === true,
+            ratingOptOut: data.ratingOptOut === true,
+            ratingLastPrompt: data.ratingLastPrompt || 0,
           };
         } catch (err) {
           console.warn("[settings] failed to load user settings", err);
-          return { theme: "dark", messageSize: "medium", fastMode: false };
+          return { theme: "dark", messageSize: "medium", fastMode: false, ratingOptOut: false, ratingLastPrompt: 0 };
         }
       }
 
@@ -2088,6 +2163,13 @@
       let isLoadingOlder = false;
       let allHistoryLoaded = false;
       let scrollListenerAttached = false;
+
+      // Rating prompt cadence
+      const RATING_INTERVAL_MS = 10 * 60 * 1000;
+      let ratingIntervalId = null;
+      let ratingOptOut = false;
+      let ratingLastPrompt = 0;
+      let ratingPendingStars = null;
 
       // Load blocked users into cache
       async function loadBlockedUsersCache() {
@@ -4598,10 +4680,7 @@
             applyMessageSize(settings.messageSize, false);
             if (fastModeToggle) fastModeToggle.checked = settings.fastMode === true;
             applyFastMode(settings.fastMode === true, false);
-            if (fastModeToggle) {
-              fastModeToggle.checked = settings.fastMode === true;
-            }
-            applyFastMode(settings.fastMode === true, false);
+            initRatingSettings(settings);
           } catch (err) {
             console.error("[auth] error in onAuthStateChanged:", err);
             // Show error and sign out
@@ -4619,6 +4698,12 @@
 
           stopMessagesListener();
           stopTypingListener();
+          stopRatingPromptLoop();
+
+          ratingOptOut = false;
+          ratingLastPrompt = 0;
+          ratingPendingStars = null;
+          closeRatingModal(false);
 
           currentUserId = null;
           currentUsername = null;
@@ -5409,6 +5494,174 @@
           applyFastMode(fastModeToggle.checked, true);
         });
       }
+
+      // ===== RATING PROMPT =====
+      function updateRatingStars() {
+        ratingStars.forEach((btn) => {
+          const starValue = parseInt(btn.dataset.star, 10);
+          const isActive = ratingPendingStars && starValue <= ratingPendingStars;
+          btn.classList.toggle("bg-amber-500", isActive);
+          btn.classList.toggle("text-slate-900", isActive);
+          btn.classList.toggle("bg-slate-800", !isActive);
+          btn.classList.toggle("text-amber-300", !isActive);
+        });
+      }
+
+      function resetRatingModal() {
+        ratingPendingStars = null;
+        ratingErrorEl.textContent = "";
+        ratingFeedbackWrap.classList.add("hidden");
+        ratingFeedbackInput.value = "";
+        ratingDontShowCheckbox.checked = false;
+        updateRatingStars();
+      }
+
+      function openRatingModal(manual = false) {
+        if (!ratingModal) return;
+        resetRatingModal();
+        if (manual) {
+          ratingLastPrompt = Date.now();
+          saveUserSetting("ratingLastPrompt", ratingLastPrompt);
+        }
+        ratingModal.classList.remove("modal-closed");
+        ratingModal.classList.add("modal-open");
+      }
+
+      function closeRatingModal(saveOptOut = false) {
+        if (!ratingModal) return;
+        ratingModal.classList.remove("modal-open");
+        ratingModal.classList.add("modal-closed");
+        if (saveOptOut && ratingDontShowCheckbox.checked) {
+          ratingOptOut = true;
+          saveUserSetting("ratingOptOut", true);
+          stopRatingPromptLoop();
+        }
+      }
+
+      function stopRatingPromptLoop() {
+        if (ratingIntervalId) {
+          clearInterval(ratingIntervalId);
+          ratingIntervalId = null;
+        }
+      }
+
+      function maybeShowRatingPrompt(reason = "interval") {
+        if (!currentUserId || ratingOptOut) return;
+        const now = Date.now();
+        if (now - ratingLastPrompt < RATING_INTERVAL_MS) return;
+        ratingLastPrompt = now;
+        saveUserSetting("ratingLastPrompt", ratingLastPrompt);
+        console.log(`[rating] showing prompt (${reason})`);
+        openRatingModal();
+      }
+
+      function startRatingPromptLoop() {
+        stopRatingPromptLoop();
+        if (!currentUserId || ratingOptOut) return;
+        ratingIntervalId = setInterval(() => maybeShowRatingPrompt("interval"), RATING_INTERVAL_MS);
+        setTimeout(() => maybeShowRatingPrompt("initial"), 2000);
+      }
+
+      async function submitRating() {
+        if (!currentUserId) return;
+        if (!ratingPendingStars) {
+          ratingErrorEl.textContent = "Pick a star rating first.";
+          return;
+        }
+        ratingErrorEl.textContent = "";
+
+        const feedback = (ratingFeedbackInput.value || "").trim();
+        const dontShowAgain = ratingDontShowCheckbox.checked;
+        const ratingRef = db.ref("userRatings/" + currentUserId).push();
+        const globalRatingRef = db.ref("ratingsAll").push();
+
+        const payload = {
+          stars: ratingPendingStars,
+          createdAt: firebase.database.ServerValue.TIMESTAMP,
+        };
+
+        if (feedback) {
+          payload.feedback = feedback.slice(0, 800);
+        }
+
+        try {
+          const globalPayload = {
+            uid: currentUserId,
+            username: currentUsername || "",
+            stars: ratingPendingStars,
+            createdAt: firebase.database.ServerValue.TIMESTAMP,
+          };
+          if (feedback) {
+            globalPayload.feedback = feedback.slice(0, 800);
+          }
+
+          await Promise.all([
+            ratingRef.set(payload),
+            globalRatingRef.set(globalPayload),
+          ]);
+          ratingLastPrompt = Date.now();
+          saveUserSetting("ratingLastPrompt", ratingLastPrompt);
+          if (dontShowAgain) {
+            ratingOptOut = true;
+            saveUserSetting("ratingOptOut", true);
+            stopRatingPromptLoop();
+          }
+          closeRatingModal();
+          console.log("[rating] thanks for the feedback", payload);
+        } catch (err) {
+          ratingErrorEl.textContent = "Could not save rating. Try again.";
+          console.error("[rating] failed to save rating", err);
+        }
+      }
+
+      ratingStars.forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const starValue = parseInt(btn.dataset.star, 10);
+          ratingPendingStars = starValue;
+          ratingFeedbackWrap.classList.remove("hidden");
+          updateRatingStars();
+        });
+      });
+
+      ratingSubmitBtn.addEventListener("click", submitRating);
+      ratingLaterBtn.addEventListener("click", () => {
+        ratingLastPrompt = Date.now();
+        saveUserSetting("ratingLastPrompt", ratingLastPrompt);
+        closeRatingModal(true);
+      });
+      ratingCloseBtn.addEventListener("click", () => {
+        closeRatingModal(true);
+      });
+      if (ratingModal) {
+        ratingModal.addEventListener("click", (e) => {
+          if (e.target === ratingModal) {
+            closeRatingModal(true);
+          }
+        });
+      }
+
+      function initRatingSettings(settings) {
+        ratingOptOut = settings.ratingOptOut === true;
+        ratingLastPrompt = settings.ratingLastPrompt || 0;
+        if (ratingOptOut) {
+          stopRatingPromptLoop();
+          return;
+        }
+        startRatingPromptLoop();
+      }
+
+      window.triggerRatingPrompt = (force = false) => {
+        if (!currentUserId) {
+          console.warn("[rating] no user logged in; cannot show prompt");
+          return;
+        }
+        if (force) {
+          ratingOptOut = false;
+        }
+        ratingLastPrompt = 0;
+        startRatingPromptLoop();
+        openRatingModal(true);
+      };
 
       dmStartBtn.addEventListener("click", () => {
         startDmWithUsername(dmUserSearch.value);
