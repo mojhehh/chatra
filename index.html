@@ -2724,20 +2724,44 @@
       // Rate-limit warning timeout + local last-sent time
       let sendWarningTimeoutId = null;
       let lastSentTime = 0; // for local rate limit
-      const SEND_COOLDOWN_MS = 2000; // 2s cooldown between sends
+      const TEXT_COOLDOWN_MS = 500;   // 0.5s between text sends (matches rules)
+      const MEDIA_COOLDOWN_MS = 1000; // 1s between media sends (matches rules)
 
       // Basic bad-word filter (client-side)
       const BAD_WORDS = [
         "fuck",
         "shit",
         "bitch",
+        "faggot",
+        "fag",
         "asshole",
+        "nigger",
         "cunt",
         "bastard",
         "slut",
         "whore"
       ];
       const badWordPattern = new RegExp("\\b(" + BAD_WORDS.map((w) => w.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&")).join("|") + ")\\b", "i");
+
+      // Local hard-blocked usernames (client-side only, case-insensitive). Edit this list as needed.
+      const LOCAL_BLOCKED_USERNAMES = [
+        "admin",
+        "moderator",
+        "support",
+        "owner",
+        "system",
+        "staff",
+        "fag",
+        "faggot",
+        "nigger",
+        "chink"
+      ];
+
+      function isLocallyBlockedUsername(name) {
+        if (!name) return false;
+        const lower = name.toLowerCase();
+        return LOCAL_BLOCKED_USERNAMES.some((n) => n.toLowerCase() === lower);
+      }
       
       // Message rendering optimization
       let messageRenderQueue = [];
@@ -2878,7 +2902,7 @@
 
       // On-screen warning (2 seconds) — now combined with typing in one line
       function showRateLimitWarning() {
-        currentWarningText = "Slow down — 2s between messages.";
+        currentWarningText = "Slow down!";
         if (sendWarningTimeoutId) {
           clearTimeout(sendWarningTimeoutId);
         }
@@ -3329,6 +3353,12 @@
       async function isUsernameTaken(username) {
         console.log("[users] checking if username taken:", username);
         try {
+          // Local blocked list first (fast)
+          if (isLocallyBlockedUsername(username)) {
+            console.log("[users] username blocked locally:", username);
+            return true;
+          }
+
           // Check if username is in use
           const snapshot = await db
             .ref("users")
@@ -3336,11 +3366,24 @@
             .equalTo(username)
             .once("value");
           const exists = snapshot.exists();
-          
-          // Check if username is banned (use encoded key)
-          const encodedUsername = encodeFirebaseKey(username);
-          const bannedSnap = await db.ref("bannedUsernames/" + encodedUsername).once("value");
-          const isBanned = bannedSnap.exists();
+
+          // Check if username is banned (supports key-based or value-based name field)
+          let isBanned = false;
+          const bannedSnap = await db.ref("bannedUsernames").once("value");
+          if (bannedSnap.exists()) {
+            bannedSnap.forEach((child) => {
+              if (isBanned) return; // short-circuit
+              const val = child.val();
+              const keyName = child.key;
+              const valueName = typeof val === "object" && val !== null ? val.name : null;
+              if (
+                (keyName && keyName.toLowerCase() === username.toLowerCase()) ||
+                (valueName && valueName.toLowerCase() === username.toLowerCase())
+              ) {
+                isBanned = true;
+              }
+            });
+          }
           
           console.log("[users] username taken =", exists, "banned =", isBanned);
           return exists || isBanned || badWordPattern.test(username);
@@ -3382,6 +3425,11 @@
         }
 
         if (badWordPattern.test(username)) {
+          registerError.textContent = "Username not allowed.";
+          return;
+        }
+
+        if (isLocallyBlockedUsername(username)) {
           registerError.textContent = "Username not allowed.";
           return;
         }
@@ -4593,9 +4641,11 @@
           return;
         }
 
-        // ✅ Local send cooldown (2s)
+        // ✅ Local send cooldowns (match server rules: 0.5s text, 1s media)
         const now = Date.now();
-        if (now - lastSentTime < SEND_COOLDOWN_MS) {
+        const isMedia = !!pendingMediaUrl;
+        const cooldown = isMedia ? MEDIA_COOLDOWN_MS : TEXT_COOLDOWN_MS;
+        if (now - lastSentTime < cooldown) {
           showRateLimitWarning();
           return;
         }
@@ -4642,17 +4692,17 @@
           messageData.deleteToken = pendingMediaToken;
         }
 
-        // Push the message
-        db.ref("messages")
-          .push(messageData)
-          .then((ref) => {
-            console.log("[send] message saved under key", ref.key);
+        // Push the message + update rate-limit timestamps atomically
+        const newMsgKey = db.ref("messages").push().key;
+        const updates = {};
+        updates["messages/" + newMsgKey] = messageData;
+        updates["userLastMessageTime/" + uid] = firebase.database.ServerValue.TIMESTAMP;
+        if (messageData.media) {
+          updates["userLastMediaTime/" + uid] = firebase.database.ServerValue.TIMESTAMP;
+        }
 
-            // Update last message time so Firebase rules can block spam as backup
-            return db
-              .ref("userLastMessageTime/" + uid)
-              .set(firebase.database.ServerValue.TIMESTAMP);
-          })
+        db.ref()
+          .update(updates)
           .then(() => {
             // Only clear input when message + timestamp both succeed
             msgInput.value = "";
@@ -6051,6 +6101,11 @@
 
           // Basic bad-word filter for usernames
           if (badWordPattern.test(newUsername)) {
+            throw new Error("Username not allowed");
+          }
+
+          // Local blocked usernames list (client-side editable)
+          if (isLocallyBlockedUsername(newUsername)) {
             throw new Error("Username not allowed");
           }
 
