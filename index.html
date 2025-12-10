@@ -2838,12 +2838,13 @@
       const TEXT_COOLDOWN_MS = 500;   // 0.5s between text sends (matches rules)
       const MEDIA_COOLDOWN_MS = 1000; // 1s between media sends (matches rules)
 
-      // Basic bad-word filter (client-side)
+      // Basic bad-word filter (client-side) - replaces detected words with stars
       const BAD_WORDS = [
         "fuck",
         "shit",
         "bitch",
         "faggot",
+        "chink",
         "fag",
         "asshole",
         "nigger",
@@ -2852,7 +2853,14 @@
         "slut",
         "whore"
       ];
-      const badWordPattern = new RegExp("\\b(" + BAD_WORDS.map((w) => w.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&")).join("|") + ")\\b", "i");
+      const badWordPattern = new RegExp("\\b(" + BAD_WORDS.map((w) => w.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&")).join("|") + ")\\b", "gi");
+
+      function filterBadWords(text) {
+        if (!text) return text;
+        return text.replace(badWordPattern, (match) => {
+          return '*'.repeat(match.length);
+        });
+      }
 
       // Local hard-blocked usernames (client-side only, case-insensitive). Edit this list as needed.
       const LOCAL_BLOCKED_USERNAMES = [
@@ -4776,7 +4784,7 @@
 
       // Send a message (shared logic) + local rate-limit + server rules
       function sendMessage() {
-        const text = msgInput.value.trim();
+        let text = msgInput.value.trim();
         if (text === "" && !pendingMediaUrl) return;
 
         const userObj = auth.currentUser;
@@ -4818,15 +4826,9 @@
         }
         lastSentTime = now;
 
-        // Bad-word filter (client-side guard; server rules should also block)
-        if (text && badWordPattern.test(text)) {
-          currentWarningText = "Message blocked: language not allowed.";
-          updateStatusBar();
-          setTimeout(() => {
-            currentWarningText = "";
-            updateStatusBar();
-          }, 2500);
-          return;
+        // Bad-word filter (client-side): replace detected words with stars
+        if (text) {
+          text = filterBadWords(text);
         }
 
         const username = currentUsername;
@@ -5832,8 +5834,11 @@
           return;
         }
 
-        const text = (dmInput.value || "").trim();
+        let text = (dmInput.value || "").trim();
         if (!text) return;
+
+        // Filter bad words in DM text
+        text = filterBadWords(text);
 
         dmError.textContent = "";
         dmSendBtn.disabled = true;
