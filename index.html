@@ -906,14 +906,23 @@
               class="text-sm text-slate-200 font-medium"
             ></span>
           </div>
+          
+          <!-- Global Chat in Middle -->
+          <div class="absolute left-1/2 transform -translate-x-1/2 flex items-center gap-2">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-blue-400">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="2" y1="12" x2="22" y2="12"></line>
+              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+            </svg>
+            <span class="text-sm font-bold text-slate-100">Global Chat</span>
+          </div>
+          
           <button
             id="logoutBtn"
             class="px-3 py-1.5 text-xs rounded-lg bg-slate-700 hover:bg-slate-600 transition-colors"
           >
             Logout
           </button>
-
-
         </div>
 
         <!-- Settings Modal -->
@@ -1113,6 +1122,31 @@
               role="status"
             ></div>
 
+            <!-- Admin Actions (visible only to admins) -->
+            <div
+              id="profileAdminActions"
+              class="hidden flex gap-2 mb-3"
+            >
+              <button
+                id="profileBanBtn"
+                class="flex-1 px-3 py-2 rounded-lg bg-red-600 hover:bg-red-700 transition-colors font-medium text-xs text-white"
+              >
+                Ban
+              </button>
+              <button
+                id="profileMuteBtn"
+                class="flex-1 px-3 py-2 rounded-lg bg-yellow-600 hover:bg-yellow-700 transition-colors font-medium text-xs text-white"
+              >
+                Mute
+              </button>
+              <button
+                id="profileWarnBtn"
+                class="flex-1 px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 transition-colors font-medium text-xs text-white"
+              >
+                Warn
+              </button>
+            </div>
+
             <!-- Close Button (Bottom) -->
             <button
               id="viewProfileCloseBtn2"
@@ -1171,6 +1205,12 @@
           class="p-2 sm:p-3 bg-slate-900 border-t border-slate-800 w-full"
         >
           <div
+            id="muteInlineBanner"
+            class="hidden mb-2 rounded-lg border border-blue-600 bg-slate-800 text-slate-100 px-3 py-2 text-sm flex items-center justify-between gap-2"
+          >
+            <span id="muteInlineText"></span>
+          </div>
+          <div
             class="input-shell flex items-center gap-1.5 sm:gap-2 bg-slate-800 rounded-lg px-2 sm:px-3 py-1.5 sm:py-2"
           >
             <input type="file" id="imageInput" accept="image/*,video/*" class="hidden" />
@@ -1205,13 +1245,160 @@
       </div>
     </div>
 
+    <!-- Warn Reason Modal -->
+    <div
+      id="warnReasonModal"
+      class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center hidden"
+    >
+      <div class="bg-slate-900 border border-slate-700 p-6 rounded-xl w-96 shadow-2xl">
+        <h2 class="text-xl font-bold text-yellow-400 mb-4">Issue a Warning</h2>
+        <p class="text-slate-300 mb-4">Select a reason or type a custom one:</p>
+        
+        <div class="space-y-2 mb-4">
+          <button id="warnReasonSpam" class="w-full text-left bg-slate-800 hover:bg-slate-700 px-3 py-2 rounded text-slate-200">📨 Spam</button>
+          <button id="warnReasonAbuse" class="w-full text-left bg-slate-800 hover:bg-slate-700 px-3 py-2 rounded text-slate-200">😠 Abusive Language</button>
+          <button id="warnReasonDisruption" class="w-full text-left bg-slate-800 hover:bg-slate-700 px-3 py-2 rounded text-slate-200">💢 Disruption</button>
+          <button id="warnReasonHarassment" class="w-full text-left bg-slate-800 hover:bg-slate-700 px-3 py-2 rounded text-slate-200">🚨 Harassment</button>
+        </div>
+
+        <div class="mb-4">
+          <input
+            id="warnReasonCustom"
+            type="text"
+            placeholder="Or type a custom reason..."
+            class="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2 text-slate-100 placeholder-slate-500"
+          />
+        </div>
+
+        <div class="flex gap-2">
+          <button
+            id="warnReasonConfirm"
+            class="flex-1 bg-yellow-600 hover:bg-yellow-700 px-4 py-2 rounded-md text-white font-semibold"
+          >
+            Issue Warning
+          </button>
+          <button
+            id="warnReasonCancel"
+            class="flex-1 bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded-md text-slate-200"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mute Reason Modal -->
+    <div
+      id="muteReasonModal"
+      class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center hidden"
+    >
+      <div class="bg-slate-900 border border-slate-700 p-6 rounded-xl w-96 shadow-2xl">
+        <h2 class="text-xl font-bold text-blue-400 mb-4">Mute User</h2>
+        <p class="text-slate-300 mb-4">Select a reason and duration:</p>
+        
+        <div class="space-y-2 mb-4">
+          <button id="muteReasonSpam" class="w-full text-left bg-slate-800 hover:bg-slate-700 px-3 py-2 rounded text-slate-200">📨 Spam</button>
+          <button id="muteReasonAbuse" class="w-full text-left bg-slate-800 hover:bg-slate-700 px-3 py-2 rounded text-slate-200">😠 Abusive Language</button>
+          <button id="muteReasonDisruption" class="w-full text-left bg-slate-800 hover:bg-slate-700 px-3 py-2 rounded text-slate-200">💢 Disruption</button>
+          <button id="muteReasonHarassment" class="w-full text-left bg-slate-800 hover:bg-slate-700 px-3 py-2 rounded text-slate-200">🚨 Harassment</button>
+        </div>
+
+        <div class="mb-4">
+          <input
+            id="muteReasonCustom"
+            type="text"
+            placeholder="Or type a custom reason..."
+            class="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2 text-slate-100 placeholder-slate-500 mb-3"
+          />
+          <label class="block text-sm text-slate-300 mb-2">Duration (minutes):</label>
+          <input
+            id="muteDuration"
+            type="number"
+            placeholder="10"
+            min="1"
+            max="10080"
+            value="10"
+            class="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2 text-slate-100"
+          />
+        </div>
+
+        <div class="flex gap-2">
+          <button
+            id="muteReasonConfirm"
+            class="flex-1 bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md text-white font-semibold"
+          >
+            Mute User
+          </button>
+          <button
+            id="muteReasonCancel"
+            class="flex-1 bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded-md text-slate-200"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Ban Reason Modal -->
+    <div
+      id="banReasonModal"
+      class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center hidden"
+    >
+      <div class="bg-slate-900 border border-slate-700 p-6 rounded-xl w-96 shadow-2xl">
+        <h2 class="text-xl font-bold text-red-500 mb-4">Ban User</h2>
+        <p class="text-slate-300 mb-4">Select a reason and duration:</p>
+        
+        <div class="space-y-2 mb-4">
+          <button id="banReasonSpam" class="w-full text-left bg-slate-800 hover:bg-slate-700 px-3 py-2 rounded text-slate-200">📨 Spam</button>
+          <button id="banReasonAbuse" class="w-full text-left bg-slate-800 hover:bg-slate-700 px-3 py-2 rounded text-slate-200">😠 Abusive Language</button>
+          <button id="banReasonDisruption" class="w-full text-left bg-slate-800 hover:bg-slate-700 px-3 py-2 rounded text-slate-200">💢 Disruption</button>
+          <button id="banReasonHarassment" class="w-full text-left bg-slate-800 hover:bg-slate-700 px-3 py-2 rounded text-slate-200">🚨 Harassment</button>
+        </div>
+
+        <div class="mb-4">
+          <input
+            id="banReasonCustom"
+            type="text"
+            placeholder="Or type a custom reason..."
+            class="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2 text-slate-100 placeholder-slate-500 mb-3"
+          />
+          <label class="block text-sm text-slate-300 mb-2">Duration:</label>
+          <select
+            id="banDuration"
+            class="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2 text-slate-100"
+          >
+            <option value="60">1 hour</option>
+            <option value="1440">1 day</option>
+            <option value="10080">1 week</option>
+            <option value="43200">1 month</option>
+            <option value="permanent">🔒 Permanent (delete account)</option>
+          </select>
+        </div>
+
+        <div class="flex gap-2">
+          <button
+            id="banReasonConfirm"
+            class="flex-1 bg-red-600 hover:bg-red-700 px-4 py-2 rounded-md text-white font-semibold"
+          >
+            Ban User
+          </button>
+          <button
+            id="banReasonCancel"
+            class="flex-1 bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded-md text-slate-200"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Warning Popup -->
     <div
       id="warningPopup"
       class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center hidden"
     >
       <div class="bg-slate-900 border border-slate-700 p-6 rounded-xl w-80 text-center shadow-2xl">
-        <h2 class="text-xl font-bold text-red-400 mb-3">⚠️ You Have Been Warned</h2>
+        <h2 class="text-xl font-bold text-red-400 mb-3">You Have Been Warned</h2>
         <p id="warningReason" class="mb-4 text-slate-200"></p>
 
         <label class="flex items-center space-x-2 justify-center mb-4 select-none">
@@ -1226,6 +1413,30 @@
         >
           Close
         </button>
+      </div>
+    </div>
+
+    <!-- Mute Popup -->
+    <div
+      id="mutePopup"
+      class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center hidden"
+    >
+      <div class="bg-slate-900 border border-blue-500 p-6 rounded-xl w-80 text-center shadow-2xl">
+        <p class="text-blue-400 font-bold mb-3 text-lg">You are muted</p>
+        <p id="muteReason" class="text-slate-200 mb-4"></p>
+        <p id="muteTimer" class="text-slate-300 text-sm font-semibold"></p>
+      </div>
+    </div>
+
+    <!-- Ban Popup -->
+    <div
+      id="banPopup"
+      class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center hidden"
+    >
+      <div class="bg-slate-900 border border-red-600 p-6 rounded-xl w-80 text-center shadow-2xl">
+        <p class="text-red-500 font-bold mb-3 text-lg">You have been banned</p>
+        <p id="banReason" class="text-slate-200 mb-4"></p>
+        <p class="text-slate-400 text-sm">You will be logged out in 3 seconds...</p>
       </div>
     </div>
 
@@ -1742,6 +1953,8 @@
       const warningReason = document.getElementById("warningReason");
       const warningAgree = document.getElementById("warningAgree");
       const closeWarningBtn = document.getElementById("closeWarningBtn");
+      const muteInlineBanner = document.getElementById("muteInlineBanner");
+      const muteInlineText = document.getElementById("muteInlineText");
 
       const registerLink = document.getElementById("registerLink");
       const loginLink = document.getElementById("loginLink");
@@ -1774,6 +1987,8 @@
       let warningListener = null;
       let banRef = null;
       let banListener = null;
+      let banCountdownInterval = null;
+      let banLogoutTimeout = null;
 
       // User settings stored in Firebase (no localStorage)
       let userSettingsRef = null;
@@ -1888,6 +2103,14 @@
         if (muteRef && muteListener) muteRef.off("value", muteListener);
         if (warningRef && warningListener) warningRef.off("value", warningListener);
         if (banRef && banListener) banRef.off("value", banListener);
+        if (banCountdownInterval) {
+          clearInterval(banCountdownInterval);
+          banCountdownInterval = null;
+        }
+        if (banLogoutTimeout) {
+          clearTimeout(banLogoutTimeout);
+          banLogoutTimeout = null;
+        }
         adminRef = muteRef = warningRef = banRef = null;
         adminListener = muteListener = warningListener = banListener = null;
         isAdmin = false;
@@ -1908,66 +2131,406 @@
       function checkAdmin() {
         const uid = firebase.auth().currentUser?.uid;
         if (!uid) return;
-        console.log("[admin] checking admin status for uid:", uid);
+        console.log("[checkAdmin] Current user UID:", uid);
         adminRef = firebase.database().ref("admins/" + uid);
         adminListener = (snap) => {
           isAdmin = snap.exists();
-          console.log("[admin] admin check result:", { uid, isAdmin, exists: snap.exists() });
+          console.log("[checkAdmin] Admin check for uid", uid, "- exists:", isAdmin, "- snap.val():", snap.val());
         };
         adminRef.on("value", adminListener);
       }
 
-      function banUser(uid) {
+      function banUser(uid, durationMinutes = null, reason = "Rule break") {
         if (!isAdmin || !uid) return;
-        firebase.database().ref("bannedUsers/" + uid).set(true).catch((err) => {
-          console.error("[ban] failed to ban user", err);
-        });
+        
+        if (durationMinutes === "permanent") {
+          // Delete account permanently
+          deleteUserAccount(uid, reason);
+        } else {
+          // Temporary ban
+          const until = durationMinutes ? Date.now() + durationMinutes * 60 * 1000 : Date.now() + 3600000; // 1 hour default
+          firebase.database().ref("bannedUsers/" + uid).set({
+            until: until,
+            reason: reason,
+          }).catch((err) => {
+            console.error("[ban] failed to ban user", err);
+          });
+        }
+      }
+
+      async function deleteUserAccount(uid, reason = "Permanent ban") {
+        if (!isAdmin || !uid) return;
+        
+        try {
+          console.log("[ban] deleting account for uid:", uid);
+          
+          // Get user data
+          const userSnap = await db.ref("users").child(uid).once("value");
+          const userData = userSnap.val();
+          
+          // Delete all messages by this user
+          const msgsSnap = await db.ref("messages").orderByChild("userId").equalTo(uid).once("value");
+          msgsSnap.forEach((childSnap) => {
+            db.ref("messages/" + childSnap.key).remove();
+          });
+          
+          // Delete user account
+          await db.ref("users/" + uid).remove();
+          
+          // Block username from being used again (use encoded key)
+          if (userData && userData.username) {
+            const encodedUsername = encodeFirebaseKey(userData.username);
+            await db.ref("bannedUsernames/" + encodedUsername).set({
+              uid: uid,
+              reason: reason,
+              timestamp: Date.now()
+            });
+          }
+          
+          // Mark as permanently banned so they can't re-register with same email (use encoded key)
+          if (userData && userData.email) {
+            const encodedEmail = encodeFirebaseKey(userData.email);
+            await db.ref("bannedEmails/" + encodedEmail).set({
+              uid: uid,
+              reason: reason,
+              timestamp: Date.now()
+            });
+          }
+          
+          // Add UID to bannedUsers so they're blocked at database level
+          console.log("[ban] adding uid to bannedUsers:", uid);
+          await db.ref("bannedUsers/" + uid).set({
+            until: 9999999999999,
+            reason: reason
+          });
+          console.log("[ban] uid added to bannedUsers successfully");
+          
+          console.log("[ban] account deleted successfully");
+        } catch (err) {
+          console.error("[ban] failed to delete account:", err);
+        }
+      }
+
+      let pendingBanUid = null;
+
+      function showBanReasonModal(uid) {
+        pendingBanUid = uid;
+        const banReasonModal = document.getElementById("banReasonModal");
+        const banReasonCustom = document.getElementById("banReasonCustom");
+        const banDuration = document.getElementById("banDuration");
+        banReasonCustom.value = "";
+        banDuration.value = "60";
+        banReasonModal.classList.remove("hidden");
+      }
+
+      function setupBanModal() {
+        const banReasonModal = document.getElementById("banReasonModal");
+        const banReasonConfirm = document.getElementById("banReasonConfirm");
+        const banReasonCancel = document.getElementById("banReasonCancel");
+        const banReasonCustom = document.getElementById("banReasonCustom");
+        const banDuration = document.getElementById("banDuration");
+        const banReasonSpam = document.getElementById("banReasonSpam");
+        const banReasonAbuse = document.getElementById("banReasonAbuse");
+        const banReasonDisruption = document.getElementById("banReasonDisruption");
+        const banReasonHarassment = document.getElementById("banReasonHarassment");
+
+        const setReason = (reason) => {
+          banReasonCustom.value = reason;
+        };
+
+        banReasonSpam.onclick = () => setReason("Spam");
+        banReasonAbuse.onclick = () => setReason("Abusive Language");
+        banReasonDisruption.onclick = () => setReason("Disruption");
+        banReasonHarassment.onclick = () => setReason("Harassment");
+
+        banReasonConfirm.onclick = () => {
+          const reason = banReasonCustom.value.trim() || "Rule break";
+          const duration = banDuration.value;
+          if (pendingBanUid) {
+            banUser(pendingBanUid, duration === "permanent" ? "permanent" : parseInt(duration), reason);
+            banReasonModal.classList.add("hidden");
+            viewProfileCloseBtn.click();
+          }
+        };
+
+        banReasonCancel.onclick = () => {
+          banReasonModal.classList.add("hidden");
+          pendingBanUid = null;
+        };
+      }
+
+      function clearExpiredBan(uid, data) {
+        // Remove an expired temp ban so the user is fully unbanned
+        if (!uid || !data?.until) return;
+        const now = Date.now();
+        if (data.until <= now) {
+          console.log("[ban] temp ban expired, clearing entry for", uid);
+          db.ref("bannedUsers/" + uid).remove().catch((err) => {
+            console.error("[ban] failed to clear expired ban", err);
+          });
+        }
+      }
+
+      async function unbanUser(uid) {
+        if (!isAdmin || !uid) return;
+        console.log("[ban] unbanning user", uid);
+        try {
+          const updates = { ["bannedUsers/" + uid]: null };
+
+          // Clean up any blocked email/username entries tied to this uid
+          const bannedEmailSnap = await db
+            .ref("bannedEmails")
+            .orderByChild("uid")
+            .equalTo(uid)
+            .once("value");
+          bannedEmailSnap.forEach((childSnap) => {
+            updates["bannedEmails/" + childSnap.key] = null;
+          });
+
+          const bannedUsernameSnap = await db
+            .ref("bannedUsernames")
+            .orderByChild("uid")
+            .equalTo(uid)
+            .once("value");
+          bannedUsernameSnap.forEach((childSnap) => {
+            updates["bannedUsernames/" + childSnap.key] = null;
+          });
+
+          await db.ref().update(updates);
+          console.log("[ban] user unbanned");
+        } catch (err) {
+          console.error("[ban] failed to unban user", err);
+        }
       }
 
       function watchBanStatus(uid) {
         if (!uid) return;
+        console.log("[ban] setting up watchBanStatus for uid:", uid);
         banRef = firebase.database().ref("bannedUsers/" + uid);
         banListener = (snap) => {
-          if (snap.exists()) {
-            alert("You have been banned.");
-            auth.signOut().catch(() => {});
+          const data = snap.val();
+          console.log("[ban] watchBanStatus fired - data:", data);
+
+          // If no data or expired temp ban, clear popup and cleanup
+          if (!data) {
+            if (banCountdownInterval) {
+              clearInterval(banCountdownInterval);
+              banCountdownInterval = null;
+            }
+            if (banLogoutTimeout) {
+              clearTimeout(banLogoutTimeout);
+              banLogoutTimeout = null;
+            }
+            const banPopup = document.getElementById("banPopup");
+            if (banPopup) banPopup.classList.add("hidden");
+            return;
+          }
+
+          // Clear expired temp bans automatically
+          clearExpiredBan(uid, data);
+
+          const now = Date.now();
+          if (data.until && data.until <= now) {
+            // After cleanup request, just hide any visible UI
+            if (banCountdownInterval) {
+              clearInterval(banCountdownInterval);
+              banCountdownInterval = null;
+            }
+            if (banLogoutTimeout) {
+              clearTimeout(banLogoutTimeout);
+              banLogoutTimeout = null;
+            }
+            const banPopup = document.getElementById("banPopup");
+            if (banPopup) banPopup.classList.add("hidden");
+            return;
+          }
+
+          if (banCountdownInterval) {
+            clearInterval(banCountdownInterval);
+            banCountdownInterval = null;
+          }
+          if (banLogoutTimeout) {
+            clearTimeout(banLogoutTimeout);
+            banLogoutTimeout = null;
+          }
+
+          const banPopup = document.getElementById("banPopup");
+          const banReason = document.getElementById("banReason");
+          
+          let isPermanent = false;
+          let secondsLeft = 3;
+          
+          if (!data.until || data.until === 9999999999999) {
+            // Permanent ban takes precedence over time-based logic
+            isPermanent = true;
+            banReason.textContent = "Reason: " + (data.reason || "Rule break") + " (PERMANENT)";
+            console.log("[ban] permanent ban detected");
+          } else if (data.until && data.until > now) {
+            // Temporary ban still active
+            secondsLeft = Math.ceil((data.until - now) / 1000);
+            banReason.textContent = "Reason: " + (data.reason || "Rule break") + " (Temp ban expires in " + secondsLeft + "s)";
+            console.log("[ban] temporary ban for", secondsLeft, "seconds");
+          }
+          
+          banPopup.classList.remove("hidden");
+          
+          // Only auto-logout for permanent bans
+          if (isPermanent) {
+            console.log("[ban] showing ban popup, signing out in 3 seconds (permanent ban)");
+            
+            // Show countdown
+            let countdown = 3;
+            banCountdownInterval = setInterval(() => {
+              countdown--;
+              banReason.textContent = "Reason: " + (data.reason || "Rule break") + " (PERMANENT - Logging out in " + countdown + "s)";
+              if (countdown <= 0) {
+                clearInterval(banCountdownInterval);
+                banCountdownInterval = null;
+              }
+            }, 1000);
+            
+            banLogoutTimeout = setTimeout(() => {
+              console.log("[ban] auto-signing out permanently banned user");
+              auth.signOut().catch(() => {});
+              banLogoutTimeout = null;
+            }, 3000);
+          } else {
+            // For temporary bans, just show the popup, don't logout
+            console.log("[ban] temporary ban - user can try again after ban expires");
+            
+            // Update countdown
+            let countdown = Math.ceil((data.until - Date.now()) / 1000);
+            banCountdownInterval = setInterval(() => {
+              countdown--;
+              if (countdown > 0) {
+                banReason.textContent = "Reason: " + (data.reason || "Rule break") + " (Ban expires in " + countdown + "s)";
+              } else {
+                clearInterval(banCountdownInterval);
+                banCountdownInterval = null;
+                banReason.textContent = "Reason: " + (data.reason || "Rule break");
+                clearExpiredBan(uid, { until: data.until });
+              }
+            }, 1000);
           }
         };
         banRef.on("value", banListener);
       }
 
-      function muteUser(uid, minutes = 10) {
+      function muteUser(uid, minutes = 10, reason = "Rule break") {
         if (!isAdmin || !uid) return;
         const until = Date.now() + minutes * 60 * 1000;
-        firebase.database().ref("mutedUsers/" + uid + "/until").set(until);
+        firebase.database().ref("mutedUsers/" + uid).set({
+          until: until,
+          reason: reason,
+        });
+      }
+
+      let pendingMuteUid = null;
+      let muteTimerInterval = null;
+
+      function showMuteReasonModal(uid) {
+        pendingMuteUid = uid;
+        const muteReasonModal = document.getElementById("muteReasonModal");
+        const muteReasonCustom = document.getElementById("muteReasonCustom");
+        const muteDuration = document.getElementById("muteDuration");
+        muteReasonCustom.value = "";
+        muteDuration.value = "10";
+        muteReasonModal.classList.remove("hidden");
+      }
+
+      function setupMuteModal() {
+        const muteReasonModal = document.getElementById("muteReasonModal");
+        const muteReasonConfirm = document.getElementById("muteReasonConfirm");
+        const muteReasonCancel = document.getElementById("muteReasonCancel");
+        const muteReasonCustom = document.getElementById("muteReasonCustom");
+        const muteDuration = document.getElementById("muteDuration");
+        const muteReasonSpam = document.getElementById("muteReasonSpam");
+        const muteReasonAbuse = document.getElementById("muteReasonAbuse");
+        const muteReasonDisruption = document.getElementById("muteReasonDisruption");
+        const muteReasonHarassment = document.getElementById("muteReasonHarassment");
+
+        const setReason = (reason) => {
+          muteReasonCustom.value = reason;
+        };
+
+        muteReasonSpam.onclick = () => setReason("Spam");
+        muteReasonAbuse.onclick = () => setReason("Abusive Language");
+        muteReasonDisruption.onclick = () => setReason("Disruption");
+        muteReasonHarassment.onclick = () => setReason("Harassment");
+
+        muteReasonConfirm.onclick = () => {
+          const reason = muteReasonCustom.value.trim() || "Rule break";
+          const minutes = parseInt(muteDuration.value) || 10;
+          if (pendingMuteUid) {
+            muteUser(pendingMuteUid, minutes, reason);
+            muteReasonModal.classList.add("hidden");
+            viewProfileCloseBtn.click();
+          }
+        };
+
+        muteReasonCancel.onclick = () => {
+          muteReasonModal.classList.add("hidden");
+          pendingMuteUid = null;
+        };
       }
 
       function watchMuteStatus(uid) {
         if (!uid) return;
-        muteRef = firebase.database().ref("mutedUsers/" + uid + "/until");
+        muteRef = firebase.database().ref("mutedUsers/" + uid);
         muteListener = (snap) => {
-          const until = snap.val();
+          const data = snap.val();
           const now = Date.now();
-          const active = until && until > now;
+          const active = data && data.until && data.until > now;
           isMuted = !!active;
 
           if (active) {
-            const timeLeft = Math.ceil((until - now) / 1000);
+            const timeLeft = Math.ceil((data.until - now) / 1000);
             msgInput.disabled = true;
             sendBtn.disabled = true;
             msgInput.placeholder = "You are muted for " + timeLeft + "s";
-            const msLeft = until - now;
-            setTimeout(() => {
-              if (isMuted && Date.now() >= until) {
+            if (muteInlineBanner && muteInlineText) {
+              muteInlineBanner.classList.remove("hidden");
+              muteInlineText.textContent = "Muted: " + (data.reason || "Rule break") + " — " + timeLeft + "s left";
+            }
+            
+            // Show mute popup
+            const mutePopup = document.getElementById("mutePopup");
+            const muteReason = document.getElementById("muteReason");
+            const muteTimer = document.getElementById("muteTimer");
+            muteReason.textContent = "Reason: " + (data.reason || "Rule break");
+            mutePopup.classList.remove("hidden");
+            muteTimer.textContent = timeLeft + "s remaining";
+            
+            // Update timer every second
+            if (muteTimerInterval) clearInterval(muteTimerInterval);
+            muteTimerInterval = setInterval(() => {
+              const now2 = Date.now();
+              const timeLeft2 = Math.ceil((data.until - now2) / 1000);
+              if (timeLeft2 <= 0) {
+                clearInterval(muteTimerInterval);
+                mutePopup.classList.add("hidden");
                 msgInput.disabled = false;
                 sendBtn.disabled = false;
                 msgInput.placeholder = "Type a message...";
+                if (muteInlineBanner) muteInlineBanner.classList.add("hidden");
+                if (muteInlineText) muteInlineText.textContent = "";
+              } else {
+                muteTimer.textContent = timeLeft2 + "s remaining";
+                msgInput.placeholder = "You are muted for " + timeLeft2 + "s";
+                if (muteInlineText) {
+                  muteInlineText.textContent = "Muted: " + (data.reason || "Rule break") + " — " + timeLeft2 + "s left";
+                }
               }
-            }, Math.min(msLeft, 60000));
+            }, 1000);
           } else {
+            if (muteTimerInterval) clearInterval(muteTimerInterval);
             msgInput.disabled = false;
             sendBtn.disabled = false;
             msgInput.placeholder = "Type a message...";
+            const mutePopup = document.getElementById("mutePopup");
+            mutePopup.classList.add("hidden");
+            if (muteInlineBanner) muteInlineBanner.classList.add("hidden");
+            if (muteInlineText) muteInlineText.textContent = "";
           }
         };
         muteRef.on("value", muteListener);
@@ -1981,21 +2544,66 @@
         });
       }
 
+      let pendingWarnUid = null;
+
+      function showWarnReasonModal(uid) {
+        pendingWarnUid = uid;
+        const warnReasonModal = document.getElementById("warnReasonModal");
+        const warnReasonCustom = document.getElementById("warnReasonCustom");
+        warnReasonCustom.value = "";
+        warnReasonModal.classList.remove("hidden");
+      }
+
+      function setupWarnModal() {
+        const warnReasonModal = document.getElementById("warnReasonModal");
+        const warnReasonConfirm = document.getElementById("warnReasonConfirm");
+        const warnReasonCancel = document.getElementById("warnReasonCancel");
+        const warnReasonCustom = document.getElementById("warnReasonCustom");
+        const warnReasonSpam = document.getElementById("warnReasonSpam");
+        const warnReasonAbuse = document.getElementById("warnReasonAbuse");
+        const warnReasonDisruption = document.getElementById("warnReasonDisruption");
+        const warnReasonHarassment = document.getElementById("warnReasonHarassment");
+
+        const setReason = (reason) => {
+          warnReasonCustom.value = reason;
+        };
+
+        warnReasonSpam.onclick = () => setReason("Spam");
+        warnReasonAbuse.onclick = () => setReason("Abusive Language");
+        warnReasonDisruption.onclick = () => setReason("Disruption");
+        warnReasonHarassment.onclick = () => setReason("Harassment");
+
+        warnReasonConfirm.onclick = () => {
+          const reason = warnReasonCustom.value.trim() || "Rule break";
+          if (pendingWarnUid) {
+            warnUser(pendingWarnUid, reason);
+            warnReasonModal.classList.add("hidden");
+            viewProfileCloseBtn.click();
+          }
+        };
+
+        warnReasonCancel.onclick = () => {
+          warnReasonModal.classList.add("hidden");
+          pendingWarnUid = null;
+        };
+      }
+
+      let warningShownAlready = false;
+
       function watchWarnings(uid) {
         if (!uid) return;
         warningRef = firebase.database().ref("warnings/" + uid);
         warningListener = (snap) => {
           const data = snap.val();
-          if (data && data.active) {
+          if (data && data.active && !warningShownAlready) {
+            warningShownAlready = true;
             warningReason.textContent = "Reason: " + (data.reason || "Rule break");
             warningPopup.classList.remove("hidden");
             closeWarningBtn.disabled = true;
             closeWarningBtn.classList.add("opacity-50", "cursor-not-allowed");
-          } else {
-            warningPopup.classList.add("hidden");
             warningAgree.checked = false;
-            closeWarningBtn.disabled = true;
-            closeWarningBtn.classList.add("opacity-50", "cursor-not-allowed");
+          } else if (!data || !data.active) {
+            warningPopup.classList.add("hidden");
           }
         };
         warningRef.on("value", warningListener);
@@ -2015,7 +2623,8 @@
         closeWarningBtn.addEventListener("click", () => {
           const uid = firebase.auth().currentUser?.uid;
           if (!uid) return;
-          firebase.database().ref("warnings/" + uid + "/active").set(false).catch(() => {});
+          warningShownAlready = false;
+          firebase.database().ref("warnings/" + uid).remove().catch(() => {});
           warningPopup.classList.add("hidden");
         });
       }
@@ -2114,7 +2723,21 @@
 
       // Rate-limit warning timeout + local last-sent time
       let sendWarningTimeoutId = null;
-      let lastSentTime = 0; // for local 500ms rate limit
+      let lastSentTime = 0; // for local rate limit
+      const SEND_COOLDOWN_MS = 2000; // 2s cooldown between sends
+
+      // Basic bad-word filter (client-side)
+      const BAD_WORDS = [
+        "fuck",
+        "shit",
+        "bitch",
+        "asshole",
+        "cunt",
+        "bastard",
+        "slut",
+        "whore"
+      ];
+      const badWordPattern = new RegExp("\\b(" + BAD_WORDS.map((w) => w.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&")).join("|") + ")\\b", "i");
       
       // Message rendering optimization
       let messageRenderQueue = [];
@@ -2255,7 +2878,7 @@
 
       // On-screen warning (2 seconds) — now combined with typing in one line
       function showRateLimitWarning() {
-        currentWarningText = "Slow down — you're sending messages too fast.";
+        currentWarningText = "Slow down — 2s between messages.";
         if (sendWarningTimeoutId) {
           clearTimeout(sendWarningTimeoutId);
         }
@@ -2386,6 +3009,16 @@
         };
       } else {
         console.warn("[ui] privacy modal elements missing");
+      }
+
+      // Helper: encode key for Firebase (replace invalid chars: . # $ [ ])
+      function encodeFirebaseKey(key) {
+        return key
+          .replace(/\./g, "_DOT_")
+          .replace(/#/g, "_HASH_")
+          .replace(/\$/g, "_DOLLAR_")
+          .replace(/\[/g, "_LBRACKET_")
+          .replace(/\]/g, "_RBRACKET_");
       }
 
       // Helper: make fake email from username
@@ -2696,14 +3329,21 @@
       async function isUsernameTaken(username) {
         console.log("[users] checking if username taken:", username);
         try {
+          // Check if username is in use
           const snapshot = await db
             .ref("users")
             .orderByChild("username")
             .equalTo(username)
             .once("value");
           const exists = snapshot.exists();
-          console.log("[users] username taken =", exists);
-          return exists;
+          
+          // Check if username is banned (use encoded key)
+          const encodedUsername = encodeFirebaseKey(username);
+          const bannedSnap = await db.ref("bannedUsernames/" + encodedUsername).once("value");
+          const isBanned = bannedSnap.exists();
+          
+          console.log("[users] username taken =", exists, "banned =", isBanned);
+          return exists || isBanned || badWordPattern.test(username);
         } catch (err) {
           console.error("[users] error while checking username", err);
           registerError.textContent = "Error checking username. Try again.";
@@ -2728,6 +3368,21 @@
 
         if (username.includes("@") || username.includes(" ")) {
           registerError.textContent = "Username can't have spaces or '@'.";
+          return;
+        }
+
+        if (username.length < 3 || username.length > 12) {
+          registerError.textContent = "Username must be 3-12 characters.";
+          return;
+        }
+
+        if (!/^[a-zA-Z0-9_-]+$/.test(username) || /^[_-]|[_-]$/.test(username)) {
+          registerError.textContent = "Use letters/numbers/underscore/dash (no leading/trailing _ or -).";
+          return;
+        }
+
+        if (badWordPattern.test(username)) {
+          registerError.textContent = "Username not allowed.";
           return;
         }
 
@@ -2802,7 +3457,6 @@
         const username = loginUsernameInput.value.trim();
         const password = loginPasswordInput.value.trim();
         const remember = rememberMeCheckbox.checked;
-
         console.log("[login] submit", { username, remember });
 
         if (!username || !password) {
@@ -2818,6 +3472,19 @@
         const fakeEmail = makeEmailFromUsername(username);
 
         try {
+          // Check if email/username is banned (use encoded keys)
+          const encodedEmail = encodeFirebaseKey(fakeEmail);
+          const encodedUsername = encodeFirebaseKey(username);
+          
+          const bannedEmailSnap = await db.ref("bannedEmails/" + encodedEmail).once("value");
+          const bannedUsernameSnap = await db.ref("bannedUsernames/" + encodedUsername).once("value");
+          
+          if (bannedEmailSnap.exists() || bannedUsernameSnap.exists()) {
+            const bannedReason = bannedEmailSnap.val()?.reason || bannedUsernameSnap.val()?.reason || "Account has been permanently banned";
+            loginError.textContent = "This account is banned: " + bannedReason;
+            return;
+          }
+
           const persistence = remember
             ? firebase.auth.Auth.Persistence.LOCAL
             : firebase.auth.Auth.Persistence.SESSION;
@@ -3047,12 +3714,6 @@
         // Add media if present (image or video)
         if (msg.media) {
           const mediaUrl = msg.media;
-          console.log("[render] rendering media:", {
-            mediaUrl,
-            messageId,
-            isMine,
-            isGif: mediaUrl.toLowerCase().includes('.gif'),
-          });
           const isVideo = mediaUrl.includes('.mp4') || mediaUrl.includes('video') || mediaUrl.includes('.mov') || mediaUrl.includes('.webm');
           const isGif = mediaUrl.toLowerCase().includes('.gif');
           
@@ -3084,10 +3745,10 @@
             
             // Scroll after video metadata loads
             video.addEventListener("loadedmetadata", () => {
-              if (!isMine) return; // Only scroll for own messages
-              setTimeout(() => {
+              // Only scroll if we're at the bottom already
+              if (messagesDiv.scrollTop >= messagesDiv.scrollHeight - messagesDiv.clientHeight - 100) {
                 messagesDiv.scrollTop = messagesDiv.scrollHeight;
-              }, 50);
+              }
             });
             
             videoContainer.appendChild(video);
@@ -3108,7 +3769,6 @@
             const observer = new IntersectionObserver((entries) => {
               entries.forEach(entry => {
                 if (entry.isIntersecting && img.dataset.src) {
-                  console.log("[render] lazy loading GIF:", img.dataset.src);
                   img.src = img.dataset.src;
                   delete img.dataset.src;
                   observer.unobserve(img);
@@ -3119,11 +3779,9 @@
             
             // GIF controls: loop continuously
             img.onload = () => {
-              // Scroll after image loads (only for own messages)
-              if (isMine) {
-                setTimeout(() => {
-                  messagesDiv.scrollTop = messagesDiv.scrollHeight;
-                }, 50);
+              // Scroll only if at bottom
+              if (messagesDiv.scrollTop >= messagesDiv.scrollHeight - messagesDiv.clientHeight - 100) {
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
               }
               
               // Force loop by reloading src when ended (for animated GIFs)
@@ -3153,7 +3811,6 @@
             const observer = new IntersectionObserver((entries) => {
               entries.forEach(entry => {
                 if (entry.isIntersecting && img.dataset.src) {
-                  console.log("[render] lazy loading image:", img.dataset.src);
                   img.src = img.dataset.src;
                   delete img.dataset.src;
                   observer.unobserve(img);
@@ -3162,12 +3819,10 @@
             }, { rootMargin: "100px" });
             observer.observe(img);
             
-            // Scroll after image loads (only for own messages)
+            // Scroll after image loads (only if at bottom)
             img.onload = () => {
-              if (isMine) {
-                setTimeout(() => {
-                  messagesDiv.scrollTop = messagesDiv.scrollHeight;
-                }, 50);
+              if (messagesDiv.scrollTop >= messagesDiv.scrollHeight - messagesDiv.clientHeight - 100) {
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
               }
             };
             
@@ -3204,40 +3859,6 @@
         
         column.appendChild(bubbleContainer);
 
-        // Admin actions
-        if (isAdmin) {
-          const targetUid = msg.userId || msg.uid || null;
-          console.log("[admin] rendering admin buttons:", {
-            isAdmin,
-            targetUid,
-            currentUserId,
-            shouldShow: targetUid && targetUid !== currentUserId,
-          });
-          if (targetUid && targetUid !== currentUserId) {
-            const adminActions = document.createElement("div");
-            adminActions.className = "flex gap-2 mt-1 text-[11px]";
-
-            const banBtn = document.createElement("button");
-            banBtn.textContent = "Ban";
-            banBtn.className = "text-red-400 hover:text-red-300";
-            banBtn.onclick = () => banUser(targetUid);
-
-            const muteBtn = document.createElement("button");
-            muteBtn.textContent = "Mute 10m";
-            muteBtn.className = "text-yellow-400 hover:text-yellow-300";
-            muteBtn.onclick = () => muteUser(targetUid, 10);
-
-            const warnBtn = document.createElement("button");
-            warnBtn.textContent = "Warn";
-            warnBtn.className = "text-blue-400 hover:text-blue-300";
-            warnBtn.onclick = () => warnUser(targetUid, "Rule break");
-
-            adminActions.appendChild(banBtn);
-            adminActions.appendChild(muteBtn);
-            adminActions.appendChild(warnBtn);
-            column.appendChild(adminActions);
-          }
-        }
         row.appendChild(column);
         return row;
       }
@@ -3258,7 +3879,14 @@
         }
 
         if (!maintainScroll) {
-          messagesDiv.scrollTop = messagesDiv.scrollHeight;
+          // Check if already at bottom before scrolling
+          const isAtBottom = messagesDiv.scrollHeight - messagesDiv.scrollTop - messagesDiv.clientHeight < 50;
+          if (isAtBottom) {
+            // Delay scroll to let images load
+            setTimeout(() => {
+              messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            }, 200);
+          }
         }
       }
 
@@ -3470,8 +4098,16 @@
               // Batch render all messages at once
               batchRenderMessages(msgs, { maintainScroll: true });
 
-              // After initial render, jump to bottom
-              messagesDiv.scrollTop = messagesDiv.scrollHeight;
+              // After initial render, jump to bottom (wait for images to load)
+              const scrollToBottom = () => {
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                console.log("[scroll] scrolled to bottom, scrollHeight:", messagesDiv.scrollHeight);
+              };
+
+              // Try multiple times to ensure we catch all image loads
+              setTimeout(scrollToBottom, 300);
+              setTimeout(scrollToBottom, 800);
+              setTimeout(scrollToBottom, 1500);
 
               // Hide loading screen after messages are loaded
               loadingScreen.classList.add("hidden");
@@ -3726,6 +4362,38 @@
 
         if (user) {
           try {
+            // Check if user is banned IMMEDIATELY
+            const banSnap = await db.ref("bannedUsers/" + user.uid).once("value");
+            if (banSnap.exists()) {
+              const banData = banSnap.val();
+              const now = Date.now();
+              
+              console.log("[auth] user has ban entry:", banData);
+              
+              // Check if it's a temporary ban that has expired
+              if (banData.until && banData.until <= now) {
+                // Temporary ban has expired, remove ban entry and allow login
+                clearExpiredBan(user.uid, banData);
+                console.log("[auth] temporary ban has expired, allowing login");
+              } else {
+                // Either permanent ban or active temporary ban
+                console.log("[auth] user is banned, showing popup and signing out");
+
+                // Reuse existing ban popup UI instead of alert
+                const banPopup = document.getElementById("banPopup");
+                const banReason = document.getElementById("banReason");
+                if (banPopup && banReason) {
+                  banReason.textContent = "Reason: " + (banData.reason || "Permanent ban");
+                  banPopup.classList.remove("hidden");
+                }
+
+                setTimeout(() => {
+                  auth.signOut();
+                }, 3000);
+                return;
+              }
+            }
+
             currentUserId = user.uid;
             
             // Load cleared notifications from localStorage
@@ -3786,6 +4454,9 @@
             watchBanStatus(user.uid);
             watchMuteStatus(user.uid);
             watchWarnings(user.uid);
+            setupWarnModal();
+            setupMuteModal();
+            setupBanModal();
             
             // Start DM inbox listener for notifications
             await loadDmInbox();
@@ -3922,13 +4593,24 @@
           return;
         }
 
-        // ✅ Local 250ms rate limit (was 500ms)
+        // ✅ Local send cooldown (2s)
         const now = Date.now();
-        if (now - lastSentTime < 250) {
+        if (now - lastSentTime < SEND_COOLDOWN_MS) {
           showRateLimitWarning();
           return;
         }
         lastSentTime = now;
+
+        // Bad-word filter (client-side guard; server rules should also block)
+        if (text && badWordPattern.test(text)) {
+          currentWarningText = "Message blocked: language not allowed.";
+          updateStatusBar();
+          setTimeout(() => {
+            currentWarningText = "";
+            updateStatusBar();
+          }, 2500);
+          return;
+        }
 
         const username = currentUsername;
 
@@ -5077,10 +5759,104 @@
         // Then check friendship status and detect if they blocked you
         await checkFriendshipStatus(username);
 
+        // Show admin actions if you're an admin
+        showProfileAdminActions(username);
+
         if (!options.silent) {
           viewProfileModal.classList.remove("modal-closed");
           viewProfileModal.classList.add("modal-open");
         }
+      }
+
+      // Show/hide admin actions in profile based on admin status
+      async function showProfileAdminActions(targetUsername) {
+        const profileAdminActions = document.getElementById("profileAdminActions");
+        const profileBanBtn = document.getElementById("profileBanBtn");
+        const profileMuteBtn = document.getElementById("profileMuteBtn");
+        const profileWarnBtn = document.getElementById("profileWarnBtn");
+        const now = Date.now();
+
+        console.log("[admin-profile] isAdmin:", isAdmin, "targetUsername:", targetUsername);
+
+        if (!isAdmin) {
+          profileAdminActions.classList.add("hidden");
+          return;
+        }
+
+        // Get target UID
+        const snap = await db.ref("users").orderByChild("username").equalTo(targetUsername).once("value");
+        if (!snap.exists()) {
+          console.log("[admin-profile] target user not found");
+          profileAdminActions.classList.add("hidden");
+          return;
+        }
+
+        const targetUid = Object.keys(snap.val())[0];
+        console.log("[admin-profile] targetUid:", targetUid, "currentUserId:", currentUserId);
+
+        // Don't show admin actions for yourself
+        if (targetUid === currentUserId) {
+          profileAdminActions.classList.add("hidden");
+          return;
+        }
+
+        // Show admin actions
+        console.log("[admin-profile] showing admin actions for", targetUsername);
+        profileAdminActions.classList.remove("hidden");
+
+        // Check ban status
+        const banSnap = await db.ref("bannedUsers/" + targetUid).once("value");
+        const banData = banSnap.val();
+        const banExpired = banData && banData.until && banData.until <= now;
+        if (banExpired) {
+          clearExpiredBan(targetUid, banData);
+        }
+        const isBannedNow = !!(banData && (!banData.until || banData.until === 9999999999999 || banData.until > now));
+
+        // Check mute status
+        const muteSnap = await db.ref("mutedUsers/" + targetUid).once("value");
+        const muteData = muteSnap.val();
+        const isMutedNow = muteData && muteData.until && muteData.until > Date.now();
+        console.log("[admin-profile] isMutedNow:", isMutedNow, "muteData:", muteData);
+
+        // Set up button handlers
+        profileBanBtn.textContent = isBannedNow ? "🚪 Unban" : "⛔ Ban";
+        profileBanBtn.onclick = async () => {
+          const latestBanSnap = await db.ref("bannedUsers/" + targetUid).once("value");
+          const latestBan = latestBanSnap.val();
+          const latestNow = Date.now();
+          const latestActive = !!(latestBan && (!latestBan.until || latestBan.until === 9999999999999 || latestBan.until > latestNow));
+          if (latestActive) {
+            await unbanUser(targetUid);
+            profileBanBtn.textContent = "⛔ Ban";
+          } else {
+            showBanReasonModal(targetUid);
+          }
+        };
+
+        profileMuteBtn.onclick = () => {
+          console.log("[admin-profile] mute button clicked, isMutedNow:", isMutedNow);
+          if (isMutedNow) {
+            // Unmute the user
+            console.log("[admin-profile] unMuting user:", targetUid);
+            db.ref("mutedUsers/" + targetUid).remove().then(() => {
+              console.log("[admin-profile] user unmuted successfully");
+              profileMuteBtn.textContent = "🔇 Mute";
+            }).catch((err) => {
+              console.error("[mute] failed to unmute user", err);
+            });
+          } else {
+            // Show mute modal
+            showMuteReasonModal(targetUid);
+          }
+        };
+
+        // Update button text based on mute status
+        profileMuteBtn.textContent = isMutedNow ? "🔊 Unmute" : "🔇 Mute";
+
+        profileWarnBtn.onclick = () => {
+          showWarnReasonModal(targetUid);
+        };
       }
 
       // Check if you're already friends and update the button
@@ -5254,13 +6030,13 @@
             throw new Error("Username cannot be empty");
           }
 
-          // Validate username length (3-20 characters)
+          // Validate username length (3-12 characters)
           if (newUsername.length < 3) {
             throw new Error("Username too short (minimum 3 characters)");
           }
 
-          if (newUsername.length > 20) {
-            throw new Error("Username too long (maximum 20 characters)");
+          if (newUsername.length > 12) {
+            throw new Error("Username too long (maximum 12 characters)");
           }
 
           // Validate character set: only letters, numbers, underscore, dash
@@ -5271,6 +6047,11 @@
           // Validate no leading or trailing special characters
           if (/^[_-]|[_-]$/.test(newUsername)) {
             throw new Error("Username cannot start or end with _ or -");
+          }
+
+          // Basic bad-word filter for usernames
+          if (badWordPattern.test(newUsername)) {
+            throw new Error("Username not allowed");
           }
 
           // Validate bio length
