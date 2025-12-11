@@ -41,6 +41,7 @@
       /* Modal and menu styles */
       .modal-overlay {
         background: rgba(0, 0, 0, 0.5);
+        -webkit-backdrop-filter: blur(4px);
         backdrop-filter: blur(4px);
       }
       .modal-open {
@@ -175,6 +176,7 @@
       }
       body.perf-lite .modal-overlay,
       body.perf-lite .message-bubble-anim:not(.mine) {
+        -webkit-backdrop-filter: none !important;
         backdrop-filter: none !important;
       }
       body.perf-lite .glass-card,
@@ -196,6 +198,7 @@
       .glass-card {
         background: rgba(15, 23, 42, 0.8);
         border: 1px solid rgba(148, 163, 184, 0.2);
+        -webkit-backdrop-filter: blur(8px);
         backdrop-filter: blur(8px);
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
         transition: all 0.2s ease;
@@ -1216,6 +1219,7 @@
             <button
               type="button"
               id="cancelMediaBtn"
+              title="Cancel media upload"
               class="p-1 hover:bg-slate-700 rounded-lg transition-colors text-slate-400"
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1240,12 +1244,13 @@
           <div
             class="input-shell flex items-center gap-1.5 sm:gap-2 bg-slate-800 rounded-lg px-2 sm:px-3 py-1.5 sm:py-2"
           >
-            <input type="file" id="imageInput" accept="image/*,video/*" class="hidden" />
+            <input type="file" id="imageInput" accept="image/*,video/*" title="Select image or video to upload" class="hidden" />
             <button
               type="button"
               id="mediaUploadBtn"
               class="p-2 hover:bg-slate-700 rounded-lg transition-colors"
               title="Upload image or video"
+              aria-label="Upload image or video"
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-slate-400">
                 <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
@@ -1392,7 +1397,9 @@
           <label class="block text-sm text-slate-300 mb-2">Duration:</label>
           <select
             id="banDuration"
+            title="Select ban duration"
             class="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2 text-slate-100"
+            aria-label="Ban duration"
           >
             <option value="60">1 hour</option>
             <option value="1440">1 day</option>
@@ -1634,15 +1641,18 @@
     >
       <button
         id="closeImageViewer"
+        title="Close image viewer"
         class="absolute top-4 right-4 p-2 text-white hover:bg-white/10 rounded-lg transition-colors z-10"
+        aria-label="Close image viewer"
       >
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
           <line x1="18" y1="6" x2="6" y2="18"></line>
           <line x1="6" y1="6" x2="18" y2="18"></line>
         </svg>
       </button>
       <img
         id="imageViewerImg"
+        alt="Full size image viewer"
         class="max-w-[95vw] max-h-[95vh] object-contain"
         style="cursor: zoom-out;"
       />
@@ -1662,9 +1672,11 @@
         </div>
         <button
           id="sidePanelClose"
+          title="Close menu"
           class="p-1.5 hover:bg-slate-700 rounded-lg transition-colors"
+          aria-label="Close menu"
         >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <line x1="18" y1="6" x2="6" y2="18"></line>
             <line x1="6" y1="6" x2="18" y2="18"></line>
           </svg>
@@ -2841,11 +2853,8 @@
       // Basic bad-word filter (client-side) - replaces detected words with stars
       const BAD_WORDS = [
         "fuck",
-        "fucking",
         "shit",
         "bitch",
-        "fuk",
-        "nigga",
         "faggot",
         "chink",
         "fag",
@@ -6023,34 +6032,40 @@
 
       profilePicInput.addEventListener("change", async (e) => {
         const file = e.target.files[0];
-        if (file) {
-          try {
-            uploadPicBtn.disabled = true;
-            uploadPicBtn.textContent = "Uploading...";
+        if (!file) return;
 
-            // Upload to Cloudinary
-            const upload = await uploadToCloudinary(file);
-            const mediaUrl = upload.secure_url;
-            const deleteToken = upload.delete_token;
+        try {
+          uploadPicBtn.disabled = true;
+          uploadPicBtn.textContent = "Uploading...";
 
-            // Show preview
-            profilePicPreview.innerHTML = "";
-            const img = document.createElement("img");
-            img.src = mediaUrl;
-            img.className = "h-full w-full object-cover";
-            profilePicPreview.appendChild(img);
-            
-            currentUserData.profilePic = mediaUrl;
-            currentUserData.profilePicDeleteToken = deleteToken;
+          // Process file same as chat images (compress if needed)
+          const processedFile = await prepareFileForUpload(file);
+          const mediaUrl = await uploadToImageKit(processedFile);
 
-            uploadPicBtn.disabled = false;
-            uploadPicBtn.textContent = "Upload Picture";
-          } catch (err) {
-            console.error("[profile] error uploading to cloudinary:", err);
-            alert("Error uploading image: " + err.message);
-            uploadPicBtn.disabled = false;
-            uploadPicBtn.textContent = "Upload Picture";
-          }
+          // Show preview
+          profilePicPreview.innerHTML = "";
+          const img = document.createElement("img");
+          img.src = mediaUrl;
+          img.className = "h-full w-full object-cover";
+          img.onerror = () => {
+            console.warn("[profile] failed to load image");
+            setDefaultProfileIcon(profilePicPreview, 40);
+          };
+          profilePicPreview.appendChild(img);
+          
+          currentUserData.profilePic = mediaUrl;
+          currentUserData.profilePicDeleteToken = null;
+
+          uploadPicBtn.disabled = false;
+          uploadPicBtn.textContent = "Upload Picture";
+          
+          console.log("[profile] uploaded successfully:", mediaUrl);
+        } catch (err) {
+          console.error("[profile] error uploading:", err);
+          alert("Error uploading image: " + err.message);
+          uploadPicBtn.disabled = false;
+          uploadPicBtn.textContent = "Upload Picture";
+          profilePicInput.value = "";
         }
       });
 
@@ -6537,22 +6552,29 @@
 
             await db.ref().update(updates);
 
-            // If profile picture changed and we have an old delete token, delete old asset
-            if (
-              originalProfilePic &&
-              originalProfilePic !== currentUserData.profilePic &&
-              originalProfilePicDeleteToken
-            ) {
-              try {
-                await deleteFromCloudinary(originalProfilePicDeleteToken);
-                console.log("[profile] deleted old profile image");
-              } catch (e) {
-                console.warn("[profile] failed to delete old profile image:", e);
+            // Update all user's messages with new username
+            try {
+              const messagesSnapshot = await db.ref("messages")
+                .orderByChild("userId")
+                .equalTo(uid)
+                .once("value");
+              
+              const messageUpdates = {};
+              messagesSnapshot.forEach((child) => {
+                messageUpdates["messages/" + child.key + "/user"] = newUsername;
+              });
+              
+              if (Object.keys(messageUpdates).length > 0) {
+                await db.ref().update(messageUpdates);
+                console.log("[profile] updated", Object.keys(messageUpdates).length, "messages with new username");
               }
+            } catch (e) {
+              console.warn("[profile] error updating messages:", e);
             }
 
+            // Old ImageKit images will auto-expire, no manual deletion needed
             originalProfilePic = currentUserData.profilePic || originalProfilePic;
-            originalProfilePicDeleteToken = currentUserData.profilePicDeleteToken || null;
+            originalProfilePicDeleteToken = null; // Not used with ImageKit
 
             console.log("[profile] saved successfully with new username:", newUsername);
             currentUsername = newUsername;
@@ -6586,22 +6608,9 @@
 
             await db.ref("userProfiles/" + uid).set(userData);
 
-            // If profile picture changed and we have an old delete token, delete old asset
-            if (
-              originalProfilePic &&
-              originalProfilePic !== currentUserData.profilePic &&
-              originalProfilePicDeleteToken
-            ) {
-              try {
-                await deleteFromCloudinary(originalProfilePicDeleteToken);
-                console.log("[profile] deleted old profile image");
-              } catch (e) {
-                console.warn("[profile] failed to delete old profile image:", e);
-              }
-            }
-
+            // Old ImageKit images will auto-expire, no manual deletion needed
             originalProfilePic = currentUserData.profilePic || originalProfilePic;
-            originalProfilePicDeleteToken = currentUserData.profilePicDeleteToken || null;
+            originalProfilePicDeleteToken = null; // Not used with ImageKit
 
             console.log("[profile] saved successfully (no username change)");
             
