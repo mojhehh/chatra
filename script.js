@@ -2168,7 +2168,7 @@
             const ownerBadge = '<span class="ml-1 text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-100 border border-amber-400/40">Owner</span>';
             nameLabel.innerHTML = '<span class="inline-flex items-center gap-1">' + '<span>' + username + '</span>' + ownerBadge + '</span>';
           } else if (isStaffMessage) {
-            const staffBadge = '<span class="ml-1 text-[9px] px-1.5 py-0.5 rounded-full bg-sky-500/15 text-sky-100 border border-sky-400/40">Head Of Staff</span>';
+            const staffBadge = '<span class="ml-1 text-[9px] px-1.5 py-0.5 rounded-full bg-sky-500/15 text-sky-100 border border-sky-400/40">Co Owner</span>';
             nameLabel.innerHTML = '<span class="inline-flex items-center gap-1">' + '<span>' + username + '</span>' + staffBadge + '</span>';
           } else {
             nameLabel.textContent = username;
