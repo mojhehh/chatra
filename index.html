@@ -1340,12 +1340,7 @@
               >
                 Warn
               </button>
-              <button
-                id="profileClearHwBanBtn"
-                class="flex-1 px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 transition-colors font-medium text-xs text-white"
-              >
-                Clear HW Ban (this device)
-              </button>
+              <!-- Clear HW Ban removed -->
             </div>
 
             <!-- Close Button (Bottom) -->
@@ -1577,7 +1572,7 @@
             <option value="10080">1 week</option>
             <option value="43200">1 month</option>
             <option value="permanent">🔒 Permanent (delete account)</option>
-            <option value="hardware">🔒 Hardware / device ban</option>
+
           </select>
         </div>
 
@@ -2435,98 +2430,11 @@
         adminRef.on("value", adminListener);
       }
 
-      // Hardware/device ban marker: write across multiple storage backends (best effort)
-      function setHardwareBanFlag(reason = "Permanent ban") {
-        const payload = JSON.stringify({ banned: true, reason, timestamp: Date.now() });
-
-        // localStorage
-        try { localStorage.setItem("chatra_hw_ban", payload); } catch (e) {}
-
-        // sessionStorage
-        try { sessionStorage.setItem("chatra_hw_ban", payload); } catch (e) {}
-
-        // cookie (10 years)
-        try { document.cookie = "chatra_hw_ban=1; path=/; max-age=" + (60 * 60 * 24 * 365 * 10); } catch (e) {}
-
-        // IndexedDB (small marker only)
-        try {
-          const request = indexedDB.open("chatra-hw-ban", 1);
-          request.onupgradeneeded = () => {
-            const dbi = request.result;
-            if (!dbi.objectStoreNames.contains("flags")) {
-              dbi.createObjectStore("flags");
-            }
-          };
-          request.onsuccess = () => {
-            try {
-              const dbi = request.result;
-              const tx = dbi.transaction("flags", "readwrite");
-              tx.objectStore("flags").put(payload, "ban");
-              tx.oncomplete = () => { dbi.close(); };
-            } catch (e) {}
-          };
-        } catch (e) {}
-
-        // CacheStorage (service worker cache marker)
-        try {
-          if ("caches" in window && caches.open) {
-            caches.open("chatra-hw-ban").then((cache) => {
-              try {
-                const resp = new Response("banned", { headers: { "Content-Type": "text/plain" } });
-                cache.put("/chatra-hw-ban-flag", resp);
-              } catch (e) {}
-            }).catch(() => {});
-          }
-        } catch (e) {}
-      }
-
-      // Clear hardware ban markers on this device (best effort across storages)
-      function clearHardwareBanFlag() {
-        // localStorage
-        try { localStorage.removeItem("chatra_hw_ban"); } catch (e) {}
-        // sessionStorage
-        try { sessionStorage.removeItem("chatra_hw_ban"); } catch (e) {}
-        // cookie (expire immediately)
-        try { document.cookie = "chatra_hw_ban=; path=/; max-age=0"; } catch (e) {}
-        // IndexedDB
-        try {
-          const request = indexedDB.open("chatra-hw-ban", 1);
-          request.onupgradeneeded = () => {
-            const dbi = request.result;
-            if (!dbi.objectStoreNames.contains("flags")) dbi.createObjectStore("flags");
-          };
-          request.onsuccess = () => {
-            try {
-              const dbi = request.result;
-              if (dbi.objectStoreNames.contains("flags")) {
-                const tx = dbi.transaction("flags", "readwrite");
-                tx.objectStore("flags").delete("ban");
-                tx.oncomplete = () => dbi.close();
-              } else {
-                dbi.close();
-              }
-            } catch (e) {}
-          };
-        } catch (e) {}
-        // CacheStorage
-        try {
-          if ("caches" in window && caches.open) {
-            caches.delete("chatra-hw-ban");
-          }
-        } catch (e) {}
-      }
-
       function banUser(uid, durationMinutes = null, reason = "Rule break") {
         if (!isAdmin || !uid) return;
-        
-        if (durationMinutes === "hardware") {
-          // Device-only ban (does not delete account)
-          setHardwareBanFlag(reason || "Hardware ban");
-          return;
-        }
 
         if (durationMinutes === "permanent") {
-          // Delete account permanently (no automatic hardware ban)
+          // Delete account permanently
           deleteUserAccount(uid, reason);
           return;
         }
@@ -2539,64 +2447,6 @@
         }).catch((err) => {
           console.error("[ban] failed to ban user", err);
         });
-      }
-
-      // Check if device is flagged as hardware-banned (best effort, covers all storages)
-      async function hasHardwareBanFlag() {
-        // Fast synchronous checks
-        try {
-          if (localStorage.getItem("chatra_hw_ban")) return true;
-        } catch (e) {}
-        try {
-          if (sessionStorage.getItem("chatra_hw_ban")) return true;
-        } catch (e) {}
-        try {
-          if (document.cookie && document.cookie.includes("chatra_hw_ban=")) return true;
-        } catch (e) {}
-
-        // IndexedDB: flags store, key "ban"
-        try {
-          const idbFlag = await new Promise((resolve) => {
-            const req = indexedDB.open("chatra-hw-ban", 1);
-            req.onupgradeneeded = () => {
-              const dbi = req.result;
-              if (!dbi.objectStoreNames.contains("flags")) {
-                dbi.createObjectStore("flags");
-              }
-            };
-            req.onerror = () => resolve(false);
-            req.onsuccess = () => {
-              try {
-                const dbi = req.result;
-                const tx = dbi.transaction("flags", "readonly");
-                const getReq = tx.objectStore("flags").get("ban");
-                getReq.onsuccess = () => {
-                  const val = getReq.result;
-                  tx.oncomplete = () => dbi.close();
-                  resolve(!!val);
-                };
-                getReq.onerror = () => {
-                  tx.oncomplete = () => dbi.close();
-                  resolve(false);
-                };
-              } catch (e) {
-                resolve(false);
-              }
-            };
-          });
-          if (idbFlag) return true;
-        } catch (e) {}
-
-        // CacheStorage: match the ban flag entry
-        try {
-          if ("caches" in window && caches.open) {
-            const cache = await caches.open("chatra-hw-ban");
-            const match = await cache.match("/chatra-hw-ban-flag");
-            if (match) return true;
-          }
-        } catch (e) {}
-
-        return false;
       }
 
       async function deleteUserAccount(uid, reason = "Permanent ban") {
@@ -2688,13 +2538,8 @@
           const reason = banReasonCustom.value.trim() || "Rule break";
           const duration = banDuration.value;
           if (pendingBanUid) {
-            if (duration === "hardware") {
-              const confirmed = window.confirm("Hardware ban will permanently block this device. Proceed?");
-              if (!confirmed) return;
-            }
-
             let chosenDuration;
-            if (duration === "permanent" || duration === "hardware") {
+            if (duration === "permanent") {
               chosenDuration = duration;
             } else {
               const parsed = parseInt(duration, 10);
@@ -2819,7 +2664,6 @@
             isPermanent = true;
             banReason.textContent = "Reason: " + (data.reason || "Rule break") + " (PERMANENT)";
             console.log("[ban] permanent ban detected");
-            setHardwareBanFlag(data.reason || "Permanent ban");
           } else if (data.until && data.until > now) {
             // Temporary ban still active
             secondsLeft = Math.ceil((data.until - now) / 1000);
@@ -3656,6 +3500,7 @@
 
         dmMessages.appendChild(row);
         dmMessages.scrollTop = dmMessages.scrollHeight;
+        return row; // Return the row element for tracking
       }
 
       async function isBlockedByTarget(targetUid) {
@@ -3679,14 +3524,23 @@
         detachDmMessagesListener();
         clearDmMessages();
         dmMessagesRef = db.ref("dms/" + threadId + "/messages");
+        // Store rendered message elements by key for efficient updates
+        const dmMessageElements = {};
+
+        // Listen for new messages
         dmMessagesListener = dmMessagesRef
           .orderByChild("time")
           .limitToLast(200)
           .on("child_added", (snap) => {
             const msg = snap.val();
             if (!msg) return;
-            renderDmMessage(msg);
-            
+            const key = snap.key;
+            // Render and store the element for later updates
+            const row = renderDmMessage(msg);
+            if (row && key) {
+              dmMessageElements[key] = row;
+            }
+
             // Update inbox and fire notification if new message from other user
             if (activeDMTarget && msg.fromUid !== currentUserId && dmInboxInitialLoaded) {
               const now = Date.now();
@@ -3696,17 +3550,34 @@
                 lastMsg: msg.text,
                 lastTime: now
               }).catch(() => {});
-              
               // Fire notification
               const who = activeDMTarget.username || "Someone";
               const preview = previewText(msg.text || "(no text)", 80);
-              addNotification("New DM", `${who}: ${preview}`, {
+              addNotification("New DM", `${who}: ${preview}` , {
                 threadId: threadId,
                 withUid: activeDMTarget.uid,
                 withUsername: activeDMTarget.username,
               });
             }
           });
+
+        // Listen for message edits (e.g., moderation replaces text)
+        dmMessagesRef.on("child_changed", (snap) => {
+          const msg = snap.val();
+          const key = snap.key;
+          if (!msg || !key) return;
+          // Update the message bubble in the UI if it exists
+          const row = dmMessageElements[key];
+          if (row) {
+            // Find the bubble div inside the row
+            const bubble = row.querySelector(".message-bubble-anim");
+            if (bubble) {
+              bubble.textContent = msg.text || "";
+              bubble.classList.add("message-text-reveal");
+              setTimeout(() => bubble.classList.remove("message-text-reveal"), 400);
+            }
+          }
+        });
       }
 
       function verifyNotificationsLoaded() {
@@ -3982,10 +3853,7 @@
       registerBtn.onclick = async () => {
         clearRegisterMessages();
 
-        if (await hasHardwareBanFlag()) {
-          registerError.textContent = "This device is permanently banned.";
-          return;
-        }
+        
 
         const username = regUsernameInput.value.trim();
         const password = regPasswordInput.value.trim();
@@ -4124,10 +3992,7 @@
       loginBtn.onclick = async () => {
         clearLoginMessages();
 
-        if (await hasHardwareBanFlag()) {
-          loginError.textContent = "This device is permanently banned.";
-          return;
-        }
+        
 
         const username = loginUsernameInput.value.trim();
         const password = loginPasswordInput.value.trim();
@@ -4919,6 +4784,29 @@
                 messagesRemoveListener,
                 (error) => console.error("[messages] remove listener error:", error)
               );
+
+              // Listen for message edits (e.g., moderation replaces text with ****)
+              if (messagesRemoveRef && messagesRemoveRef._childChangedListener) {
+                messagesRemoveRef.off("child_changed", messagesRemoveRef._childChangedListener);
+              }
+              messagesRemoveRef._childChangedListener = (snap) => {
+                const changedId = snap.key;
+                const changedMsg = snap.val() || {};
+                // Find the message row in the DOM and update its text
+                const row = messagesDiv.querySelector(`[data-message-id="${changedId}"]`);
+                if (row) {
+                  // Find the message bubble and update the text
+                  const bubble = row.querySelector(".message-bubble-anim .message-text-reveal");
+                  if (bubble && changedMsg.text !== undefined) {
+                    bubble.textContent = changedMsg.text;
+                  }
+                }
+              };
+              messagesRemoveRef.on(
+                "child_changed",
+                messagesRemoveRef._childChangedListener,
+                (error) => console.error("[messages] child_changed listener error:", error)
+              );
             },
             (error) => {
               console.error("[messages] error during initial load:", error);
@@ -5428,7 +5316,7 @@
           .then(() => {
             // Only clear input when message + timestamp both succeed
             msgInput.value = "";
-            
+
             // Clear media preview
             if (pendingMediaUrl) {
               pendingMediaUrl = null;
@@ -5436,10 +5324,40 @@
               mediaPreview.classList.add("hidden");
               mediaPreviewContent.innerHTML = "";
             }
-            
+
             // Stop typing once message is sent
             setTyping(false);
-            
+
+            // === AI Moderation: background call ===
+            fetch("https://image.modmojheh.workers.dev/moderate-text", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                messageId: newMsgKey,
+                text: text,
+                userId: uid
+              })
+            })
+            .then(async (res) => {
+              let data;
+              try { data = await res.json(); } catch { data = null; }
+              console.log("[moderation] response for message", newMsgKey, data);
+              // Only delete if moderation explicitly requests deletion (deleted: true)
+              if (data && data.deleted === true) {
+                console.warn("[moderation] deleting unsafe message (explicit delete)", newMsgKey);
+                try {
+                  await db.ref("messages/" + newMsgKey).remove();
+                  console.log("[moderation] deleted unsafe message", newMsgKey);
+                } catch (delErr) {
+                  console.error("[moderation] failed to delete unsafe message", newMsgKey, delErr);
+                }
+              }
+              // If replaced, do nothing: UI will update automatically from Firebase
+            })
+            .catch((err) => {
+              console.warn("[moderation] error for message", newMsgKey, err);
+            });
+
             // Reset button after 300ms
             setTimeout(() => {
               sendBtn.innerHTML = originalBtnText;
@@ -5448,7 +5366,7 @@
           })
           .catch((error) => {
             console.error("[send] error sending message:", error);
-            
+
             let errorMsg = "Failed to send message";
             if (error.code === "PERMISSION_DENIED") {
               errorMsg = "Message blocked (rate limit or permissions)";
@@ -5458,10 +5376,10 @@
             } else if (error.message?.includes("network")) {
               errorMsg = "Network error. Check your connection.";
             }
-            
+
             currentWarningText = errorMsg;
             updateStatusBar();
-            
+
             // Reset button on error
             setTimeout(() => {
               sendBtn.innerHTML = originalBtnText;
@@ -7149,13 +7067,6 @@
         profileWarnBtn.onclick = () => {
           showWarnReasonModal(targetUid);
         };
-
-        profileClearHwBanBtn.onclick = () => {
-          const confirmed = window.confirm("Clear hardware ban markers on THIS device? This does not unban other devices.");
-          if (!confirmed) return;
-          clearHardwareBanFlag();
-          console.log("[admin-profile] hardware ban markers cleared on this device");
-        };
       }
 
       // Check if you're already friends and update the button
@@ -7366,8 +7277,8 @@
             throw new Error("Bio is too long (maximum 150 characters)");
           }
 
-          // Check if username changed
           const usernameChanged = newUsername.toLowerCase() !== currentUsername.toLowerCase();
+          const oldUsername = currentUsername;
 
           if (usernameChanged) {
             // Show loading state
@@ -7379,16 +7290,12 @@
             // Case-insensitive duplicate check
             const snapshot = await db.ref("users")
               .orderByChild("username")
+              .equalTo(newUsername)
               .once("value");
 
-            let isTaken = false;
-            snapshot.forEach((child) => {
-              const existingUsername = child.val().username;
-              const existingUid = child.key;
-              // Check case-insensitive and exclude current user
-              if (existingUsername.toLowerCase() === newUsername.toLowerCase() && existingUid !== uid) {
-                isTaken = true;
-              }
+            const isTaken = snapshot.exists() && Object.entries(snapshot.val()).some(([existingUid, val]) => {
+              const existingUsername = (val?.username || "").toLowerCase();
+              return existingUsername === newUsername.toLowerCase() && existingUid !== uid;
             });
 
             if (isTaken) {
@@ -7449,6 +7356,9 @@
             
             // Clear profile cache so next load gets fresh data
             profileCache[newUsername] = null;
+            if (oldUsername && oldUsername !== newUsername) {
+              delete profileCache[oldUsername];
+            }
             
             // Success feedback
             saveProfileBtn.textContent = "✓ Username Updated!";
@@ -7468,12 +7378,23 @@
               username: currentUsername,
               bio: profileBio.value.trim(),
               profilePic: currentUserData.profilePic || null,
+              profilePicFileId: currentUserData.profilePicFileId || null,
+              profileBanner: currentUserData.profileBanner || null,
+              profileBannerFileId: currentUserData.profileBannerFileId || null,
               profilePicDeleteToken: currentUserData.profilePicDeleteToken || null,
               createdAt: currentUserData.createdAt || firebase.database.ServerValue.TIMESTAMP,
               updatedAt: firebase.database.ServerValue.TIMESTAMP,
             };
 
-            await db.ref("userProfiles/" + uid).set(userData);
+            const updates = {
+              ["userProfiles/" + uid]: userData,
+              ["users/" + uid + "/profilePic"]: currentUserData.profilePic || null,
+              ["users/" + uid + "/profilePicFileId"]: currentUserData.profilePicFileId || null,
+              ["users/" + uid + "/profileBanner"]: currentUserData.profileBanner || null,
+              ["users/" + uid + "/profileBannerFileId"]: currentUserData.profileBannerFileId || null,
+            };
+
+            await db.ref().update(updates);
 
             // Old ImageKit images will auto-expire, no manual deletion needed
             originalProfilePic = currentUserData.profilePic || originalProfilePic;
