@@ -8,13 +8,17 @@
   <!-- Your existing CSS -->
   <link rel="stylesheet" href="style.css" />
 
-  <!-- Tailwind (same setup as your app) -->
+  <!-- Tailwind -->
   <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Firebase SDKs (COMPAT for simplicity) -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
 </head>
 
 <body class="bg-slate-950 text-slate-100 min-h-screen flex items-center justify-center">
 
-  <!-- Background orbs (same vibe as Chatra) -->
+  <!-- Background orbs -->
   <div class="bg-orb bg-orb-blue w-[420px] h-[420px] top-[-120px] left-[-120px]"></div>
   <div class="bg-orb bg-orb-purple w-[520px] h-[520px] bottom-[-160px] right-[-160px]"></div>
 
@@ -45,7 +49,7 @@
     <!-- Go to Chat Button -->
     <button
       onclick="goToChat()"
-      class="btn-primary w-full py-2 rounded-xl bg-sky-500 hover:bg-sky-600 text-slate-950 font-semibold"
+      class="w-full py-2 rounded-xl bg-sky-500 hover:bg-sky-600 text-slate-950 font-semibold"
     >
       Go to Main Chat Page
     </button>
@@ -68,7 +72,7 @@
 
       <button
         onclick="submitIdea()"
-        class="btn-primary mt-2 w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 font-medium"
+        class="mt-2 w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 font-medium"
       >
         Submit Idea
       </button>
@@ -80,7 +84,22 @@
 
   </div>
 
+  <!-- Firebase Init + Logic -->
   <script>
+    // Firebase config
+    const firebaseConfig = {
+      apiKey: "AIzaSyC945jY7UEh4sOOuuk7OMZVXeIh333kxVk",
+      authDomain: "chat-app-710f0.firebaseapp.com",
+      projectId: "chat-app-710f0",
+      storageBucket: "chatfirebaseapp.com",
+      messagingSenderId: "225892837672",
+      appId: "1:225892837672:web:f190f3585c4ffbd0f1c81d",
+      databaseURL: "https://chat-app-710f0-default-rtdb.firebaseio.com"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
     function goToChat() {
       window.location.href = "chatra.html";
     }
@@ -92,20 +111,22 @@
 
       if (!text) return;
 
-      const ideas = JSON.parse(localStorage.getItem("chatraIdeas") || "[]");
-      ideas.push({
-        text,
+      const ideaRef = db.ref("ideas").push();
+      ideaRef.set({
+        text: text,
         time: Date.now()
+      })
+      .then(() => {
+        input.value = "";
+        status.textContent = "✅ Idea saved. Thanks!";
+        status.classList.remove("hidden");
+        setTimeout(() => status.classList.add("hidden"), 2000);
+      })
+      .catch(err => {
+        console.error(err);
+        status.textContent = "❌ Failed to save idea";
+        status.classList.remove("hidden");
       });
-
-      localStorage.setItem("chatraIdeas", JSON.stringify(ideas));
-
-      input.value = "";
-      status.classList.remove("hidden");
-
-      setTimeout(() => {
-        status.classList.add("hidden");
-      }, 2000);
     }
   </script>
 
