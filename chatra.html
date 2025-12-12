@@ -30,20 +30,20 @@
     </h1>
 
     <p class="text-sm text-slate-300 leading-relaxed">
-      Chatra is currently on a short development break.
-      I’m taking a couple of weeks off to rest and reset.
+      Chatra is temporarily paused for development.
+      I’m taking a short break for a couple of days or up to a week to rest and plan the next improvements.
+      Development will resume soon.
     </p>
 
     <p class="text-sm text-slate-300 leading-relaxed">
       Development <strong>is not cancelled</strong>.
-      When I come back, work will slowly resume with
-      fixes, improvements, and new features over time.
+      When I return, work will gradually resume with fixes, improvements, and new features.
     </p>
 
     <p class="text-sm text-slate-300 leading-relaxed">
-      Thanks for being patient and supporting the project.
+      Thank you for your patience and support.
       If you have ideas for Chatra or other websites,
-      you can submit them below.
+      feel free to submit them below.
     </p>
 
     <!-- Go to Chat Button -->
@@ -86,7 +86,6 @@
 
   <!-- Firebase Init + Logic -->
   <script>
-    // Firebase config
     const firebaseConfig = {
       apiKey: "AIzaSyC945jY7UEh4sOOuuk7OMZVXeIh333kxVk",
       authDomain: "chat-app-710f0.firebaseapp.com",
@@ -111,8 +110,7 @@
 
       if (!text) return;
 
-      const ideaRef = db.ref("ideas").push();
-      ideaRef.set({
+      db.ref("ideas").push({
         text: text,
         time: Date.now()
       })
@@ -122,8 +120,7 @@
         status.classList.remove("hidden");
         setTimeout(() => status.classList.add("hidden"), 2000);
       })
-      .catch(err => {
-        console.error(err);
+      .catch(() => {
         status.textContent = "❌ Failed to save idea";
         status.classList.remove("hidden");
       });
