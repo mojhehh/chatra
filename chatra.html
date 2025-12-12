@@ -717,54 +717,75 @@
     </div>
 
     <!-- Chat Interface (hidden by default) -->
+<div
+  id="chatInterface"
+  class="hidden flex-1 min-h-0 flex flex-col"
+>
+  <!-- FULLSCREEN chat container -->
+  <div
+    class="glass-card flex-1 min-h-0 flex flex-col w-full rounded-none overflow-hidden"
+  >
+    <!-- Chat header with menu + logout -->
     <div
-      id="chatInterface"
-      class="hidden flex-1 min-h-0 flex flex-col"
+      class="relative flex items-center justify-between px-4 sm:px-5 py-3 bg-slate-900/70 border-b border-slate-800/50"
     >
-      <!-- FULLSCREEN chat container -->
-      <div
-        class="glass-card flex-1 min-h-0 flex flex-col w-full rounded-none overflow-hidden"
-      >
-        <!-- Chat header with menu + logout -->
-        <div
-          class="relative flex items-center justify-between px-4 sm:px-5 py-3 bg-slate-900/70 border-b border-slate-800/50"
+      <div class="flex items-center gap-3">
+        <!-- Hamburger Menu Button -->
+        <button
+          id="menuToggle"
+          class="p-1.5 hover:bg-slate-700 rounded-lg transition-colors"
+          title="Menu"
         >
-          <div class="flex items-center gap-3">
-            <!-- Hamburger Menu Button -->
-            <button
-              id="menuToggle"
-              class="p-1.5 hover:bg-slate-700 rounded-lg transition-colors"
-              title="Menu"
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-slate-300">
-                <line x1="3" y1="6" x2="21" y2="6"></line>
-                <line x1="3" y1="12" x2="21" y2="12"></line>
-                <line x1="3" y1="18" x2="21" y2="18"></line>
-              </svg>
-            </button>
-            <span
-              id="chatUserLabel"
-              class="text-sm text-slate-200 font-medium"
-            ></span>
-          </div>
-          
-          <!-- Global Chat in Middle -->
-          <div class="absolute left-1/2 transform -translate-x-1/2 flex items-center gap-2">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-blue-400">
-              <circle cx="12" cy="12" r="10"></circle>
-              <line x1="2" y1="12" x2="22" y2="12"></line>
-              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
-            </svg>
-            <span class="text-sm font-bold text-slate-100">Global Chat</span>
-          </div>
-          
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-slate-300">
+            <line x1="3" y1="6" x2="21" y2="6"></line>
+            <line x1="3" y1="12" x2="21" y2="12"></line>
+            <line x1="3" y1="18" x2="21" y2="18"></line>
+          </svg>
+        </button>
+        <span
+          id="chatUserLabel"
+          class="text-sm text-slate-200 font-medium"
+        ></span>
+      </div>
+
+      <!-- Global Chat in Middle + Dev Paused + More -->
+      <div class="absolute left-1/2 transform -translate-x-1/2 flex items-center gap-3">
+        <!-- Global Chat -->
+        <div class="flex items-center gap-2">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-blue-400">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="2" y1="12" x2="22" y2="12"></line>
+            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+          </svg>
+          <span class="text-sm font-bold text-slate-100">Global Chat</span>
+        </div>
+
+        <!-- Divider -->
+        <span class="text-slate-600">•</span>
+
+        <!-- Dev paused + More -->
+        <div class="flex items-center gap-2">
+          <span class="text-sm font-semibold text-amber-300">Development Paused</span>
           <button
-            id="logoutBtn"
-            class="px-3 py-1.5 text-xs rounded-lg bg-slate-700 hover:bg-slate-600 transition-colors"
+            type="button"
+            onclick="window.location.href='index.html'"
+            class="text-xs text-sky-400 hover:text-sky-300 underline underline-offset-2"
+            title="More info"
+            aria-label="More info"
           >
-            Logout
+            More
           </button>
         </div>
+      </div>
+
+      <button
+        id="logoutBtn"
+        class="px-3 py-1.5 text-xs rounded-lg bg-slate-700 hover:bg-slate-600 transition-colors"
+      >
+        Logout
+      </button>
+    </div>
+
 
         <!-- Settings Modal -->
         <div
