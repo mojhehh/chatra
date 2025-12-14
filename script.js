@@ -3113,6 +3113,11 @@
           deleteBtn.addEventListener("click", () => {
             openDeleteMessageModal(messageId, msg.deleteToken);
           });
+          // Touch handler for iPad (prevent click delay)
+          deleteBtn.addEventListener("touchend", (e) => {
+            e.preventDefault();
+            openDeleteMessageModal(messageId, msg.deleteToken);
+          });
           
           bubbleContainer.appendChild(deleteBtn);
 
@@ -3140,6 +3145,15 @@
             reportBtn.title = "Report message";
 
             reportBtn.addEventListener("click", () => {
+              if (typeof openInlineReport === 'function') {
+                openInlineReport(messageId, msg, username, bubbleContainer);
+              } else {
+                reportMessage(messageId, msg, username);
+              }
+            });
+            // Touch handler for iPad (prevent click delay)
+            reportBtn.addEventListener("touchend", (e) => {
+              e.preventDefault();
               if (typeof openInlineReport === 'function') {
                 openInlineReport(messageId, msg, username, bubbleContainer);
               } else {
@@ -3283,6 +3297,14 @@
           adminDeleteBtn.setAttribute("data-admin-delete", "true");
           adminDeleteBtn.addEventListener("click", () => {
             // We may not have deleteToken; modal handles null safely
+            openDeleteMessageModal(messageId, null);
+          });
+          adminDeleteBtn.addEventListener("touchend", (e) => {
+            e.preventDefault();
+            openDeleteMessageModal(messageId, null);
+          });
+          adminDeleteBtn.addEventListener("touchend", (e) => {
+            e.preventDefault();
             openDeleteMessageModal(messageId, null);
           });
           bubbleContainer.appendChild(adminDeleteBtn);
