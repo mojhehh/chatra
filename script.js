@@ -635,15 +635,40 @@
 
         // Own actions: delete + edit (positioned inside bubble area)
         if (isMine && msg.key) {
+          // detect touch-capable devices
+          const isTouchDevice = (typeof window !== 'undefined') && (('ontouchstart' in window) || (navigator.maxTouchPoints && navigator.maxTouchPoints > 0) || (navigator.msMaxTouchPoints && navigator.msMaxTouchPoints > 0));
+
+          // helper to attach deduplicated touch/click handlers and ensure visibility on touch devices
+          function attachActionHandler(btn, handler) {
+            let touchFired = false;
+            btn.addEventListener('touchstart', (e) => {
+              touchFired = true;
+              // make sure action buttons are visible when touched (some CSS hides them via hover)
+              btn.style.opacity = '1';
+            }, { passive: true });
+            btn.addEventListener('touchend', (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handler(e);
+              // reset flag shortly after
+              setTimeout(() => { touchFired = false; }, 500);
+            });
+            btn.addEventListener('click', (e) => {
+              if (touchFired) return; // avoid duplicate action after touch
+              handler(e);
+            });
+            // if device likely uses touch and CSS hides actions on hover, force visible
+            if (isTouchDevice) {
+              btn.style.opacity = btn.style.opacity || '1';
+              btn.style.pointerEvents = 'auto';
+            }
+          }
+
           const deleteBtn = document.createElement('button');
           deleteBtn.className = 'absolute -top-2 -right-2 z-10 w-6 h-6 rounded-full bg-slate-700 text-white opacity-60 sm:opacity-0 sm:group-hover:opacity-100 transition-all flex items-center justify-center hover:bg-red-600 active:bg-red-600 shadow-md border border-slate-500 text-xs';
           deleteBtn.innerHTML = '🗑️';
           deleteBtn.title = 'Delete message';
-          deleteBtn.addEventListener('click', () => {
-            openDeleteMessageModal(msg.key, msg.deleteToken, { isDm: true, threadId: activeDMThread });
-          });
-          deleteBtn.addEventListener('touchend', (e) => {
-            e.preventDefault();
+          attachActionHandler(deleteBtn, () => {
             openDeleteMessageModal(msg.key, msg.deleteToken, { isDm: true, threadId: activeDMThread });
           });
           bubbleWrapper.appendChild(deleteBtn);
@@ -652,7 +677,7 @@
           editBtn.className = 'absolute -top-2 -right-9 z-10 w-6 h-6 rounded-full bg-slate-700 text-white opacity-60 sm:opacity-0 sm:group-hover:opacity-100 transition-all flex items-center justify-center hover:bg-sky-600 active:bg-sky-600 shadow-md border border-slate-500';
           editBtn.innerHTML = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 20 20\" fill=\"currentColor\" class=\"w-3 h-3\"><path d=\"M15.502 1.94a1.5 1.5 0 0 1 2.122 2.12l-1.06 1.062-2.122-2.122 1.06-1.06Zm-2.829 2.828-9.192 9.193a2 2 0 0 0-.518.94l-.88 3.521a.5.5 0 0 0 .607.607l3.52-.88a2 2 0 0 0 .942-.518l9.193-9.193-2.672-2.67Z\"/></svg>";
           editBtn.title = 'Edit message';
-          editBtn.addEventListener('click', () => {
+          attachActionHandler(editBtn, () => {
             editDmMessage(activeDMThread, msg.key, msg.text || '', messagesEl);
           });
           bubbleWrapper.appendChild(editBtn);
@@ -665,13 +690,17 @@
           reportBtn.className = 'absolute -top-2 -left-2 z-10 w-6 h-6 rounded-full bg-slate-700 text-white opacity-60 sm:opacity-0 sm:group-hover:opacity-100 transition-all flex items-center justify-center hover:bg-amber-600 active:bg-amber-600 shadow-md border border-slate-500 text-xs';
           reportBtn.innerHTML = '⚠️';
           reportBtn.title = 'Report message';
-          reportBtn.addEventListener('click', () => {
-            reportDmMessage(msg.key, msg, msg.fromUsername || 'Unknown');
-          });
-          reportBtn.addEventListener('touchend', (e) => {
-            e.preventDefault();
-            reportDmMessage(msg.key, msg, msg.fromUsername || 'Unknown');
-          });
+          // reuse attachActionHandler if available in this scope, otherwise fallback
+          if (typeof attachActionHandler === 'function') {
+            attachActionHandler(reportBtn, () => {
+              reportDmMessage(msg.key, msg, msg.fromUsername || 'Unknown');
+            });
+          } else {
+            reportBtn.addEventListener('click', () => {
+              reportDmMessage(msg.key, msg, msg.fromUsername || 'Unknown');
+            });
+            reportBtn.addEventListener('touchend', (e) => { e.preventDefault(); reportDmMessage(msg.key, msg, msg.fromUsername || 'Unknown'); });
+          }
           bubbleWrapper.appendChild(reportBtn);
 
           // Admin delete
@@ -680,9 +709,15 @@
             adminDeleteBtn.className = 'absolute -top-2 -right-2 z-10 w-6 h-6 rounded-full bg-red-600 text-white opacity-60 sm:opacity-0 sm:group-hover:opacity-100 transition-all flex items-center justify-center hover:bg-red-700 active:bg-red-700 shadow-md border border-red-300 text-xs';
             adminDeleteBtn.innerHTML = '🗑️';
             adminDeleteBtn.title = 'Admin delete';
-            adminDeleteBtn.addEventListener('click', () => {
-              openDeleteMessageModal(msg.key, msg.deleteToken, { isDm: true, threadId: activeDMThread });
-            });
+            if (typeof attachActionHandler === 'function') {
+              attachActionHandler(adminDeleteBtn, () => {
+                openDeleteMessageModal(msg.key, msg.deleteToken, { isDm: true, threadId: activeDMThread });
+              });
+            } else {
+              adminDeleteBtn.addEventListener('click', () => {
+                openDeleteMessageModal(msg.key, msg.deleteToken, { isDm: true, threadId: activeDMThread });
+              });
+            }
             bubbleWrapper.appendChild(adminDeleteBtn);
           }
         }
