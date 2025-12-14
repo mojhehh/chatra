@@ -3629,6 +3629,8 @@
 
       // Reply state
       let pendingReply = null; // { messageId, username, text }
+      // Track which message's reply button we've hidden (so we can restore it)
+      let replyButtonHiddenFor = null;
 
       function cancelInlineEdit() {
         if (!activeInlineEdit) return;
@@ -3645,12 +3647,54 @@
       // Reply functions
       function setReply(messageId, username, text) {
         // Keep full text in pendingReply; preview will show a friendly ellipsized snippet
+        // If we previously hid a reply button for another message, restore it
+        try {
+          if (replyButtonHiddenFor && replyButtonHiddenFor !== messageId) {
+            const prevRow = messagesDiv.querySelector(`[data-message-id="${replyButtonHiddenFor}"]`);
+            if (prevRow) {
+              const prevReplyBtn = prevRow.querySelector('button[title="Reply"]');
+              if (prevReplyBtn) {
+                prevReplyBtn.style.display = '';
+                prevReplyBtn.removeAttribute('data-reply-hidden');
+              }
+            }
+            replyButtonHiddenFor = null;
+          }
+        } catch (e) {}
+
         pendingReply = { messageId, username, text: (text || "") };
+        // Hide the reply button on the message being replied to so it doesn't remain active
+        try {
+          const row = messagesDiv.querySelector(`[data-message-id="${messageId}"]`);
+          if (row) {
+            const replyBtn = row.querySelector('button[title="Reply"]');
+            if (replyBtn) {
+              replyBtn.style.display = 'none';
+              replyBtn.setAttribute('data-reply-hidden', 'true');
+              replyButtonHiddenFor = messageId;
+            }
+          }
+        } catch (e) {}
         showReplyPreview();
         msgInput.focus();
       }
 
       function clearReply() {
+        // Restore any hidden reply button
+        try {
+          if (replyButtonHiddenFor) {
+            const row = messagesDiv.querySelector(`[data-message-id="${replyButtonHiddenFor}"]`);
+            if (row) {
+              const replyBtn = row.querySelector('button[title="Reply"]');
+              if (replyBtn && replyBtn.getAttribute('data-reply-hidden') === 'true') {
+                replyBtn.style.display = '';
+                replyBtn.removeAttribute('data-reply-hidden');
+              }
+            }
+            replyButtonHiddenFor = null;
+          }
+        } catch (e) {}
+
         pendingReply = null;
         hideReplyPreview();
       }
