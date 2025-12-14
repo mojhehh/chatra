@@ -670,17 +670,26 @@
         if (dmPageForm) {
           dmPageForm.addEventListener('submit', async (e) => {
             e.preventDefault();
-            if (!activeDMThread || !dmPageInput) return;
+            if (!activeDMThread || !dmPageInput || !activeDMTarget) return;
             const text = dmPageInput.value.trim();
             if (!text) return;
 
             try {
+              // Check privacy settings first
+              const privacyCheck = await checkDmPrivacy(activeDMTarget.uid);
+              if (!privacyCheck.allowed) {
+                if (dmPageError) dmPageError.textContent = privacyCheck.reason;
+                return;
+              }
+              
               // Use same path as existing DM system: dms/
               const msgRef = db.ref('dms/' + activeDMThread + '/messages').push();
               await msgRef.set({
                 text,
                 fromUid: currentUserId,
                 fromUsername: currentUsername,
+                toUid: activeDMTarget.uid,
+                toUsername: activeDMTarget.username || '',
                 time: firebase.database.ServerValue.TIMESTAMP
               });
               // Update inbox for both users
@@ -694,12 +703,18 @@
                   lastMsg: text,
                   lastTime: now
                 }).catch(() => {});
+                // Prevent local inbox listener from treating this as an incoming message
+                dmLastUpdateTimeByThread[activeDMThread] = now;
               }
               dmPageInput.value = '';
               if (dmPageError) dmPageError.textContent = '';
             } catch (err) {
               console.error('[DM] send error', err);
-              if (dmPageError) dmPageError.textContent = 'Failed to send message';
+              if (err.message && err.message.includes('PERMISSION_DENIED')) {
+                if (dmPageError) dmPageError.textContent = 'Cannot send message. User may have DMs disabled or you are not friends.';
+              } else {
+                if (dmPageError) dmPageError.textContent = 'Failed to send message';
+              }
             }
           });
         }
@@ -732,6 +747,8 @@
                   fromUsername: currentUsername,
                   time: firebase.database.ServerValue.TIMESTAMP
                 });
+                // Update local last-update time so our inbox listener doesn't treat this as incoming
+                dmLastUpdateTimeByThread[activeDMThread] = Date.now();
               }
             } catch (err) {
               console.error('[DM] media upload error', err);
@@ -1398,6 +1415,40 @@
           console.log("[friends] loaded", friendsCache.size, "friends into cache");
         } catch (err) {
           console.error("[friends] error loading friends cache:", err);
+        }
+      }
+
+      // Check if current user can DM target based on their privacy settings
+      // Returns { allowed: boolean, reason?: string }
+      async function checkDmPrivacy(targetUid) {
+        try {
+          const privacySnap = await db.ref("userPrivacy/" + targetUid).once("value");
+          const privacy = privacySnap.val() || {};
+          
+          // Handle legacy boolean allowDMs
+          if (privacy.allowDMs === false) {
+            return { allowed: false, reason: "This user is not accepting DMs." };
+          }
+          
+          // New dmPrivacy setting: 'anyone' (default), 'friends', 'none'
+          const dmPrivacy = privacy.dmPrivacy || 'anyone';
+          
+          if (dmPrivacy === 'none') {
+            return { allowed: false, reason: "This user has DMs disabled." };
+          }
+          
+          if (dmPrivacy === 'friends') {
+            // Check if we're friends with this user
+            const friendSnap = await db.ref("friends/" + targetUid + "/" + currentUserId).once("value");
+            if (!friendSnap.exists()) {
+              return { allowed: false, reason: "This user only accepts DMs from friends." };
+            }
+          }
+          
+          return { allowed: true };
+        } catch (err) {
+          console.error("[dm] privacy check error:", err);
+          return { allowed: true }; // Allow on error to not block legitimate DMs
         }
       }
 
@@ -2266,20 +2317,26 @@
       // This is best-effort: if rules prevent creating it, we'll log and continue.
       async function ensureTargetFriendRequestsIncoming(targetUid) {
         try {
-          // First ensure the parent /friendRequests/{uid} node exists
-          const parentRef = db.ref("friendRequests/" + targetUid);
-          const parentSnap = await parentRef.once("value");
-          if (!parentSnap.exists()) {
-            await parentRef.set({});
-            console.log("[init] auto-created friendRequests parent for target", targetUid);
-          }
-          
-          // Then ensure the /incoming child exists
-          const incomingRef = db.ref("friendRequests/" + targetUid + "/incoming");
-          const incomingSnap = await incomingRef.once("value");
-          if (!incomingSnap.exists()) {
-            await incomingRef.set({});
-            console.log("[init] auto-created friendRequests incoming for target", targetUid);
+          // Only attempt to create these paths if we're the target user.
+          // Creating other users' friendRequests nodes will usually be blocked by rules.
+          if (auth.currentUser && auth.currentUser.uid === targetUid) {
+            const parentRef = db.ref("friendRequests/" + targetUid);
+            const parentSnap = await parentRef.once("value");
+            if (!parentSnap.exists()) {
+              await parentRef.set({});
+              console.log("[init] auto-created friendRequests parent for target", targetUid);
+            }
+
+            // Then ensure the /incoming child exists
+            const incomingRef = db.ref("friendRequests/" + targetUid + "/incoming");
+            const incomingSnap = await incomingRef.once("value");
+            if (!incomingSnap.exists()) {
+              await incomingRef.set({});
+              console.log("[init] auto-created friendRequests incoming for target", targetUid);
+            }
+          } else {
+            // Not the target user — skip creating other users' nodes to avoid permission errors
+            console.log("[init] skipping auto-create friendRequests for other user:", targetUid);
           }
         } catch (err) {
           // Permission denied is common if rules disallow creating other users' nodes.
@@ -2295,11 +2352,17 @@
       // Ensure another user's /friends/{uid} path exists
       async function ensureTargetFriendsList(targetUid) {
         try {
-          const ref = db.ref("friends/" + targetUid);
-          const snap = await ref.once("value");
-          if (!snap.exists()) {
-            await ref.set({});
-            console.log("[init] auto-created friends list for target", targetUid);
+          // Only create another user's friends parent node if we're acting as that user.
+          // Creating friends/otherUid is disallowed by rules, so skip to avoid permission errors.
+          if (auth.currentUser && auth.currentUser.uid === targetUid) {
+            const ref = db.ref("friends/" + targetUid);
+            const snap = await ref.once("value");
+            if (!snap.exists()) {
+              await ref.set({});
+              console.log("[init] auto-created friends list for target", targetUid);
+            }
+          } else {
+            console.log("[init] skipping auto-create friends list for other user:", targetUid);
           }
         } catch (err) {
           logDetailedError("ensureTargetFriendsList", err, { targetUid });
@@ -2598,38 +2661,54 @@
         // Store rendered message elements by key for efficient updates
         const dmMessageElements = {};
 
-        // Listen for new messages
-        dmMessagesListener = dmMessagesRef
+        // Initial load: fetch recent messages first so we don't notify for historical messages
+        dmMessagesRef
           .orderByChild("time")
           .limitToLast(200)
-          .on("child_added", (snap) => {
-            const msg = snap.val();
-            if (!msg) return;
-            const key = snap.key;
-            // Render and store the element for later updates
-            const row = renderDmMessage(msg);
-            if (row && key) {
-              dmMessageElements[key] = row;
-            }
+          .once("value")
+          .then(snapshot => {
+            const msgs = [];
+            snapshot.forEach(child => msgs.push({ key: child.key, ...child.val() }));
+            msgs.forEach(m => {
+              const row = renderDmMessage(m);
+              if (row && m.key) dmMessageElements[m.key] = row;
+            });
+            // Scroll to bottom after initial render
+            if (dmMessages) dmMessages.scrollTop = dmMessages.scrollHeight;
 
-            // Update inbox and fire notification if new message from other user
-            if (activeDMTarget && msg.fromUid !== currentUserId && dmInboxInitialLoaded) {
-              const now = Date.now();
-              db.ref("dmInbox/" + currentUserId + "/" + threadId).update({
-                withUid: activeDMTarget.uid,
-                withUsername: activeDMTarget.username || activeDMTarget.uid,
-                lastMsg: msg.text,
-                lastTime: now
-              }).catch(() => {});
-              // Fire notification
-              const who = activeDMTarget.username || "Someone";
-              const preview = previewText(msg.text || "(no text)", 80);
-              addNotification("New DM", `${who}: ${preview}` , {
-                threadId: threadId,
-                withUid: activeDMTarget.uid,
-                withUsername: activeDMTarget.username,
-              });
-            }
+            // Determine lastTime to start listening for newer messages
+            const lastTime = msgs.length ? (msgs[msgs.length - 1].time || Date.now()) : Date.now();
+
+            // Now listen only for messages after lastTime to avoid historical notifications
+            dmPageMessagesListener = null; // not used here, but keep naming separate
+            dmMessagesListener = dmMessagesRef.orderByChild("time").startAt(lastTime + 1).on("child_added", (snap) => {
+              const msg = snap.val();
+              if (!msg) return;
+              const key = snap.key;
+              const row = renderDmMessage(msg);
+              if (row && key) dmMessageElements[key] = row;
+
+              // Update inbox and fire notification if new message from other user
+              if (activeDMTarget && msg.fromUid !== currentUserId && dmInboxInitialLoaded) {
+                const now = Date.now();
+                db.ref("dmInbox/" + currentUserId + "/" + threadId).update({
+                  withUid: activeDMTarget.uid,
+                  withUsername: activeDMTarget.username || activeDMTarget.uid,
+                  lastMsg: msg.text,
+                  lastTime: now
+                }).catch(() => {});
+                // Fire notification
+                const who = activeDMTarget.username || "Someone";
+                const preview = previewText(msg.text || "(no text)", 80);
+                addNotification("New DM", `${who}: ${preview}` , {
+                  threadId: threadId,
+                  withUid: activeDMTarget.uid,
+                  withUsername: activeDMTarget.username,
+                });
+              }
+            });
+          }).catch(err => {
+            console.error('[DM] error loading messages initial snapshot:', err);
           });
 
         // Listen for message edits (e.g., moderation replaces text)
@@ -2712,7 +2791,10 @@
           entries.forEach((item) => {
             const lastTime = item.lastTime || 0;
             const lastSeen = dmLastSeenByThread[item.threadId] || 0;
-            const isActiveThread = activeDMThread === item.threadId && dmModal.classList.contains("modal-open");
+            // Consider thread active if it's the active thread and either the DM modal is open or the DM page is visible
+            const dmPageEl = document.getElementById('dmPage');
+            const dmPageVisible = dmPageEl && !dmPageEl.classList.contains('hidden');
+            const isActiveThread = activeDMThread === item.threadId && (dmModal.classList.contains("modal-open") || dmPageVisible);
 
             // Mark active thread as seen
             if (isActiveThread && lastTime > lastSeen) {
@@ -2782,6 +2864,8 @@
             lastTime: now
           }).catch(() => {})
         ]);
+        // Prevent local inbox listener from treating this self-update as a new notification
+        dmLastUpdateTimeByThread[threadId] = now;
         
         startDmMessagesListener(threadId);
       }
@@ -2825,11 +2909,9 @@
             return;
           }
 
-          const allowSnap = await db
-            .ref("userPrivacy/" + targetUid + "/allowDMs")
-            .once("value");
-          if (allowSnap.exists() && allowSnap.val() === false) {
-            dmError.textContent = "This user is not accepting DMs.";
+          const privacyCheck = await checkDmPrivacy(targetUid);
+          if (!privacyCheck.allowed) {
+            dmError.textContent = privacyCheck.reason;
             return;
           }
           const threadId = await ensureDmThread(targetUid, target);
@@ -5542,7 +5624,7 @@
       const privacySettingsModal = document.getElementById("privacySettingsModal");
       const privacySettingsCloseBtn = document.getElementById("privacySettingsCloseBtn");
       const allowFriendRequestsToggle = document.getElementById("allowFriendRequestsToggle");
-      const allowDMsToggle = document.getElementById("allowDMsToggle");
+      const dmPrivacySelect = document.getElementById("dmPrivacySelect");
       const savePrivacyBtn = document.getElementById("savePrivacyBtn");
 
       // Open/Close Side Panel
@@ -5642,7 +5724,10 @@
           
           console.log("[privacy] loaded:", privacy);
           allowFriendRequestsToggle.checked = privacy.allowFriendRequests !== false;
-          allowDMsToggle.checked = privacy.allowDMs !== false;
+          // DM privacy: anyone (default), friends, none
+          if (dmPrivacySelect) {
+            dmPrivacySelect.value = privacy.dmPrivacy || 'anyone';
+          }
         } catch (err) {
           console.error("[privacy] error loading settings:", err);
         }
@@ -5663,7 +5748,7 @@
           console.log("[privacy] saving settings for uid:", uid);
           await db.ref("userPrivacy/" + uid).set({
             allowFriendRequests: allowFriendRequestsToggle.checked,
-            allowDMs: allowDMsToggle.checked,
+            dmPrivacy: dmPrivacySelect ? dmPrivacySelect.value : 'anyone',
             updatedAt: firebase.database.ServerValue.TIMESTAMP
           });
 
@@ -6103,11 +6188,11 @@
             dmMediaUploadBtn.disabled = true;
             dmSendBtn.disabled = true;
 
-            const allowSnap = await db
-              .ref("userPrivacy/" + activeDMTarget.uid + "/allowDMs")
-              .once("value");
-            if (allowSnap.exists() && allowSnap.val() === false) {
-              dmError.textContent = "This user is not accepting DMs.";
+            const privacyCheck = await checkDmPrivacy(activeDMTarget.uid);
+            if (!privacyCheck.allowed) {
+              dmError.textContent = privacyCheck.reason;
+              dmMediaUploadBtn.disabled = false;
+              dmSendBtn.disabled = false;
               return;
             }
 
@@ -6181,6 +6266,8 @@
                 .set(true)
                 .catch(() => {}),
             ]);
+            // Prevent our inbox listener from considering this local update as a new incoming message
+            dmLastUpdateTimeByThread[threadId] = now;
 
             dmInput.value = "";
             dmMediaInput.value = "";
@@ -6241,11 +6328,9 @@
         dmSendBtn.disabled = true;
 
         try {
-          const allowSnap = await db
-            .ref("userPrivacy/" + activeDMTarget.uid + "/allowDMs")
-            .once("value");
-          if (allowSnap.exists() && allowSnap.val() === false) {
-            dmError.textContent = "This user is not accepting DMs.";
+          const privacyCheck = await checkDmPrivacy(activeDMTarget.uid);
+          if (!privacyCheck.allowed) {
+            dmError.textContent = privacyCheck.reason;
             dmSendBtn.disabled = false;
             return;
           }
@@ -6284,7 +6369,8 @@
             db.ref("dmInbox/" + activeDMTarget.uid + "/" + threadId).set(theirInboxUpdate),
             db.ref("dms/" + threadId + "/participants/" + activeDMTarget.uid).set(true).catch(() => {})
           ]);
-
+          // Prevent our inbox listener from considering this local update as a new incoming message
+          dmLastUpdateTimeByThread[threadId] = now;
           dmInput.value = "";
           dmSendBtn.disabled = false;
         } catch (err) {
