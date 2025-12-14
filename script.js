@@ -4231,9 +4231,26 @@
           replyBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4"><path fill-rule="evenodd" d="M7.793 2.232a.75.75 0 0 1-.025 1.06L3.622 7.25h10.003a5.375 5.375 0 0 1 0 10.75H10.75a.75.75 0 0 1 0-1.5h2.875a3.875 3.875 0 0 0 0-7.75H3.622l4.146 3.957a.75.75 0 0 1-1.036 1.085l-5.5-5.25a.75.75 0 0 1 0-1.085l5.5-5.25a.75.75 0 0 1 1.06.025Z" clip-rule="evenodd"/></svg>';
           replyBtn.title = "Reply";
 
-          replyBtn.addEventListener("click", () => {
-            setReply(messageId, username, msg.text || "(media)");
-          });
+          // Touch-friendly handlers (iPad/Safari): dedupe touch->click and make visible on touch
+          (function() {
+            let touchFired = false;
+            replyBtn.addEventListener('touchstart', (e) => {
+              touchFired = true;
+              // ensure visible when touched (some CSS hides via hover)
+              replyBtn.style.opacity = '1';
+            }, { passive: true });
+            replyBtn.addEventListener('touchend', (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setReply(messageId, username, msg.text || "(media)");
+              // reset flag shortly after to allow normal clicks later
+              setTimeout(() => { touchFired = false; }, 500);
+            });
+            replyBtn.addEventListener('click', (e) => {
+              if (touchFired) return; // avoid duplicate action after touch
+              setReply(messageId, username, msg.text || "(media)");
+            });
+          })();
 
           bubbleContainer.appendChild(replyBtn);
         }
