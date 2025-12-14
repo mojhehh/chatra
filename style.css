@@ -384,7 +384,7 @@
 
       /* @Mention autocomplete dropdown */
       .mention-autocomplete {
-        position: fixed;
+        position: absolute; /* absolute to avoid iOS fixed-position quirks */
         left: auto;
         right: auto;
         top: auto;
