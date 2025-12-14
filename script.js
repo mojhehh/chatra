@@ -191,6 +191,37 @@
       let blockedUsersCache = new Set(); // Cache of blocked user UIDs
       let reportedMessages = new Set(); // locally-track reported message IDs to prevent duplicate reports
 
+      // @Mention system state
+      let mentionAutocomplete = null; // DOM element for autocomplete dropdown
+      let mentionUsers = new Map(); // Map of username -> { username, profilePic, uid }
+      let mentionSelectedIndex = 0;
+      let mentionQuery = "";
+      let mentionStartPos = -1;
+      // Track which mention message IDs we've already notified for (persist across refresh in sessionStorage)
+      let mentionNotified = new Set();
+
+      function loadMentionedNotifsFromStorage() {
+        try {
+          const raw = sessionStorage.getItem('mentions-notified');
+          if (raw) {
+            const arr = JSON.parse(raw);
+            mentionNotified = new Set(Array.isArray(arr) ? arr : []);
+          }
+        } catch (e) {
+          mentionNotified = new Set();
+        }
+      }
+
+      function markMentionNotified(id) {
+        try {
+          if (!id) return;
+          mentionNotified.add(id);
+          sessionStorage.setItem('mentions-notified', JSON.stringify(Array.from(mentionNotified)));
+        } catch (e) {
+          // ignore
+        }
+      }
+
       // Pagination / infinite scroll
       let PAGE_SIZE = 75; // default page size
       let FAST_MODE_ENABLED = false;
@@ -251,6 +282,329 @@
         }
         // Initial state - delay to let layout settle
         setTimeout(updateScrollToBottomBtn, 100);
+      }
+
+      // --- @MENTION SYSTEM ---
+      // Track users who have sent messages for mention suggestions
+      function trackUserForMentions(username, uid, profilePic = null) {
+        if (!username || username === currentUsername) return;
+        mentionUsers.set(username.toLowerCase(), { username, uid, profilePic });
+      }
+
+      // Load all users from database for mention suggestions
+      async function loadUsersForMentions() {
+        try {
+          const [usersSnap, profilesSnap] = await Promise.all([
+            db.ref("users").once("value"),
+            db.ref("userProfiles").once("value")
+          ]);
+          const allUsers = usersSnap.val() || {};
+          const allProfiles = profilesSnap.val() || {};
+          
+          Object.entries(allUsers).forEach(([uid, val]) => {
+            const uname = val?.username;
+            if (!uname || uid === currentUserId) return;
+            const prof = allProfiles[uid] || {};
+            mentionUsers.set(uname.toLowerCase(), { username: uname, uid, profilePic: prof.profilePic || null });
+          });
+          console.log("[mentions] loaded", mentionUsers.size, "users for mentions");
+        } catch (err) {
+          console.warn("[mentions] failed to load users for mentions", err);
+        }
+      }
+
+      // Get mention suggestions based on query
+      function getMentionSuggestions(query) {
+        const q = (query || "").toLowerCase();
+        const suggestions = [];
+        for (const [key, user] of mentionUsers) {
+          if (key.includes(q) || user.username.toLowerCase().includes(q)) {
+            suggestions.push(user);
+          }
+        }
+        console.debug(`[mentions] getMentionSuggestions q='${q}' -> ${suggestions.length} suggestions`);
+        // Sort by relevance (starts with query first, then alphabetically)
+        suggestions.sort((a, b) => {
+          const aStarts = a.username.toLowerCase().startsWith(q);
+          const bStarts = b.username.toLowerCase().startsWith(q);
+          if (aStarts && !bStarts) return -1;
+          if (!aStarts && bStarts) return 1;
+          return a.username.localeCompare(b.username);
+        });
+        return suggestions.slice(0, 8); // Max 8 suggestions
+      }
+
+      // Create/update the mention autocomplete dropdown
+      function showMentionAutocomplete(suggestions) {
+        console.debug('[mentions] showMentionAutocomplete suggestions=', suggestions && suggestions.length);
+        if (!mentionAutocomplete) {
+          mentionAutocomplete = document.createElement("div");
+          mentionAutocomplete.className = "mention-autocomplete";
+          mentionAutocomplete.id = "mentionAutocomplete";
+          // Always append to body to avoid clipping/overflow issues in parent containers
+          document.body.appendChild(mentionAutocomplete);
+          mentionAutocomplete.style.position = 'fixed';
+          mentionAutocomplete.style.display = 'none';
+        }
+
+        if (suggestions.length === 0) {
+          // Show a hint if we have no users to mention at all
+          if (mentionUsers.size === 0) {
+            mentionAutocomplete.innerHTML = `
+              <div class="mention-item" style="cursor: default; opacity: 0.7;">
+                <div class="mention-info">
+                  <div class="mention-username" style="color: #94a3b8;">No users to mention yet</div>
+                  <div class="mention-hint">Users will appear as they chat</div>
+                </div>
+              </div>
+            `;
+            mentionAutocomplete.style.display = "block";
+          } else {
+            hideMentionAutocomplete();
+          }
+          return;
+        }
+
+        mentionSelectedIndex = 0;
+        mentionAutocomplete.innerHTML = suggestions.map((user, i) => {
+          const initials = user.username.slice(0, 2).toUpperCase();
+          const avatarContent = user.profilePic 
+            ? `<img src="${escapeHtml(user.profilePic)}" alt="" onerror="this.parentElement.innerHTML='${initials}'">` 
+            : initials;
+          return `
+            <div class="mention-item ${i === 0 ? 'selected' : ''}" data-username="${escapeHtml(user.username)}" data-index="${i}">
+              <div class="mention-avatar">${avatarContent}</div>
+              <div class="mention-info">
+                <div class="mention-username">@${escapeHtml(user.username)}</div>
+                <div class="mention-hint">Click to mention</div>
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        mentionAutocomplete.style.display = "block";
+        // Debug: log where the element lives and its position
+        try {
+          const parentName = mentionAutocomplete.parentElement ? mentionAutocomplete.parentElement.tagName : 'null';
+          console.debug('[mentions] dropdown parent=', parentName, 'position=', mentionAutocomplete.style.position);
+        } catch (e) {}
+
+        // If we appended to body (fixed), position the dropdown near the input field
+        if (mentionAutocomplete.style.position === 'fixed' && msgInput) {
+          requestAnimationFrame(() => {
+            try {
+              const rect = msgInput.getBoundingClientRect();
+              // use input width and align left
+              // small offset so the box sits slightly left and above the input
+              const offsetX = -8; // move left
+              const offsetY = -6; // move up
+              mentionAutocomplete.style.left = (rect.left + offsetX) + 'px';
+              mentionAutocomplete.style.width = rect.width + 'px';
+              // Try to position above the input; if not enough space, put below
+              const h = mentionAutocomplete.offsetHeight || 180;
+              const topAbove = rect.top - h - 8 + offsetY;
+              if (topAbove >= 8) {
+                mentionAutocomplete.style.top = topAbove + 'px';
+              } else {
+                mentionAutocomplete.style.top = (rect.bottom + 8 + offsetY) + 'px';
+              }
+              console.debug('[mentions] positioned dropdown at', mentionAutocomplete.style.left, mentionAutocomplete.style.top, 'width', mentionAutocomplete.style.width);
+            } catch (e) {
+              // ignore positioning errors
+            }
+          });
+        }
+
+        // Add click handlers
+        mentionAutocomplete.querySelectorAll('.mention-item').forEach(item => {
+          item.addEventListener('click', () => {
+            selectMention(item.dataset.username);
+          });
+          item.addEventListener('mouseenter', () => {
+            mentionAutocomplete.querySelectorAll('.mention-item').forEach(el => el.classList.remove('selected'));
+            item.classList.add('selected');
+            mentionSelectedIndex = parseInt(item.dataset.index);
+          });
+        });
+      }
+
+      function hideMentionAutocomplete() {
+        if (mentionAutocomplete) {
+          mentionAutocomplete.style.display = "none";
+        }
+        mentionStartPos = -1;
+        mentionQuery = "";
+      }
+
+      function selectMention(username) {
+        if (!username || mentionStartPos < 0) return;
+        
+        const beforeMention = msgInput.value.slice(0, mentionStartPos);
+        const afterMention = msgInput.value.slice(msgInput.selectionStart);
+        
+        msgInput.value = beforeMention + '@' + username + ' ' + afterMention;
+        
+        // Set cursor position after the mention
+        const newPos = mentionStartPos + username.length + 2; // +2 for @ and space
+        msgInput.setSelectionRange(newPos, newPos);
+        msgInput.focus();
+        
+        hideMentionAutocomplete();
+      }
+
+      function updateMentionSelection(delta) {
+        if (!mentionAutocomplete || mentionAutocomplete.style.display === "none") return false;
+        
+        const items = mentionAutocomplete.querySelectorAll('.mention-item');
+        if (items.length === 0) return false;
+        
+        items[mentionSelectedIndex]?.classList.remove('selected');
+        mentionSelectedIndex = (mentionSelectedIndex + delta + items.length) % items.length;
+        items[mentionSelectedIndex]?.classList.add('selected');
+        items[mentionSelectedIndex]?.scrollIntoView({ block: 'nearest' });
+        
+        return true;
+      }
+
+      function confirmMentionSelection() {
+        if (!mentionAutocomplete || mentionAutocomplete.style.display === "none") return false;
+        
+        const selected = mentionAutocomplete.querySelector('.mention-item.selected');
+        if (selected) {
+          selectMention(selected.dataset.username);
+          return true;
+        }
+        return false;
+      }
+
+      // Notify user when they are mentioned
+      function notifyMention(msg) {
+        try {
+          const from = msg.user || 'Someone';
+          const snippet = previewText((msg.text || '').replace(/\s+/g, ' ').trim(), 120);
+
+          // Inline banner near the input
+          try {
+            const formWrapper = messageForm?.parentElement || document.body;
+            let existing = document.getElementById('mentionInlineBanner');
+            if (existing && existing.parentElement) existing.parentElement.removeChild(existing);
+
+            const banner = document.createElement('div');
+            banner.id = 'mentionInlineBanner';
+            banner.className = 'inline-report-anim mb-2 rounded-lg border border-amber-500/50 bg-amber-600/10 p-2 flex items-center gap-3 text-sm';
+            // If fast mode is enabled, omit the animated class on the name
+            const nameHtml = FAST_MODE_ENABLED ?
+              `<span style="font-weight:600;color:#f59e0b">${escapeHtml(from)}</span>` :
+              `<span class="mention-from">${escapeHtml(from)}</span>`;
+            banner.innerHTML = `<strong style="color:#f59e0b">Mentioned</strong> by ${nameHtml}: <span style="color:#f1f5f9">${escapeHtml(snippet)}</span>`;
+            // insert before messageForm
+            if (formWrapper && messageForm && formWrapper.contains(messageForm)) {
+              formWrapper.insertBefore(banner, messageForm);
+            } else {
+              document.body.appendChild(banner);
+            }
+
+            setTimeout(() => {
+              banner.classList.add('fade-out');
+              setTimeout(() => { if (banner.parentElement) banner.parentElement.removeChild(banner); }, 600);
+            }, 4000);
+          } catch (e) {}
+
+          // Browser notification
+          if ("Notification" in window && Notification.permission === 'granted') {
+            const n = new Notification(`${from} mentioned you`, { body: snippet });
+            n.onclick = () => window.focus();
+          }
+        } catch (err) {
+          console.warn('[mentions] notifyMention error', err);
+        }
+      }
+
+      // Parse @mentions in text and return HTML with highlighted mentions
+      function renderTextWithMentions(text, isMine = false) {
+        if (!text) return "";
+        
+        // Match @username pattern (letters, numbers, underscores, dashes)
+        const mentionRegex = /@([a-zA-Z0-9_-]{2,12})\b/g;
+        
+        let result = "";
+        let lastIndex = 0;
+        let match;
+        
+        while ((match = mentionRegex.exec(text)) !== null) {
+          // Add text before the mention
+          result += escapeHtml(text.slice(lastIndex, match.index));
+          
+          const mentionedUsername = match[1];
+          const isMe = mentionedUsername.toLowerCase() === (currentUsername || "").toLowerCase();
+          const mentionClass = isMe ? "mention-highlight mention-me" : "mention-highlight";
+          
+          result += `<span class="${mentionClass}" data-mention="${escapeHtml(mentionedUsername)}">@${escapeHtml(mentionedUsername)}</span>`;
+          
+          lastIndex = match.index + match[0].length;
+        }
+        
+        // Add remaining text
+        result += escapeHtml(text.slice(lastIndex));
+        
+        return result;
+      }
+
+      // Handle mention input detection
+      function handleMentionInput(e) {
+        const value = msgInput.value;
+        const cursorPos = msgInput.selectionStart;
+        
+        // Find the @ symbol before cursor
+        let atPos = -1;
+        for (let i = cursorPos - 1; i >= 0; i--) {
+          const char = value[i];
+          if (char === '@') {
+            // Check if @ is at start or after whitespace
+            if (i === 0 || /\s/.test(value[i - 1])) {
+              atPos = i;
+            }
+            break;
+          }
+          if (/\s/.test(char)) break; // Stop at whitespace
+        }
+        
+        if (atPos >= 0) {
+          mentionStartPos = atPos;
+          mentionQuery = value.slice(atPos + 1, cursorPos);
+
+          // Debugging info
+          console.debug('[mentions] handleMentionInput atPos=', atPos, 'cursorPos=', cursorPos, "query='"+mentionQuery+"'", 'mentionUsersSize=', mentionUsers.size);
+
+          // Only show suggestions if query is at least 0 char (we allow empty for full list)
+          const suggestions = getMentionSuggestions(mentionQuery);
+          console.debug('[mentions] suggestions returned=', suggestions.length);
+          showMentionAutocomplete(suggestions);
+        } else {
+          console.debug('[mentions] no @ before cursor (atPos=-1)');
+          hideMentionAutocomplete();
+        }
+      }
+
+      // Insert @mention at cursor position (for shift+click on username)
+      function insertMentionAtCursor(username) {
+        if (!username || !msgInput) return;
+        
+        const value = msgInput.value;
+        const cursorPos = msgInput.selectionStart;
+        
+        // Add space before @ if needed
+        const needsSpace = cursorPos > 0 && !/\s/.test(value[cursorPos - 1]);
+        const mention = (needsSpace ? ' ' : '') + '@' + username + ' ';
+        
+        const before = value.slice(0, cursorPos);
+        const after = value.slice(cursorPos);
+        
+        msgInput.value = before + mention + after;
+        
+        const newPos = cursorPos + mention.length;
+        msgInput.setSelectionRange(newPos, newPos);
+        msgInput.focus();
       }
 
       // --- INLINE REPORT UI ---
@@ -2351,9 +2705,9 @@
         
         const fetchPromise = (async () => {
           try {
-            // Set a timeout for the fetch
+            // Set a timeout for the fetch (8s for slow school iPad connections)
             const timeoutPromise = new Promise((_, reject) => 
-              setTimeout(() => reject(new Error("timeout")), 2000)
+              setTimeout(() => reject(new Error("timeout")), 8000)
             );
 
             const dataPromise = (async () => {
@@ -2422,45 +2776,38 @@
         avatarDiv.style.minWidth = "1.75rem";
         avatarDiv.style.minHeight = "1.75rem";
 
-        // Load profile picture async (non-blocking) with lazy loading support for GIFs
+        // Load profile picture async (non-blocking) - Safari/iPad compatible
         setTimeout(() => {
           fetchUserProfile(username).then(profile => {
             if (profile?.profilePic && avatarDiv.innerHTML.includes("svg")) {
               try {
                 const img = document.createElement("img");
-                const isGif = profile.profilePic.toLowerCase().includes('.gif');
-                
-                // Use lazy loading for GIFs and regular images
                 img.className = "h-full w-full object-cover";
-                img.onerror = () => {};
-                
-                if (isGif) {
-                  // Lazy load GIF when visible
-                  img.dataset.src = profile.profilePic;
-                  const observer = new IntersectionObserver((entries) => {
-                    entries.forEach(entry => {
-                      if (entry.isIntersecting && img.dataset.src) {
-                        img.src = img.dataset.src;
-                        delete img.dataset.src;
-                        observer.unobserve(img);
-                      }
-                    });
-                  }, { rootMargin: "50px" });
-                  observer.observe(img);
-                } else {
-                  img.src = profile.profilePic;
-                }
-                
-                avatarDiv.innerHTML = "";
-                avatarDiv.appendChild(img);
+                // Add crossorigin for Safari compatibility
+                img.crossOrigin = "anonymous";
+                img.onerror = () => {
+                  // On error, keep default avatar
+                  console.debug("[avatar] failed to load", profile.profilePic);
+                };
+                img.onload = () => {
+                  // Only replace avatar once image has loaded successfully
+                  if (avatarDiv.innerHTML.includes("svg") || avatarDiv.querySelector("img")?.src !== img.src) {
+                    avatarDiv.innerHTML = "";
+                    avatarDiv.appendChild(img);
+                  }
+                };
+                // Load directly without IntersectionObserver for Safari compatibility
+                img.src = profile.profilePic;
               } catch (e) {
                 // Silently ignore, keep default
+                console.debug("[avatar] error creating img", e);
               }
             }
-          }).catch(() => {
-            // Silently ignore fetch errors
+          }).catch((err) => {
+            // Log fetch errors for debugging on iPad
+            console.debug("[avatar] fetch error", err);
           });
-        }, 0);
+        }, 50);
 
         // Click to view profile
         avatarDiv.addEventListener("click", () => {
@@ -2477,16 +2824,26 @@
             "text-[10px] sm:text-xs text-slate-400 px-3 font-medium cursor-pointer hover:text-slate-300 transition-colors";
           if (isOwnerMessage) {
             const ownerBadge = '<span class="ml-1 text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-100 border border-amber-400/40">Owner</span>';
-            nameLabel.innerHTML = '<span class="inline-flex items-center gap-1">' + '<span>' + username + '</span>' + ownerBadge + '</span>';
+            nameLabel.innerHTML = '<span class="inline-flex items-center gap-1">' + '<span class="mention-insert" data-username="' + escapeHtml(username) + '">' + escapeHtml(username) + '</span>' + ownerBadge + '</span>';
           } else if (isStaffMessage) {
             const staffBadge = '<span class="ml-1 text-[9px] px-1.5 py-0.5 rounded-full bg-sky-500/15 text-sky-100 border border-sky-400/40">Co Owner</span>';
-            nameLabel.innerHTML = '<span class="inline-flex items-center gap-1">' + '<span>' + username + '</span>' + staffBadge + '</span>';
+            nameLabel.innerHTML = '<span class="inline-flex items-center gap-1">' + '<span class="mention-insert" data-username="' + escapeHtml(username) + '">' + escapeHtml(username) + '</span>' + staffBadge + '</span>';
           } else {
-            nameLabel.textContent = username;
+            nameLabel.innerHTML = '<span class="mention-insert" data-username="' + escapeHtml(username) + '">' + escapeHtml(username) + '</span>';
           }
-          nameLabel.addEventListener("click", () => {
-            viewUserProfile(username);
+          // Click to view profile (single click)
+          nameLabel.addEventListener("click", (e) => {
+            // If shift is held, insert @mention instead
+            if (e.shiftKey) {
+              e.preventDefault();
+              e.stopPropagation();
+              insertMentionAtCursor(username);
+            } else {
+              viewUserProfile(username);
+            }
           });
+          // Add title hint
+          nameLabel.title = "Click to view profile • Shift+Click to @mention";
           column.appendChild(nameLabel);
         } else {
           // Hide avatar for own messages
@@ -2656,12 +3013,79 @@
           }
         }
 
-        // Add text if present
+        // Add text if present (with @mention highlighting)
         if (msg.text) {
           const textSpan = document.createElement("span");
           textSpan.className = "message-text-reveal inline-block";
-          textSpan.textContent = msg.text;
+          // Render text with mentions highlighted
+          textSpan.innerHTML = renderTextWithMentions(msg.text, isMine);
+          
+          // Add click handlers for mentions
+          textSpan.querySelectorAll('.mention-highlight').forEach(mentionEl => {
+            mentionEl.addEventListener('click', (e) => {
+              e.stopPropagation();
+              const mentionedUser = mentionEl.dataset.mention;
+              if (mentionedUser) {
+                viewUserProfile(mentionedUser);
+              }
+            });
+          });
+          
           bubble.appendChild(textSpan);
+          // If this message mentions the current user, mark the whole bubble and notify
+          try {
+            if (currentUsername && !isMine) {
+              const lowered = (msg.text || '').toLowerCase();
+              if (lowered.includes('@' + currentUsername.toLowerCase())) {
+                bubble.classList.add('mentioned');
+                // Only notify once per message id (avoid repeat on refresh)
+                if (messageId) {
+                  if (!mentionNotified.has(messageId)) {
+                    notifyMention(msg);
+                    markMentionNotified(messageId);
+                  }
+                } else {
+                  // If no messageId available, show once (best-effort)
+                  notifyMention(msg);
+                }
+              }
+
+              // Persist mention records to the database when this client is the author
+              try {
+                if (messageId && msg.userId && currentUserId && msg.userId === currentUserId && msg.text) {
+                  // find all mentions in the message text
+                  const mentionRegex = /@([a-zA-Z0-9_-]{2,64})\b/g;
+                  let m;
+                  const written = [];
+                  while ((m = mentionRegex.exec(msg.text)) !== null) {
+                    const uname = m[1];
+                    const userEntry = mentionUsers.get(uname.toLowerCase());
+                    if (userEntry && userEntry.uid && userEntry.uid !== currentUserId) {
+                      const targetUid = userEntry.uid;
+                      const refPath = `mentions/${targetUid}/${messageId}`;
+                      // write a mention record (author must be the one writing)
+                      const payload = {
+                        sourceUid: msg.userId,
+                        sourceUsername: msg.user,
+                        messageId: messageId,
+                        time: Date.now(),
+                        messageText: msg.text || ''
+                      };
+                      try {
+                        db.ref(refPath).set(payload).catch((err) => {
+                          console.warn('[mentions] failed to write mention for', targetUid, err);
+                        });
+                        written.push(targetUid);
+                      } catch (e) {
+                        console.warn('[mentions] write error', e);
+                      }
+                    }
+                  }
+                  if (written.length) console.debug('[mentions] persisted mentions for', written);
+                }
+              } catch (e) {}
+            }
+          } catch (e) {}
         }
         
         bubbleContainer.appendChild(bubble);
@@ -2791,6 +3215,15 @@
         if (isMessageFromBlockedUser(msg)) {
           seenMessageKeys.add(key); // Mark as seen but don't render
           return;
+        }
+        
+        // Track user for @mention suggestions
+        if (msg.user && msg.userId) {
+          fetchUserProfile(msg.user).then(profile => {
+            trackUserForMentions(msg.user, msg.userId, profile?.profilePic);
+          }).catch(() => {
+            trackUserForMentions(msg.user, msg.userId, null);
+          });
         }
         
         seenMessageKeys.add(key);
@@ -3315,13 +3748,49 @@
         typingTimeoutId = setTimeout(() => {
           setTyping(false);
         }, 1500);
+        
+        // Handle @mention autocomplete
+        handleMentionInput();
       });
 
-      // Escape to cancel reply
+      // Keyboard navigation for mentions and other shortcuts
       msgInput.addEventListener("keydown", (e) => {
+        // Handle mention autocomplete navigation
+        if (mentionAutocomplete && mentionAutocomplete.style.display !== "none") {
+          if (e.key === "ArrowDown") {
+            e.preventDefault();
+            updateMentionSelection(1);
+            return;
+          }
+          if (e.key === "ArrowUp") {
+            e.preventDefault();
+            updateMentionSelection(-1);
+            return;
+          }
+          if (e.key === "Enter" || e.key === "Tab") {
+            if (confirmMentionSelection()) {
+              e.preventDefault();
+              return;
+            }
+          }
+          if (e.key === "Escape") {
+            e.preventDefault();
+            hideMentionAutocomplete();
+            return;
+          }
+        }
+        
+        // Escape to cancel reply
         if (e.key === "Escape" && pendingReply) {
           e.preventDefault();
           clearReply();
+        }
+      });
+
+      // Hide mention autocomplete when clicking outside
+      document.addEventListener("click", (e) => {
+        if (mentionAutocomplete && !mentionAutocomplete.contains(e.target) && e.target !== msgInput) {
+          hideMentionAutocomplete();
         }
       });
 
@@ -3420,6 +3889,11 @@
             startMessagesListener();
             startTypingListener();
             await loadFriendsCache();
+            
+            // Load users for @mention autocomplete
+            loadUsersForMentions();
+            // Load which mentions we've already notified for (so refresh doesn't re-show)
+            loadMentionedNotifsFromStorage();
 
             // Moderation hooks
             checkAdmin();
@@ -5376,18 +5850,23 @@
               viewProfileBanner.style.backgroundImage = "";
             }
 
-            // Picture
+            // Picture - Safari/iPad compatible loading
             if (profile?.profilePic) {
               try {
-                viewProfilePic.innerHTML = "";
                 const img = document.createElement("img");
-                img.src = profile.profilePic;
                 img.className = "h-full w-full object-cover rounded-full";
+                img.crossOrigin = "anonymous";
                 img.onerror = () => {
+                  console.debug("[viewProfile] img load error, showing default");
                   setDefaultProfileIcon(viewProfilePic, 64);
                 };
-                viewProfilePic.appendChild(img);
+                img.onload = () => {
+                  viewProfilePic.innerHTML = "";
+                  viewProfilePic.appendChild(img);
+                };
+                img.src = profile.profilePic;
               } catch (e) {
+                console.debug("[viewProfile] error creating img", e);
                 setDefaultProfileIcon(viewProfilePic, 64);
               }
             } else {
