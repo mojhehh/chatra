@@ -2030,6 +2030,9 @@
 
       let activeInlineEdit = null; // { messageId, container, textEl }
 
+      // Reply state
+      let pendingReply = null; // { messageId, username, text }
+
       function cancelInlineEdit() {
         if (!activeInlineEdit) return;
         const { container, textEl } = activeInlineEdit;
@@ -2040,6 +2043,68 @@
           textEl.classList.remove("hidden");
         }
         activeInlineEdit = null;
+      }
+
+      // Reply functions
+      function setReply(messageId, username, text) {
+        pendingReply = { messageId, username, text: (text || "").slice(0, 100) };
+        showReplyPreview();
+        msgInput.focus();
+      }
+
+      function clearReply() {
+        pendingReply = null;
+        hideReplyPreview();
+      }
+
+      function showReplyPreview() {
+        let replyPreviewEl = document.getElementById("replyPreview");
+        if (!replyPreviewEl) {
+          replyPreviewEl = document.createElement("div");
+          replyPreviewEl.id = "replyPreview";
+          replyPreviewEl.className = "px-3 py-2 bg-slate-800 border-t border-slate-700 flex items-center gap-2";
+          const messageForm = document.getElementById("messageForm");
+          messageForm.parentElement.insertBefore(replyPreviewEl, messageForm);
+        }
+        if (pendingReply) {
+          replyPreviewEl.innerHTML = `
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2 text-xs text-sky-400 font-medium">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-3 h-3"><path fill-rule="evenodd" d="M6.232 2.186a.75.75 0 0 1-.02.848L3.347 6.75h9.028a3.375 3.375 0 0 1 0 6.75H10.5a.75.75 0 0 1 0-1.5h1.875a1.875 1.875 0 0 0 0-3.75H3.347l2.865 3.716a.75.75 0 1 1-1.19.914l-4-5.19a.75.75 0 0 1 0-.915l4-5.19a.75.75 0 0 1 .848-.203.75.75 0 0 1 .362.604Z" clip-rule="evenodd"/></svg>
+                Replying to <span class="text-slate-100">${escapeHtml(pendingReply.username)}</span>
+              </div>
+              <p class="text-xs text-slate-400 truncate mt-0.5">${escapeHtml(pendingReply.text)}</p>
+            </div>
+            <button type="button" id="cancelReplyBtn" class="p-1 hover:bg-slate-700 rounded-lg transition-colors text-slate-400 hover:text-white" title="Cancel reply">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+          `;
+          replyPreviewEl.classList.remove("hidden");
+          document.getElementById("cancelReplyBtn").addEventListener("click", clearReply);
+        }
+      }
+
+      function hideReplyPreview() {
+        const replyPreviewEl = document.getElementById("replyPreview");
+        if (replyPreviewEl) {
+          replyPreviewEl.classList.add("hidden");
+        }
+      }
+
+      function escapeHtml(str) {
+        if (!str) return "";
+        return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+      }
+
+      function scrollToMessage(messageId) {
+        const row = messagesDiv.querySelector(`[data-message-id="${messageId}"]`);
+        if (row) {
+          row.scrollIntoView({ behavior: "smooth", block: "center" });
+          row.classList.add("ring-2", "ring-sky-500", "ring-opacity-75");
+          setTimeout(() => {
+            row.classList.remove("ring-2", "ring-sky-500", "ring-opacity-75");
+          }, 2000);
+        }
       }
 
       async function editMessage(messageId, currentText) {
@@ -2297,6 +2362,27 @@
         bubble.style.display = "inline-block";
         bubble.style.maxWidth = "100%";
 
+        // Add reply preview if this message is a reply
+        if (msg.replyTo && msg.replyTo.messageId) {
+          const replyPreview = document.createElement("div");
+          replyPreview.className = "reply-preview mb-2 px-2 py-1.5 rounded-lg cursor-pointer transition-colors " + 
+            (isMine 
+              ? "bg-sky-400/20 border-l-2 border-sky-300 hover:bg-sky-400/30" 
+              : "bg-slate-600/50 border-l-2 border-slate-400 hover:bg-slate-600/70");
+          replyPreview.innerHTML = `
+            <div class="flex items-center gap-1 text-[10px] ${isMine ? 'text-sky-200' : 'text-slate-300'} font-medium">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-3 h-3"><path fill-rule="evenodd" d="M6.232 2.186a.75.75 0 0 1-.02.848L3.347 6.75h9.028a3.375 3.375 0 0 1 0 6.75H10.5a.75.75 0 0 1 0-1.5h1.875a1.875 1.875 0 0 0 0-3.75H3.347l2.865 3.716a.75.75 0 1 1-1.19.914l-4-5.19a.75.75 0 0 1 0-.915l4-5.19a.75.75 0 0 1 .848-.203.75.75 0 0 1 .362.604Z" clip-rule="evenodd"/></svg>
+              ${escapeHtml(msg.replyTo.username || "Unknown")}
+            </div>
+            <p class="text-[11px] ${isMine ? 'text-sky-100/80' : 'text-slate-400'} truncate mt-0.5">${escapeHtml(msg.replyTo.text || "(message)")}</p>
+          `;
+          replyPreview.addEventListener("click", (e) => {
+            e.stopPropagation();
+            scrollToMessage(msg.replyTo.messageId);
+          });
+          bubble.appendChild(replyPreview);
+        }
+
         // Add media if present (image or video)
         if (msg.media) {
           const mediaUrl = msg.media;
@@ -2466,6 +2552,20 @@
           });
           
           bubbleContainer.appendChild(reportBtn);
+        }
+
+        // Add reply button on all messages
+        if (messageId) {
+          const replyBtn = document.createElement("button");
+          replyBtn.className = "absolute bottom-0 " + (isMine ? "left-0 -translate-x-1/2" : "right-0 translate-x-1/2") + " translate-y-1/2 z-10 w-7 h-7 rounded-full bg-slate-700 text-white opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center hover:bg-sky-600 shadow-md border border-slate-500";
+          replyBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4"><path fill-rule="evenodd" d="M7.793 2.232a.75.75 0 0 1-.025 1.06L3.622 7.25h10.003a5.375 5.375 0 0 1 0 10.75H10.75a.75.75 0 0 1 0-1.5h2.875a3.875 3.875 0 0 0 0-7.75H3.622l4.146 3.957a.75.75 0 0 1-1.036 1.085l-5.5-5.25a.75.75 0 0 1 0-1.085l5.5-5.25a.75.75 0 0 1 1.06.025Z" clip-rule="evenodd"/></svg>';
+          replyBtn.title = "Reply";
+
+          replyBtn.addEventListener("click", () => {
+            setReply(messageId, username, msg.text || "(media)");
+          });
+
+          bubbleContainer.appendChild(replyBtn);
         }
 
         // Admin delete button for other users' messages
@@ -3043,6 +3143,14 @@
         }, 1500);
       });
 
+      // Escape to cancel reply
+      msgInput.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && pendingReply) {
+          e.preventDefault();
+          clearReply();
+        }
+      });
+
       // Auto-handle already logged-in users on page load
       auth.onAuthStateChanged(async (user) => {
         console.log(
@@ -3360,6 +3468,15 @@
           time: firebase.database.ServerValue.TIMESTAMP,
         };
 
+        // Add reply data if replying
+        if (pendingReply) {
+          messageData.replyTo = {
+            messageId: pendingReply.messageId,
+            username: pendingReply.username,
+            text: pendingReply.text,
+          };
+        }
+
         // Add media if present
         if (pendingMediaUrl) {
           messageData.media = pendingMediaUrl;
@@ -3388,6 +3505,9 @@
               mediaPreview.classList.add("hidden");
               mediaPreviewContent.innerHTML = "";
             }
+
+            // Clear reply
+            clearReply();
 
             // Stop typing once message is sent
             setTyping(false);
