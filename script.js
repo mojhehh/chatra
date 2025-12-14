@@ -360,7 +360,7 @@
           mentionAutocomplete.id = "mentionAutocomplete";
           // Always append to body to avoid clipping/overflow issues in parent containers
           document.body.appendChild(mentionAutocomplete);
-          mentionAutocomplete.style.position = 'fixed';
+          mentionAutocomplete.style.position = 'absolute';
           mentionAutocomplete.style.display = 'none';
           mentionAutocomplete.style.zIndex = '99999'; // Ensure highest z-index for iPad Safari
         }
@@ -407,30 +407,32 @@
           console.debug('[mentions] dropdown parent=', parentName, 'position=', mentionAutocomplete.style.position);
         } catch (e) {}
 
-        // If we appended to body (fixed), position the dropdown near the input field
-        if (mentionAutocomplete.style.position === 'fixed' && msgInput) {
+        // Position the dropdown near the input field (absolute, with scroll offsets for iPad Safari)
+        if (mentionAutocomplete && msgInput) {
           requestAnimationFrame(() => {
             try {
               const rect = msgInput.getBoundingClientRect();
               const viewportW = window.innerWidth || document.documentElement.clientWidth;
               const viewportH = window.innerHeight || document.documentElement.clientHeight;
+              const scrollX = window.pageXOffset || document.documentElement.scrollLeft || 0;
+              const scrollY = window.pageYOffset || document.documentElement.scrollTop || 0;
 
               // Width: at least 220px, otherwise match input width
               const width = Math.max(rect.width, 220);
               mentionAutocomplete.style.width = width + 'px';
 
               // Horizontal position: clamp to viewport with 8px padding
-              const rawLeft = rect.left;
-              const maxLeft = viewportW - width - 8;
-              const clampedLeft = Math.max(8, Math.min(rawLeft, maxLeft));
+              const rawLeft = rect.left + scrollX;
+              const maxLeft = viewportW + scrollX - width - 8;
+              const clampedLeft = Math.max(scrollX + 8, Math.min(rawLeft, maxLeft));
               mentionAutocomplete.style.left = clampedLeft + 'px';
 
               // Vertical position: prefer below, fall back to above if not enough room
               const h = mentionAutocomplete.offsetHeight || 200;
-              const belowTop = rect.bottom + 6;
-              const aboveTop = rect.top - h - 6;
-              const fitsBelow = belowTop + h <= viewportH - 6;
-              const fitsAbove = aboveTop >= 6;
+              const belowTop = rect.bottom + scrollY + 6;
+              const aboveTop = rect.top + scrollY - h - 6;
+              const fitsBelow = belowTop + h <= viewportH + scrollY - 6;
+              const fitsAbove = aboveTop >= scrollY + 6;
               if (fitsBelow || !fitsAbove) {
                 mentionAutocomplete.style.top = belowTop + 'px';
               } else {
