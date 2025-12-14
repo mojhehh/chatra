@@ -412,19 +412,29 @@
           requestAnimationFrame(() => {
             try {
               const rect = msgInput.getBoundingClientRect();
-              // use input width and align left
-              // small offset so the box sits slightly left and above the input
-              const offsetX = -8; // move left
-              const offsetY = -6; // move up
-              mentionAutocomplete.style.left = (rect.left + offsetX) + 'px';
-              mentionAutocomplete.style.width = rect.width + 'px';
-              // Try to position above the input; if not enough space, put below
-              const h = mentionAutocomplete.offsetHeight || 180;
-              const topAbove = rect.top - h - 8 + offsetY;
-              if (topAbove >= 8) {
-                mentionAutocomplete.style.top = topAbove + 'px';
+              const viewportW = window.innerWidth || document.documentElement.clientWidth;
+              const viewportH = window.innerHeight || document.documentElement.clientHeight;
+
+              // Width: at least 220px, otherwise match input width
+              const width = Math.max(rect.width, 220);
+              mentionAutocomplete.style.width = width + 'px';
+
+              // Horizontal position: clamp to viewport with 8px padding
+              const rawLeft = rect.left;
+              const maxLeft = viewportW - width - 8;
+              const clampedLeft = Math.max(8, Math.min(rawLeft, maxLeft));
+              mentionAutocomplete.style.left = clampedLeft + 'px';
+
+              // Vertical position: prefer below, fall back to above if not enough room
+              const h = mentionAutocomplete.offsetHeight || 200;
+              const belowTop = rect.bottom + 6;
+              const aboveTop = rect.top - h - 6;
+              const fitsBelow = belowTop + h <= viewportH - 6;
+              const fitsAbove = aboveTop >= 6;
+              if (fitsBelow || !fitsAbove) {
+                mentionAutocomplete.style.top = belowTop + 'px';
               } else {
-                mentionAutocomplete.style.top = (rect.bottom + 8 + offsetY) + 'px';
+                mentionAutocomplete.style.top = aboveTop + 'px';
               }
               console.debug('[mentions] positioned dropdown at', mentionAutocomplete.style.left, mentionAutocomplete.style.top, 'width', mentionAutocomplete.style.width);
             } catch (e) {
