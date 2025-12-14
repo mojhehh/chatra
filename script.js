@@ -239,6 +239,631 @@
         }
       }
 
+      // === PAGE NAVIGATION (Global Chat <-> DMs) ===
+      let currentPage = 'global'; // 'global' or 'dms'
+      let dmPageMessagesRef = null;
+      let dmPageMessagesListener = null;
+
+      function switchToPage(page) {
+        currentPage = page;
+        const chatInterface = document.getElementById('chatInterface');
+        const dmPage = document.getElementById('dmPage');
+        
+        // Nav buttons in both headers
+        const navGlobal = document.getElementById('navGlobalChat');
+        const navDMs = document.getElementById('navDMs');
+        const navGlobal2 = document.getElementById('navGlobalChat2');
+        const navDMs2 = document.getElementById('navDMs2');
+        
+        if (page === 'global') {
+          // Show Global Chat, hide DMs
+          if (chatInterface) chatInterface.classList.remove('hidden');
+          if (dmPage) dmPage.classList.add('hidden');
+          
+          // Update active states
+          navGlobal?.classList.add('active');
+          navDMs?.classList.remove('active');
+          navGlobal2?.classList.add('active');
+          navDMs2?.classList.remove('active');
+        } else if (page === 'dms') {
+          // Hide Global Chat, show DMs
+          if (chatInterface) chatInterface.classList.add('hidden');
+          if (dmPage) dmPage.classList.remove('hidden');
+          
+          // Update active states
+          navGlobal?.classList.remove('active');
+          navDMs?.classList.add('active');
+          navGlobal2?.classList.remove('active');
+          navDMs2?.classList.add('active');
+          
+          // Initialize DM page
+          initDmPage();
+        }
+      }
+
+      function initDmPage() {
+        // Set username in DM page header
+        const dmPageUserLabel = document.getElementById('dmPageUserLabel');
+        if (dmPageUserLabel && currentUsername) {
+          dmPageUserLabel.textContent = currentUsername;
+        }
+        // Ensure inbox listener exists (re-attach if modal closed detached it)
+        if (!dmInboxRef) {
+          loadDmInbox().catch(() => {});
+        }
+        // Load conversations
+        loadDmPageConversations();
+      }
+
+      function loadDmPageConversations() {
+        const listEl = document.getElementById('dmPageConversationList');
+        if (!listEl || !currentUserId) return;
+
+        if (!dmInboxRef) {
+          listEl.innerHTML = '<p class="text-xs text-slate-500 text-center py-4">No conversations yet</p>';
+          return;
+        }
+
+        dmInboxRef.once('value').then(async snap => {
+          const data = snap.val() || {};
+          let threads = Object.entries(data)
+            .map(([threadId, info]) => ({ threadId, ...info }));
+
+          if (threads.length === 0) {
+            listEl.innerHTML = '<p class="text-xs text-slate-500 text-center py-4">No conversations yet</p>';
+            return;
+          }
+
+          // Fetch message counts for better sorting (most talked to first)
+          const threadPromises = threads.map(async thread => {
+            try {
+              // Use same path as existing DM system: dms/
+              const msgSnap = await db.ref('dms/' + thread.threadId + '/messages').once('value');
+              thread.messageCount = msgSnap.numChildren() || 0;
+            } catch (e) {
+              thread.messageCount = 0;
+            }
+            return thread;
+          });
+          
+          threads = await Promise.all(threadPromises);
+          
+          // Sort by: most recent activity first (use lastTime from existing system), then by message count
+          threads.sort((a, b) => {
+            // Primary: most recent activity (existing system uses lastTime)
+            const timeDiff = (b.lastTime || b.lastUpdate || 0) - (a.lastTime || a.lastUpdate || 0);
+            if (timeDiff !== 0) return timeDiff;
+            // Secondary: most messages
+            return (b.messageCount || 0) - (a.messageCount || 0);
+          });
+
+          listEl.innerHTML = '';
+          threads.forEach(thread => {
+            const row = document.createElement('div');
+            row.className = 'flex items-center gap-3 p-3 rounded-lg hover:bg-slate-800/50 cursor-pointer transition-colors' +
+              (activeDMThread === thread.threadId ? ' bg-slate-800/70' : '');
+
+            // Try to get display name from various possible fields (existing system uses withUsername)
+            let displayName = thread.withUsername || thread.displayName || thread.otherUsername || 'Unknown';
+            let profilePic = thread.profilePic || null;
+            const otherUid = thread.withUid || thread.otherUid || null;
+
+            // Avatar
+            const avatar = document.createElement('div');
+            avatar.className = 'w-12 h-12 rounded-full bg-gradient-to-br from-sky-500 to-sky-600 flex items-center justify-center text-white text-sm font-bold flex-shrink-0 overflow-hidden';
+            if (profilePic) {
+              const img = document.createElement('img');
+              img.src = profilePic;
+              img.className = 'w-full h-full object-cover';
+              img.onerror = () => { avatar.textContent = displayName.slice(0,2).toUpperCase(); };
+              avatar.appendChild(img);
+            } else {
+              avatar.textContent = displayName !== 'Unknown' ? displayName.slice(0,2).toUpperCase() : '?';
+            }
+
+            // Info
+            const info = document.createElement('div');
+            info.className = 'flex-1 min-w-0';
+            const title = document.createElement('p');
+            title.className = 'text-sm font-medium text-slate-100 truncate';
+            title.textContent = displayName;
+            const excerpt = document.createElement('p');
+            excerpt.className = 'text-xs text-slate-400 truncate';
+            // Existing system uses lastMsg for the preview text
+            excerpt.textContent = thread.lastMsg || '';
+            info.appendChild(title);
+            info.appendChild(excerpt);
+
+            row.appendChild(avatar);
+            row.appendChild(info);
+
+            // Click/touch to open thread
+            row.addEventListener('click', () => openDmPageThread(otherUid, displayName, thread.threadId));
+            row.addEventListener('touchend', (e) => { e.preventDefault(); openDmPageThread(otherUid, displayName, thread.threadId); });
+
+            // Try to fetch better info if missing
+            if (otherUid && (!displayName || displayName === 'Unknown' || !profilePic)) {
+              db.ref('users/' + otherUid).once('value').then(userSnap => {
+                const user = userSnap.val() || {};
+                if (displayName === 'Unknown' && (user.displayName || user.username)) {
+                  title.textContent = user.displayName || user.username;
+                }
+              }).catch(() => {});
+              db.ref('userProfiles/' + otherUid).once('value').then(profSnap => {
+                const prof = profSnap.val() || {};
+                if (prof.profilePic && !profilePic) {
+                  avatar.innerHTML = '';
+                  const img = document.createElement('img');
+                  img.src = prof.profilePic;
+                  img.className = 'w-full h-full object-cover';
+                  avatar.appendChild(img);
+                }
+              }).catch(() => {});
+            }
+
+            listEl.appendChild(row);
+          });
+        }).catch(() => {
+          listEl.innerHTML = '<p class="text-xs text-slate-500 text-center py-4">No conversations yet</p>';
+        });
+      }
+
+      function openDmPageThread(otherUid, otherUsername, threadId) {
+        activeDMThread = threadId;
+        activeDMTarget = { uid: otherUid, username: otherUsername };
+
+        const activeUserEl = document.getElementById('dmPageActiveUser');
+        const blockBtn = document.getElementById('dmPageBlockBtn');
+        const messagesEl = document.getElementById('dmPageMessages');
+
+        if (activeUserEl) activeUserEl.textContent = otherUsername || 'Unknown';
+        if (blockBtn) blockBtn.classList.remove('hidden');
+        if (messagesEl) messagesEl.innerHTML = '';
+
+        // Mark this thread as seen / recently viewed in the inbox so ordering updates live
+        try {
+          const now = Date.now();
+          if (currentUserId && threadId) {
+            db.ref('dmInbox/' + currentUserId + '/' + threadId).update({
+              withUid: otherUid || null,
+              withUsername: otherUsername || null,
+              lastTime: now
+            }).catch(() => {});
+            // Track last seen time locally
+            dmLastSeenByThread[threadId] = now;
+          }
+        } catch (e) {
+          // ignore update errors
+        }
+
+        // Refresh conversation list UI to reflect new ordering
+        loadDmPageConversations();
+
+        // Start listening to messages
+        startDmPageMessagesListener(threadId);
+      }
+
+      function startDmPageMessagesListener(threadId) {
+        console.log('[DM Page] startDmPageMessagesListener called with threadId:', threadId);
+        
+        // Detach old listener
+        if (dmPageMessagesRef && dmPageMessagesListener) {
+          dmPageMessagesRef.off('child_added', dmPageMessagesListener);
+          dmPageMessagesRef = null;
+          dmPageMessagesListener = null;
+        }
+
+        const messagesEl = document.getElementById('dmPageMessages');
+        if (!messagesEl) {
+          console.error('[DM Page] messagesEl not found!');
+          return;
+        }
+        
+        if (!threadId) {
+          console.error('[DM Page] No threadId provided!');
+          return;
+        }
+
+        // Clear messages first
+        messagesEl.innerHTML = '<p class="text-xs text-slate-500 text-center py-4">Loading messages...</p>';
+
+        // Use same path as existing DM system: dms/ not directMessages/
+        const msgPath = 'dms/' + threadId + '/messages';
+        console.log('[DM Page] Listening to:', msgPath);
+        
+        dmPageMessagesRef = db.ref(msgPath);
+        
+        // First load existing messages
+        dmPageMessagesRef.orderByChild('time').limitToLast(100).once('value').then(snapshot => {
+          messagesEl.innerHTML = '';
+          const messages = [];
+          snapshot.forEach(childSnap => {
+            messages.push({ key: childSnap.key, ...childSnap.val() });
+          });
+          console.log('[DM Page] Loaded', messages.length, 'messages');
+          
+          messages.forEach(msg => {
+            renderDmPageMessage(msg, messagesEl);
+          });
+          
+          messagesEl.scrollTop = messagesEl.scrollHeight;
+          
+          // Now listen for new messages
+          dmPageMessagesListener = dmPageMessagesRef.orderByChild('time').limitToLast(1).on('child_added', snap => {
+            const msg = snap.val();
+            if (!msg) return;
+            // Check if already rendered
+            if (messagesEl.querySelector(`[data-msg-key="${snap.key}"]`)) return;
+            renderDmPageMessage({ key: snap.key, ...msg }, messagesEl);
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+          });
+        }).catch(err => {
+          console.error('[DM Page] Error loading messages:', err);
+          messagesEl.innerHTML = '<p class="text-xs text-red-400 text-center py-4">Error loading messages</p>';
+        });
+      }
+      
+      function renderDmPageMessage(msg, messagesEl) {
+        if (!msg) return;
+        
+        const isMine = msg.fromUid === currentUserId;
+        const row = document.createElement('div');
+        row.className = isMine ? 'flex justify-end px-2' : 'flex justify-start px-2';
+        row.dataset.msgKey = msg.key || '';
+
+        const bubbleWrapper = document.createElement('div');
+        bubbleWrapper.className = 'relative group max-w-[80%]';
+
+        const bubble = document.createElement('div');
+        bubble.className = `message-bubble-anim px-4 py-2 rounded-2xl text-sm border ${
+          isMine
+            ? 'mine bg-gradient-to-r from-sky-500 to-blue-600 text-white border-sky-600 shadow-lg shadow-sky-900/40'
+            : 'bg-slate-800/90 text-slate-100 border-slate-700'
+        }`;
+
+        // Add media if present
+        if (msg.media) {
+          const mediaUrl = msg.media;
+          const lower = (mediaUrl || '').toLowerCase();
+          const isVideo = lower.includes('.mp4') || lower.includes('.mov') || lower.includes('.webm') || lower.includes('video');
+          const isGif = isGifUrl(mediaUrl);
+
+          if (isVideo) {
+            const video = document.createElement('video');
+            video.src = mediaUrl;
+            video.controls = true;
+            video.className = 'w-full rounded-lg mb-2';
+            video.setAttribute('playsinline', '');
+            video.setAttribute('webkit-playsinline', '');
+            bubble.appendChild(video);
+          } else {
+            const img = document.createElement('img');
+            img.src = mediaUrl;
+            img.className = 'w-full rounded-lg mb-2 cursor-pointer';
+            img.onclick = () => openImageViewer(mediaUrl);
+            // GIF replay button
+            if (isGif) {
+              const wrapper = document.createElement('div');
+              wrapper.className = 'relative';
+              wrapper.appendChild(img);
+              const replayBtn = document.createElement('button');
+              replayBtn.className = 'absolute bottom-3 right-3 bg-black/60 hover:bg-black/80 text-white text-xs px-2 py-1 rounded';
+              replayBtn.textContent = '↻ GIF';
+              replayBtn.onclick = (e) => { e.stopPropagation(); replayGif(img); };
+              wrapper.appendChild(replayBtn);
+              bubble.appendChild(wrapper);
+            } else {
+              bubble.appendChild(img);
+            }
+          }
+        }
+
+        // Add text
+        if (msg.text) {
+          const textEl = document.createElement('span');
+          textEl.className = 'message-text-reveal';
+          textEl.textContent = msg.text;
+          bubble.appendChild(textEl);
+        }
+
+        bubbleWrapper.appendChild(bubble);
+
+        // Own actions: delete + edit (positioned inside bubble area)
+        if (isMine && msg.key) {
+          const deleteBtn = document.createElement('button');
+          deleteBtn.className = 'absolute -top-2 -right-2 z-10 w-6 h-6 rounded-full bg-slate-700 text-white opacity-60 sm:opacity-0 sm:group-hover:opacity-100 transition-all flex items-center justify-center hover:bg-red-600 active:bg-red-600 shadow-md border border-slate-500 text-xs';
+          deleteBtn.innerHTML = '🗑️';
+          deleteBtn.title = 'Delete message';
+          deleteBtn.addEventListener('click', () => {
+            openDeleteMessageModal(msg.key, msg.deleteToken, { isDm: true, threadId: activeDMThread });
+          });
+          deleteBtn.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            openDeleteMessageModal(msg.key, msg.deleteToken, { isDm: true, threadId: activeDMThread });
+          });
+          bubbleWrapper.appendChild(deleteBtn);
+
+          const editBtn = document.createElement('button');
+          editBtn.className = 'absolute -top-2 -right-9 z-10 w-6 h-6 rounded-full bg-slate-700 text-white opacity-60 sm:opacity-0 sm:group-hover:opacity-100 transition-all flex items-center justify-center hover:bg-sky-600 active:bg-sky-600 shadow-md border border-slate-500';
+          editBtn.innerHTML = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 20 20\" fill=\"currentColor\" class=\"w-3 h-3\"><path d=\"M15.502 1.94a1.5 1.5 0 0 1 2.122 2.12l-1.06 1.062-2.122-2.122 1.06-1.06Zm-2.829 2.828-9.192 9.193a2 2 0 0 0-.518.94l-.88 3.521a.5.5 0 0 0 .607.607l3.52-.88a2 2 0 0 0 .942-.518l9.193-9.193-2.672-2.67Z\"/></svg>";
+          editBtn.title = 'Edit message';
+          editBtn.addEventListener('click', () => {
+            editDmMessage(activeDMThread, msg.key, msg.text || '', messagesEl);
+          });
+          bubbleWrapper.appendChild(editBtn);
+        }
+
+        // Report + Admin delete for other users' messages
+        if (!isMine && msg.key) {
+          // Report button
+          const reportBtn = document.createElement('button');
+          reportBtn.className = 'absolute -top-2 -left-2 z-10 w-6 h-6 rounded-full bg-slate-700 text-white opacity-60 sm:opacity-0 sm:group-hover:opacity-100 transition-all flex items-center justify-center hover:bg-amber-600 active:bg-amber-600 shadow-md border border-slate-500 text-xs';
+          reportBtn.innerHTML = '⚠️';
+          reportBtn.title = 'Report message';
+          reportBtn.addEventListener('click', () => {
+            reportDmMessage(msg.key, msg, msg.fromUsername || 'Unknown');
+          });
+          reportBtn.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            reportDmMessage(msg.key, msg, msg.fromUsername || 'Unknown');
+          });
+          bubbleWrapper.appendChild(reportBtn);
+
+          // Admin delete
+          if (isAdmin) {
+            const adminDeleteBtn = document.createElement('button');
+            adminDeleteBtn.className = 'absolute -top-2 -right-2 z-10 w-6 h-6 rounded-full bg-red-600 text-white opacity-60 sm:opacity-0 sm:group-hover:opacity-100 transition-all flex items-center justify-center hover:bg-red-700 active:bg-red-700 shadow-md border border-red-300 text-xs';
+            adminDeleteBtn.innerHTML = '🗑️';
+            adminDeleteBtn.title = 'Admin delete';
+            adminDeleteBtn.addEventListener('click', () => {
+              openDeleteMessageModal(msg.key, msg.deleteToken, { isDm: true, threadId: activeDMThread });
+            });
+            bubbleWrapper.appendChild(adminDeleteBtn);
+          }
+        }
+
+        row.appendChild(bubbleWrapper);
+        messagesEl.appendChild(row);
+      }
+
+      // Setup page nav event listeners (called after DOM is ready)
+      function setupPageNavListeners() {
+        // Global Chat header tabs
+        const navGlobal = document.getElementById('navGlobalChat');
+        const navDMs = document.getElementById('navDMs');
+        // DM Page header tabs
+        const navGlobal2 = document.getElementById('navGlobalChat2');
+        const navDMs2 = document.getElementById('navDMs2');
+
+        // Add click + touch listeners
+        [navGlobal, navGlobal2].forEach(btn => {
+          if (btn) {
+            btn.addEventListener('click', () => switchToPage('global'));
+            btn.addEventListener('touchend', (e) => { e.preventDefault(); switchToPage('global'); });
+          }
+        });
+        [navDMs, navDMs2].forEach(btn => {
+          if (btn) {
+            btn.addEventListener('click', () => switchToPage('dms'));
+            btn.addEventListener('touchend', (e) => { e.preventDefault(); switchToPage('dms'); });
+          }
+        });
+
+        // DM Page logout button
+        const dmPageLogoutBtn = document.getElementById('dmPageLogoutBtn');
+        if (dmPageLogoutBtn) {
+          dmPageLogoutBtn.addEventListener('click', () => auth.signOut());
+          dmPageLogoutBtn.addEventListener('touchend', (e) => { e.preventDefault(); auth.signOut(); });
+        }
+
+        // DM Page menu (hamburger) should open the same side panel
+        const dmPageMenuToggle = document.getElementById('dmPageMenuToggle');
+        if (dmPageMenuToggle) {
+          dmPageMenuToggle.addEventListener('click', openSidePanel);
+          dmPageMenuToggle.addEventListener('touchend', (e) => { e.preventDefault(); openSidePanel(); });
+        }
+
+        // DM Page send form
+        const dmPageForm = document.getElementById('dmPageForm');
+        const dmPageInput = document.getElementById('dmPageInput');
+        const dmPageError = document.getElementById('dmPageError');
+        if (dmPageForm) {
+          dmPageForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (!activeDMThread || !dmPageInput) return;
+            const text = dmPageInput.value.trim();
+            if (!text) return;
+
+            try {
+              // Use same path as existing DM system: dms/
+              const msgRef = db.ref('dms/' + activeDMThread + '/messages').push();
+              await msgRef.set({
+                text,
+                fromUid: currentUserId,
+                fromUsername: currentUsername,
+                time: firebase.database.ServerValue.TIMESTAMP
+              });
+              // Update inbox for both users
+              const now = Date.now();
+              if (activeDMTarget && activeDMTarget.uid) {
+                db.ref('dmInbox/' + currentUserId + '/' + activeDMThread).update({
+                  lastMsg: text,
+                  lastTime: now
+                }).catch(() => {});
+                db.ref('dmInbox/' + activeDMTarget.uid + '/' + activeDMThread).update({
+                  lastMsg: text,
+                  lastTime: now
+                }).catch(() => {});
+              }
+              dmPageInput.value = '';
+              if (dmPageError) dmPageError.textContent = '';
+            } catch (err) {
+              console.error('[DM] send error', err);
+              if (dmPageError) dmPageError.textContent = 'Failed to send message';
+            }
+          });
+        }
+
+        // DM Page media upload
+        const dmPageMediaBtn = document.getElementById('dmPageMediaUploadBtn');
+        const dmPageMediaInput = document.getElementById('dmPageMediaInput');
+        if (dmPageMediaBtn && dmPageMediaInput) {
+          dmPageMediaBtn.addEventListener('click', () => dmPageMediaInput.click());
+          dmPageMediaInput.addEventListener('change', async () => {
+            const file = dmPageMediaInput.files[0];
+            if (!file || !activeDMThread) return;
+            // Use same upload logic as main chat (simplified)
+            try {
+              const formData = new FormData();
+              formData.append('file', file);
+              formData.append('upload_preset', 'chatra_unsigned');
+              const isVideo = file.type.startsWith('video/');
+              const endpoint = isVideo 
+                ? 'https://api.cloudinary.com/v1_1/dvlmxpms4/video/upload'
+                : 'https://api.cloudinary.com/v1_1/dvlmxpms4/image/upload';
+              const res = await fetch(endpoint, { method: 'POST', body: formData });
+              const data = await res.json();
+              if (data.secure_url) {
+                // Use same path as existing DM system: dms/
+                const msgRef = db.ref('dms/' + activeDMThread + '/messages').push();
+                await msgRef.set({
+                  media: data.secure_url,
+                  fromUid: currentUserId,
+                  fromUsername: currentUsername,
+                  time: firebase.database.ServerValue.TIMESTAMP
+                });
+              }
+            } catch (err) {
+              console.error('[DM] media upload error', err);
+            }
+            dmPageMediaInput.value = '';
+          });
+        }
+
+        // DM Page start new conversation with live search
+        const dmPageStartBtn = document.getElementById('dmPageStartBtn');
+        const dmPageUserSearch = document.getElementById('dmPageUserSearch');
+        let dmSearchResults = null;
+        
+        if (dmPageUserSearch) {
+          // Create search results dropdown
+          dmSearchResults = document.createElement('div');
+          dmSearchResults.className = 'absolute left-0 right-0 top-full mt-1 bg-slate-800 border border-slate-700 rounded-lg shadow-lg z-50 max-h-48 overflow-y-auto hidden';
+          dmPageUserSearch.parentElement.style.position = 'relative';
+          dmPageUserSearch.parentElement.appendChild(dmSearchResults);
+          
+          // Live search as user types
+          dmPageUserSearch.addEventListener('input', async () => {
+            const query = dmPageUserSearch.value.trim().toLowerCase();
+            if (query.length < 1) {
+              dmSearchResults.classList.add('hidden');
+              return;
+            }
+            
+            // Search through mentionUsers (already loaded) or fetch
+            const matches = [];
+            for (const [key, user] of mentionUsers) {
+              if (key.includes(query) || user.username.toLowerCase().includes(query)) {
+                matches.push(user);
+                if (matches.length >= 8) break;
+              }
+            }
+            
+            if (matches.length === 0) {
+              dmSearchResults.innerHTML = '<p class="text-xs text-slate-500 p-3">No users found</p>';
+            } else {
+              dmSearchResults.innerHTML = matches.map(user => `
+                <div class="dm-search-result flex items-center gap-2 p-2 hover:bg-slate-700 cursor-pointer" data-uid="${user.uid}" data-username="${escapeHtml(user.username)}">
+                  <div class="w-8 h-8 rounded-full bg-gradient-to-br from-sky-500 to-sky-600 flex items-center justify-center text-white text-xs font-bold overflow-hidden">
+                    ${user.profilePic ? `<img src="${escapeHtml(user.profilePic)}" class="w-full h-full object-cover">` : user.username.slice(0,2).toUpperCase()}
+                  </div>
+                  <span class="text-sm text-slate-200">${escapeHtml(user.username)}</span>
+                </div>
+              `).join('');
+            }
+            dmSearchResults.classList.remove('hidden');
+            
+            // Click handlers for results
+            dmSearchResults.querySelectorAll('.dm-search-result').forEach(el => {
+              el.addEventListener('click', () => startDmWithUser(el.dataset.uid, el.dataset.username));
+              el.addEventListener('touchend', (e) => { e.preventDefault(); startDmWithUser(el.dataset.uid, el.dataset.username); });
+            });
+          });
+          
+          // Hide on blur
+          dmPageUserSearch.addEventListener('blur', () => {
+            setTimeout(() => dmSearchResults.classList.add('hidden'), 200);
+          });
+        }
+        
+        async function startDmWithUser(otherUid, otherUsername) {
+          if (!otherUid || otherUid === currentUserId) {
+            alert('Cannot start conversation');
+            return;
+          }
+          try {
+            const threadId = [currentUserId, otherUid].sort().join('_');
+            // Use same path as existing DM system: dms/
+            await db.ref('dms/' + threadId + '/participants/' + currentUserId).set(true);
+            await db.ref('dms/' + threadId + '/participants/' + otherUid).set(true);
+            const now = Date.now();
+            await db.ref('dmInbox/' + currentUserId + '/' + threadId).update({
+              withUid: otherUid,
+              withUsername: otherUsername,
+              lastTime: now
+            });
+            await db.ref('dmInbox/' + otherUid + '/' + threadId).update({
+              withUid: currentUserId,
+              withUsername: currentUsername,
+              lastTime: now
+            });
+            if (dmPageUserSearch) dmPageUserSearch.value = '';
+            if (dmSearchResults) dmSearchResults.classList.add('hidden');
+            openDmPageThread(otherUid, otherUsername, threadId);
+          } catch (err) {
+            console.error('[DM] start conversation error', err);
+            alert('Error starting conversation');
+          }
+        }
+        
+        if (dmPageStartBtn && dmPageUserSearch) {
+          dmPageStartBtn.addEventListener('click', async () => {
+            const searchVal = dmPageUserSearch.value.trim();
+            if (!searchVal) return;
+            // Find user by username (exact match)
+            try {
+              const usersSnap = await db.ref('users').orderByChild('username').equalTo(searchVal).once('value');
+              const users = usersSnap.val();
+              if (!users) {
+                alert('User not found. Try typing to search.');
+                return;
+              }
+              const otherUid = Object.keys(users)[0];
+              startDmWithUser(otherUid, searchVal);
+            } catch (err) {
+              console.error('[DM] start conversation error', err);
+              alert('Error starting conversation');
+            }
+          });
+        }
+
+        // DM Page block button
+        const dmPageBlockBtn = document.getElementById('dmPageBlockBtn');
+        if (dmPageBlockBtn) {
+          dmPageBlockBtn.addEventListener('click', async () => {
+            if (!activeDMTarget || !activeDMTarget.uid) return;
+            if (confirm('Block this user?')) {
+              try {
+                await db.ref('blocks/' + currentUserId + '/' + activeDMTarget.uid).set(true);
+                alert('User blocked');
+              } catch (err) {
+                console.error('[DM] block error', err);
+              }
+            }
+          });
+        }
+      }
+
       // Pagination / infinite scroll
       let PAGE_SIZE = 75; // default page size
       let FAST_MODE_ENABLED = false;
@@ -2567,6 +3192,177 @@
         }
       }
 
+      // DM inline edit state
+      let activeDmInlineEdit = null; // { messageId, container, textEl }
+
+      function cancelDmInlineEdit() {
+        if (!activeDmInlineEdit) return;
+        const { container, textEl } = activeDmInlineEdit;
+        if (container && container.parentElement) {
+          container.parentElement.removeChild(container);
+        }
+        if (textEl) {
+          textEl.classList.remove("hidden");
+        }
+        activeDmInlineEdit = null;
+      }
+
+      async function deleteDmMessage(threadId, messageId, deleteToken) {
+        if (!threadId || !messageId) {
+          console.error("[dm delete] missing threadId or messageId");
+          return;
+        }
+        try {
+          // Best-effort media cleanup
+          if (deleteToken) {
+            try {
+              await deleteFromCloudinary(deleteToken);
+            } catch (e) {
+              console.warn("[dm delete] media cleanup failed", e);
+            }
+          }
+          await db.ref("dms/" + threadId + "/messages/" + messageId).remove();
+          const row = document.querySelector(`[data-msg-key="${messageId}"]`);
+          if (row) row.remove();
+        } catch (err) {
+          console.error("[dm delete] error", err);
+          alert("Failed to delete DM: " + (err.message || "Unknown error"));
+        }
+      }
+
+      async function editDmMessage(threadId, messageId, currentText, messagesEl) {
+        if (!threadId || !messageId || !messagesEl) return;
+
+        cancelDmInlineEdit();
+
+        const row = messagesEl.querySelector(`[data-msg-key="${messageId}"]`);
+        if (!row) return;
+        const textEl = row.querySelector(".message-bubble-anim .message-text-reveal");
+        if (!textEl) return;
+
+        textEl.classList.add("hidden");
+
+        const editor = document.createElement("div");
+        editor.className = "inline-edit-actions mt-2 flex flex-col gap-2";
+
+        const textarea = document.createElement("textarea");
+        textarea.className = "w-full p-2 rounded-lg bg-slate-900 border border-slate-700 text-sm text-slate-100 focus:outline-none focus:border-sky-500";
+        textarea.value = currentText || "";
+        textarea.rows = Math.min(6, Math.max(2, (textarea.value.split("\n").length || 1)));
+
+        const actions = document.createElement("div");
+        actions.className = "flex items-center gap-2";
+
+        const saveBtn = document.createElement("button");
+        saveBtn.className = "px-3 py-1 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-xs";
+        saveBtn.textContent = "Save";
+
+        const cancelBtn = document.createElement("button");
+        cancelBtn.className = "px-3 py-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-100 text-xs";
+        cancelBtn.textContent = "Cancel";
+
+        actions.appendChild(saveBtn);
+        actions.appendChild(cancelBtn);
+
+        editor.appendChild(textarea);
+        editor.appendChild(actions);
+
+        textEl.parentElement.insertBefore(editor, textEl.nextSibling);
+
+        activeDmInlineEdit = { messageId, container: editor, textEl };
+
+        textarea.focus();
+
+        const doSave = async () => {
+          const trimmed = textarea.value.trim();
+          if (!trimmed) {
+            alert("Message cannot be empty.");
+            return;
+          }
+          try {
+            await db.ref("dms/" + threadId + "/messages/" + messageId).update({
+              text: trimmed,
+              editedAt: firebase.database.ServerValue.TIMESTAMP,
+            });
+
+            textEl.textContent = trimmed;
+            cancelDmInlineEdit();
+          } catch (err) {
+            console.error("[dm edit] error editing message", err);
+            alert("Failed to edit message: " + (err.message || "Unknown error"));
+          }
+        };
+
+        saveBtn.addEventListener("click", doSave);
+        cancelBtn.addEventListener("click", cancelDmInlineEdit);
+        textarea.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault();
+            doSave();
+          } else if (e.key === "Escape") {
+            cancelDmInlineEdit();
+          }
+        });
+      }
+
+      // Report DM message function
+      async function reportDmMessage(messageId, messageData, reportedUsername) {
+        if (!messageId || !currentUserId || !currentUsername) {
+          console.error("[dm report] missing required data");
+          return;
+        }
+
+        const reason = prompt(`Report DM from ${reportedUsername}?\n\nPlease describe the issue:\n(e.g., "Harassment", "Threats", "Spam", "Inappropriate content")`);
+
+        if (!reason || reason.trim() === "") {
+          return; // User cancelled
+        }
+
+        try {
+          const reportData = {
+            messageId: messageId,
+            threadId: activeDMThread || null,
+            isDm: true,
+            reportedBy: currentUsername,
+            reportedByUid: currentUserId,
+            reportedUser: reportedUsername,
+            reportedUserUid: messageData.fromUid || null,
+            messageText: messageData.text || "(media only)",
+            messageMedia: messageData.media || null,
+            reason: reason.trim(),
+            timestamp: firebase.database.ServerValue.TIMESTAMP,
+            status: "pending",
+          };
+
+          await db.ref("reports").push(reportData);
+
+          // Update UI - remove report button, show success
+          const row = document.querySelector(`[data-msg-key="${messageId}"]`);
+          if (row) {
+            const reportBtn = row.querySelector('button[title="Report message"]');
+            if (reportBtn) reportBtn.remove();
+
+            const bubbleWrapper = row.querySelector('.relative.group');
+            if (bubbleWrapper) {
+              const success = document.createElement('div');
+              success.className = 'mt-2 text-xs inline-block rounded px-2 py-1 bg-emerald-200 text-emerald-900 font-medium';
+              success.textContent = 'Report submitted — thank you.';
+              bubbleWrapper.appendChild(success);
+              setTimeout(() => {
+                success.style.opacity = '0';
+                success.style.transition = 'opacity 0.5s';
+                setTimeout(() => success.remove(), 500);
+              }, 3000);
+            }
+          }
+
+          console.log("[dm report] report submitted");
+        } catch (err) {
+          console.error("[dm report] error", err);
+          alert("Failed to submit report: " + (err.message || "Unknown error"));
+        }
+      }
+
       let activeInlineEdit = null; // { messageId, container, textEl }
 
       // Reply state
@@ -3946,6 +4742,9 @@
             // Start DM inbox listener for notifications
             await loadDmInbox();
             
+            // Setup page navigation listeners (Global Chat <-> DMs)
+            setupPageNavListeners();
+            
             // Wait a moment for initial notifications to load, then verify
             setTimeout(() => {
               verifyNotificationsLoaded();
@@ -4001,6 +4800,11 @@
           detachDmInboxListener();
           dmModal.classList.add("modal-closed");
           dmModal.classList.remove("modal-open");
+          
+          // Hide DM page on logout
+          const dmPage = document.getElementById('dmPage');
+          if (dmPage) dmPage.classList.add('hidden');
+          currentPage = 'global';
 
           chatInterface.classList.add("hidden");
           loginForm.classList.remove("hidden");
@@ -7472,10 +8276,12 @@
       const confirmDeleteBtn = document.getElementById("confirmDeleteBtn");
       let pendingDeleteMessageId = null;
       let pendingDeleteToken = null;
+      let pendingDeleteOptions = null; // { isDm, threadId }
 
-      function openDeleteMessageModal(messageId, deleteToken) {
+      function openDeleteMessageModal(messageId, deleteToken, options = {}) {
         pendingDeleteMessageId = messageId;
         pendingDeleteToken = deleteToken;
+        pendingDeleteOptions = options;
         deleteMessageModal.classList.remove("modal-closed");
         deleteMessageModal.classList.add("modal-open");
       }
@@ -7485,6 +8291,7 @@
         deleteMessageModal.classList.add("modal-closed");
         pendingDeleteMessageId = null;
         pendingDeleteToken = null;
+        pendingDeleteOptions = null;
       }
 
       cancelDeleteBtn.addEventListener("click", closeDeleteMessageModal);
@@ -7497,7 +8304,11 @@
         confirmDeleteBtn.innerHTML = '<span class="animate-pulse">Deleting...</span>';
 
         try {
-          await deleteMessage(pendingDeleteMessageId, pendingDeleteToken);
+          if (pendingDeleteOptions && pendingDeleteOptions.isDm) {
+            await deleteDmMessage(pendingDeleteOptions.threadId, pendingDeleteMessageId, pendingDeleteToken);
+          } else {
+            await deleteMessage(pendingDeleteMessageId, pendingDeleteToken);
+          }
           
           // Show success state
           confirmDeleteBtn.innerHTML = '✓ Deleted';
