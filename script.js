@@ -200,6 +200,23 @@
       // Track which mention message IDs we've already notified for (persist across refresh in sessionStorage)
       let mentionNotified = new Set();
 
+      // GIF helper functions
+      function isGifUrl(url) {
+        if (!url) return false;
+        const lower = url.toLowerCase();
+        return lower.includes('.gif') || lower.includes('gif');
+      }
+
+      function replayGif(imgElement) {
+        if (!imgElement || !imgElement.src) return;
+        const src = imgElement.src;
+        imgElement.src = '';
+        // Small delay to ensure browser reloads
+        setTimeout(() => {
+          imgElement.src = src;
+        }, 10);
+      }
+
       function loadMentionedNotifsFromStorage() {
         try {
           const raw = sessionStorage.getItem('mentions-notified');
@@ -345,6 +362,7 @@
           document.body.appendChild(mentionAutocomplete);
           mentionAutocomplete.style.position = 'fixed';
           mentionAutocomplete.style.display = 'none';
+          mentionAutocomplete.style.zIndex = '99999'; // Ensure highest z-index for iPad Safari
         }
 
         if (suggestions.length === 0) {
@@ -5819,45 +5837,80 @@
         viewProfileBio.textContent = "Loading...";
         viewProfilePic.innerHTML = generateDefaultAvatar(username);
 
-        // Reset banner to default gradient (remove inline override)
+        // Reset banner to default gradient (remove inline override and any GIF img)
         const viewProfileBanner = document.getElementById("viewProfileBanner");
         viewProfileBanner.style.backgroundImage = "";
+        // Remove any existing banner GIF img element
+        const existingBannerImg = viewProfileBanner.querySelector('img.banner-gif');
+        if (existingBannerImg) existingBannerImg.remove();
+
+        // Track current URLs to avoid unnecessary re-renders (fixes GIF flickering)
+        let currentBannerUrl = null;
+        let currentPicUrl = null;
 
         // Fetch user profile (non-blocking)
         setTimeout(() => {
           clearProfileListeners();
 
           const renderProfile = (profile) => {
-            // Banner
-            if (profile?.profileBanner) {
-              viewProfileBanner.style.backgroundImage = `url('${profile.profileBanner}')`;
-              viewProfileBanner.style.backgroundSize = "cover";
-              viewProfileBanner.style.backgroundPosition = "center";
-            } else {
-              viewProfileBanner.style.backgroundImage = "";
+            // Banner - use <img> for GIFs, CSS background for static
+            const bannerUrl = profile?.profileBanner || null;
+            if (bannerUrl !== currentBannerUrl) {
+              currentBannerUrl = bannerUrl;
+              if (bannerUrl) {
+                if (isGifUrl(bannerUrl)) {
+                  // Use an img element for GIF banners
+                  viewProfileBanner.style.backgroundImage = "";
+                  let bannerImg = viewProfileBanner.querySelector('img.banner-gif');
+                  if (!bannerImg) {
+                    bannerImg = document.createElement('img');
+                    bannerImg.className = 'banner-gif absolute inset-0 w-full h-full object-cover';
+                    bannerImg.style.zIndex = '0';
+                    bannerImg.crossOrigin = 'anonymous';
+                    viewProfileBanner.style.position = 'relative';
+                    viewProfileBanner.appendChild(bannerImg);
+                  }
+                  bannerImg.src = bannerUrl;
+                } else {
+                  // Static image - use CSS background
+                  const existingGif = viewProfileBanner.querySelector('img.banner-gif');
+                  if (existingGif) existingGif.remove();
+                  viewProfileBanner.style.backgroundImage = `url('${bannerUrl}')`;
+                  viewProfileBanner.style.backgroundSize = "cover";
+                  viewProfileBanner.style.backgroundPosition = "center";
+                }
+              } else {
+                viewProfileBanner.style.backgroundImage = "";
+                const existingGif = viewProfileBanner.querySelector('img.banner-gif');
+                if (existingGif) existingGif.remove();
+              }
             }
 
-            // Picture - Safari/iPad compatible loading
-            if (profile?.profilePic) {
-              try {
-                const img = document.createElement("img");
-                img.className = "h-full w-full object-cover rounded-full";
-                img.crossOrigin = "anonymous";
-                img.onerror = () => {
-                  console.debug("[viewProfile] img load error, showing default");
+            // Picture - only update if URL changed (fixes GIF flickering)
+            const picUrl = profile?.profilePic || null;
+            if (picUrl !== currentPicUrl) {
+              currentPicUrl = picUrl;
+              if (picUrl) {
+                try {
+                  const img = document.createElement("img");
+                  img.className = "h-full w-full object-cover rounded-full";
+                  img.crossOrigin = "anonymous";
+                  img.onerror = () => {
+                    console.debug("[viewProfile] img load error, showing default");
+                    setDefaultProfileIcon(viewProfilePic, 64);
+                  };
+                  img.onload = () => {
+                    viewProfilePic.innerHTML = "";
+                    viewProfilePic.appendChild(img);
+                  };
+                  img.src = picUrl;
+                } catch (e) {
+                  console.debug("[viewProfile] error creating img", e);
                   setDefaultProfileIcon(viewProfilePic, 64);
-                };
-                img.onload = () => {
-                  viewProfilePic.innerHTML = "";
-                  viewProfilePic.appendChild(img);
-                };
-                img.src = profile.profilePic;
-              } catch (e) {
-                console.debug("[viewProfile] error creating img", e);
-                setDefaultProfileIcon(viewProfilePic, 64);
+                }
+              } else {
+                viewProfilePic.innerHTML = generateDefaultAvatar(username);
               }
-            } else {
-              viewProfilePic.innerHTML = generateDefaultAvatar(username);
             }
 
             viewProfileBio.textContent = profile?.bio || "No bio yet";
