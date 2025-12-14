@@ -396,9 +396,12 @@
         box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.4);
         -webkit-backdrop-filter: blur(12px);
         backdrop-filter: blur(12px);
-        z-index: 9999;
+        z-index: 99999; /* Higher than everything including iOS Safari stacking contexts */
         margin-bottom: 8px;
         animation: mention-slide-up 0.15s ease-out;
+        /* Ensure visibility on iPad Safari */
+        -webkit-transform: translateZ(0);
+        transform: translateZ(0);
       }
       @keyframes mention-slide-up {
         from { opacity: 0; transform: translateY(8px); }
