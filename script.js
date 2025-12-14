@@ -282,6 +282,14 @@
         adminListener = (snap) => {
           isAdmin = snap.exists();
           console.log("[checkAdmin] Admin check for uid", uid, "- exists:", isAdmin, "- snap.val():", snap.val());
+          if (isAdmin) {
+            // Add admin delete buttons to already-rendered non-owner messages
+            try {
+              refreshAdminControls();
+            } catch (e) {
+              console.warn("[admin] failed to refresh admin controls", e);
+            }
+          }
         };
         adminRef.on("value", adminListener);
       }
@@ -2020,6 +2028,96 @@
         }
       }
 
+      let activeInlineEdit = null; // { messageId, container, textEl }
+
+      function cancelInlineEdit() {
+        if (!activeInlineEdit) return;
+        const { container, textEl } = activeInlineEdit;
+        if (container && container.parentElement) {
+          container.parentElement.removeChild(container);
+        }
+        if (textEl) {
+          textEl.classList.remove("hidden");
+        }
+        activeInlineEdit = null;
+      }
+
+      async function editMessage(messageId, currentText) {
+        if (!messageId) return;
+
+        // Only one inline edit at a time
+        cancelInlineEdit();
+
+        const row = messagesDiv.querySelector(`[data-message-id="${messageId}"]`);
+        if (!row) return;
+        const textEl = row.querySelector(".message-bubble-anim .message-text-reveal");
+        if (!textEl) return;
+
+        textEl.classList.add("hidden");
+
+        const editor = document.createElement("div");
+        editor.className = "inline-edit-actions mt-2 flex flex-col gap-2";
+
+        const textarea = document.createElement("textarea");
+        textarea.className = "w-full p-2 rounded-lg bg-slate-900 border border-slate-700 text-sm text-slate-100 focus:outline-none focus:border-sky-500";
+        textarea.value = currentText || "";
+        textarea.rows = Math.min(6, Math.max(2, (textarea.value.split("\n").length || 1)));
+
+        const actions = document.createElement("div");
+        actions.className = "flex items-center gap-2";
+
+        const saveBtn = document.createElement("button");
+        saveBtn.className = "px-3 py-1 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-xs";
+        saveBtn.textContent = "Save";
+
+        const cancelBtn = document.createElement("button");
+        cancelBtn.className = "px-3 py-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-100 text-xs";
+        cancelBtn.textContent = "Cancel";
+
+        actions.appendChild(saveBtn);
+        actions.appendChild(cancelBtn);
+
+        editor.appendChild(textarea);
+        editor.appendChild(actions);
+
+        textEl.parentElement.insertBefore(editor, textEl.nextSibling);
+
+        activeInlineEdit = { messageId, container: editor, textEl };
+
+        textarea.focus();
+
+        const doSave = async () => {
+          const trimmed = textarea.value.trim();
+          if (!trimmed) {
+            alert("Message cannot be empty.");
+            return;
+          }
+          try {
+            await db.ref("messages/" + messageId).update({
+              text: trimmed,
+              editedAt: firebase.database.ServerValue.TIMESTAMP,
+            });
+
+            textEl.textContent = trimmed;
+            cancelInlineEdit();
+          } catch (err) {
+            console.error("[edit] error editing message", err);
+            alert("Failed to edit message: " + (err.message || "Unknown error"));
+          }
+        };
+
+        saveBtn.addEventListener("click", doSave);
+        cancelBtn.addEventListener("click", cancelInlineEdit);
+        textarea.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault();
+            doSave();
+          } else if (e.key === "Escape") {
+            cancelInlineEdit();
+          }
+        });
+      }
+
       // Fetch user profile data with timeout
       // Pending profile requests for deduplication
       const pendingProfileRequests = new Map();
@@ -2334,21 +2432,32 @@
         // Add delete button for own messages
         if (isMine && messageId) {
           const deleteBtn = document.createElement("button");
-          deleteBtn.className = "absolute -top-2 -right-2 w-6 h-6 rounded-full bg-slate-700 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center hover:bg-red-600 shadow-md";
-          deleteBtn.innerHTML = "⋮";
-          deleteBtn.title = "Message options";
+          deleteBtn.className = "absolute top-0 right-0 translate-x-1/2 -translate-y-1/2 z-10 w-7 h-7 rounded-full bg-slate-700 text-white opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center hover:bg-red-600 shadow-md border border-slate-500";
+          deleteBtn.innerHTML = "🗑️";
+          deleteBtn.title = "Delete message";
           
           deleteBtn.addEventListener("click", () => {
             openDeleteMessageModal(messageId, msg.deleteToken);
           });
           
           bubbleContainer.appendChild(deleteBtn);
+
+          const editBtn = document.createElement("button");
+          editBtn.className = "absolute top-0 right-9 -translate-y-1/2 z-10 w-7 h-7 rounded-full bg-slate-700 text-white opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center hover:bg-sky-600 shadow-md border border-slate-500";
+          editBtn.innerHTML = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 20 20\" fill=\"currentColor\" class=\"w-4 h-4\"><path d=\"M15.502 1.94a1.5 1.5 0 0 1 2.122 2.12l-1.06 1.062-2.122-2.122 1.06-1.06Zm-2.829 2.828-9.192 9.193a2 2 0 0 0-.518.94l-.88 3.521a.5.5 0 0 0 .607.607l3.52-.88a2 2 0 0 0 .942-.518l9.193-9.193-2.672-2.67Z\"/></svg>";
+          editBtn.title = "Edit message";
+
+          editBtn.addEventListener("click", () => {
+            editMessage(messageId, msg.text || "");
+          });
+
+          bubbleContainer.appendChild(editBtn);
         }
         
         // Add report button for other users' messages
         if (!isMine && messageId && msg.userId !== currentUserId) {
           const reportBtn = document.createElement("button");
-          reportBtn.className = "absolute -top-2 -left-2 w-6 h-6 rounded-full bg-slate-700 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center hover:bg-amber-600 shadow-md text-sm";
+          reportBtn.className = "absolute top-0 left-0 -translate-x-1/2 -translate-y-1/2 z-10 w-7 h-7 rounded-full bg-slate-700 text-white opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center hover:bg-amber-600 shadow-md text-sm border border-slate-500";
           reportBtn.innerHTML = "⚠️";
           reportBtn.title = "Report message";
           
@@ -2357,6 +2466,21 @@
           });
           
           bubbleContainer.appendChild(reportBtn);
+        }
+
+        // Admin delete button for other users' messages
+        if (!isMine && messageId && isAdmin) {
+          const adminDeleteBtn = document.createElement("button");
+          adminDeleteBtn.className = "absolute top-0 right-0 translate-x-1/2 -translate-y-1/2 z-10 w-7 h-7 rounded-full bg-red-600 text-white opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center hover:bg-red-700 shadow-md border border-red-300";
+          adminDeleteBtn.innerHTML = "🗑️";
+          adminDeleteBtn.title = "Admin delete";
+          adminDeleteBtn.setAttribute("data-admin-delete", "true");
+
+          adminDeleteBtn.addEventListener("click", () => {
+            openDeleteMessageModal(messageId, msg.deleteToken);
+          });
+
+          bubbleContainer.appendChild(adminDeleteBtn);
         }
         
         column.appendChild(bubbleContainer);
@@ -2390,6 +2514,11 @@
             }, 200);
           }
         }
+
+        // Ensure admin controls are present on newly rendered messages
+        if (isAdmin) {
+          try { refreshAdminControls(); } catch (e) {}
+        }
       }
 
       function renderMessageOnce(key, msg, options = {}) {
@@ -2419,6 +2548,37 @@
           }
         });
         seenMessageKeys.delete(messageId);
+      }
+
+      // Ensure admin controls exist on all current messages
+      function refreshAdminControls() {
+        if (!isAdmin || !messagesDiv) return;
+        const rows = messagesDiv.querySelectorAll("[data-message-id]");
+        rows.forEach((row) => {
+          const bubbleContainer = row.querySelector(".relative.group");
+          const bubble = row.querySelector(".message-bubble-anim");
+          if (!bubbleContainer || !bubble) return;
+          const isMineBubble = bubble.classList.contains("mine");
+          if (isMineBubble) return; // owners already have their own delete button
+
+          // If an admin delete button already exists, skip
+          const existingAdminBtn = bubbleContainer.querySelector('[data-admin-delete="true"]');
+          if (existingAdminBtn) return;
+
+          const messageId = row.dataset.messageId;
+          if (!messageId) return;
+
+          const adminDeleteBtn = document.createElement("button");
+          adminDeleteBtn.className = "absolute top-0 right-0 translate-x-1/2 -translate-y-1/2 z-10 w-7 h-7 rounded-full bg-red-600 text-white opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center hover:bg-red-700 shadow-md border border-red-300";
+          adminDeleteBtn.innerHTML = "🗑️";
+          adminDeleteBtn.title = "Admin delete";
+          adminDeleteBtn.setAttribute("data-admin-delete", "true");
+          adminDeleteBtn.addEventListener("click", () => {
+            // We may not have deleteToken; modal handles null safely
+            openDeleteMessageModal(messageId, null);
+          });
+          bubbleContainer.appendChild(adminDeleteBtn);
+        });
       }
 
       function previewText(text, max = 80) {
@@ -2463,6 +2623,11 @@
 
             if (!options.maintainScroll) {
               messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            }
+
+            // After batch render, add admin controls if applicable
+            if (isAdmin) {
+              try { refreshAdminControls(); } catch (e) {}
             }
           });
         }
