@@ -728,6 +728,8 @@
           dmPageMenuToggle.addEventListener('touchend', (e) => { e.preventDefault(); openSidePanel(); });
         }
 
+        // Side panel Update Log removed
+
         // DM Page send form
         const dmPageForm = document.getElementById('dmPageForm');
         const dmPageInput = document.getElementById('dmPageInput');
@@ -799,6 +801,8 @@
             }
           });
         }
+
+        // Update Log removed: no handlers or DOM lookups remain
 
         // DM Page media upload
         const dmPageMediaBtn = document.getElementById('dmPageMediaUploadBtn');
@@ -2924,11 +2928,15 @@
               dmLastSeenByThread[item.threadId] = lastTime;
             }
 
-            // Fire notification only for new messages with a lastMsg and only if not viewing this thread
+            // Fire notification if either lastTime advanced or explicit `unread` increased.
             const lastNotifiedTime = dmLastUpdateTimeByThread[item.threadId] || 0;
-            if (!isActiveThread && dmInboxInitialLoaded && lastTime > lastNotifiedTime && item.lastMsg) {
+            const prevUnreadLocal = dmUnreadCounts[item.threadId] || 0;
+            const newUnread = (typeof item.unread === 'number') ? item.unread : 0;
+            const shouldNotifyByTime = (!isActiveThread && dmInboxInitialLoaded && lastTime > lastNotifiedTime && item.lastMsg);
+            const shouldNotifyByUnread = (!isActiveThread && dmInboxInitialLoaded && newUnread > prevUnreadLocal && newUnread > 0);
+            if (shouldNotifyByTime || shouldNotifyByUnread) {
               const who = item.withUsername || item.withUid || "Someone";
-              const preview = previewText(item.lastMsg, 80);
+              const preview = previewText(item.lastMsg || '', 80) || (newUnread > prevUnreadLocal ? `${newUnread - prevUnreadLocal} new message(s)` : 'New message');
               addNotification(who, preview, {
                 threadId: item.threadId,
                 withUid: item.withUid,
@@ -6395,6 +6403,10 @@
               lastTime: now,
             };
 
+            // Ensure participants exist before updating inbox/transactions to satisfy security rules
+            await db.ref("dms/" + threadId + "/participants/" + currentUserId).set(true).catch(() => {});
+            await db.ref("dms/" + threadId + "/participants/" + activeDMTarget.uid).set(true).catch(() => {});
+
             await Promise.all([
               db.ref("dmInbox/" + currentUserId + "/" + threadId).set(myInboxUpdate),
               db.ref("dmInbox/" + activeDMTarget.uid + "/" + threadId).transaction(current => {
@@ -6415,11 +6427,7 @@
                   lastTime: now,
                   unread: (current.unread || 0) + 1
                 };
-              }),
-              db
-                .ref("dms/" + threadId + "/participants/" + activeDMTarget.uid)
-                .set(true)
-                .catch(() => {}),
+              })
             ]);
             // Prevent our inbox listener from considering this local update as a new incoming message
             dmLastUpdateTimeByThread[threadId] = now;
@@ -6519,6 +6527,10 @@
             lastTime: now,
           };
           
+          // Ensure participants exist before updating inbox/transactions to satisfy security rules
+          await db.ref("dms/" + threadId + "/participants/" + currentUserId).set(true).catch(() => {});
+          await db.ref("dms/" + threadId + "/participants/" + activeDMTarget.uid).set(true).catch(() => {});
+
           await Promise.all([
             db.ref("dmInbox/" + currentUserId + "/" + threadId).set(myInboxUpdate),
             // Use transaction to increment recipient's unread count
@@ -6540,8 +6552,7 @@
                 lastTime: now,
                 unread: (current.unread || 0) + 1
               };
-            }),
-            db.ref("dms/" + threadId + "/participants/" + activeDMTarget.uid).set(true).catch(() => {})
+            })
           ]);
           // Prevent our inbox listener from considering this local update as a new incoming message
           dmLastUpdateTimeByThread[threadId] = now;
