@@ -415,9 +415,15 @@
           });
         }
 
-        // Add click handlers
+        // Add click handlers (and touch handlers for iPad)
         mentionAutocomplete.querySelectorAll('.mention-item').forEach(item => {
+          // Click handler for desktop
           item.addEventListener('click', () => {
+            selectMention(item.dataset.username);
+          });
+          // Touch handler for iPad/mobile
+          item.addEventListener('touchend', (e) => {
+            e.preventDefault();
             selectMention(item.dataset.username);
           });
           item.addEventListener('mouseenter', () => {
@@ -1866,6 +1872,8 @@
             video.controls = true;
             video.preload = "metadata";
             video.className = "w-full rounded-lg";
+            video.setAttribute("playsinline", ""); // Required for iOS Safari inline playback
+            video.setAttribute("webkit-playsinline", ""); // Legacy iOS Safari support
 
             videoContainer.appendChild(video);
             bubble.appendChild(videoContainer);
@@ -1876,7 +1884,8 @@
             const img = document.createElement("img");
             img.src = mediaUrl;
             img.alt = "DM media";
-            img.className = "w-full rounded-lg cursor-pointer hover:opacity-90 transition-opacity";
+            img.className = "w-full rounded-lg cursor-pointer active:opacity-70 transition-opacity";
+            img.crossOrigin = "anonymous"; // Safari CORS fix
             img.onclick = () => openImageViewer(mediaUrl);
 
             imgContainer.appendChild(img);
@@ -2903,25 +2912,16 @@
             videoContainer.style.maxWidth = "400px";
             
             const video = document.createElement("video");
-            video.dataset.src = mediaUrl;
             video.controls = true;
-            video.preload = "none";
+            video.preload = "metadata";
             video.className = "w-full rounded-lg";
             video.style.maxHeight = "300px";
             video.style.display = "block";
+            video.setAttribute("playsinline", ""); // Required for iOS Safari inline playback
+            video.setAttribute("webkit-playsinline", ""); // Legacy iOS Safari support
             
-            // Lazy load video when visible
-            const observer = new IntersectionObserver((entries) => {
-              entries.forEach(entry => {
-                if (entry.isIntersecting && video.dataset.src) {
-                  video.src = video.dataset.src;
-                  video.preload = "metadata";
-                  delete video.dataset.src;
-                  observer.unobserve(video);
-                }
-              });
-            }, { rootMargin: "100px" });
-            observer.observe(video);
+            // Load directly without IntersectionObserver for Safari/iPad compatibility
+            video.src = mediaUrl;
             
             // Scroll after video metadata loads
             video.addEventListener("loadedmetadata", () => {
@@ -2939,23 +2939,14 @@
             gifContainer.style.maxWidth = "400px";
             
             const img = document.createElement("img");
-            img.dataset.src = mediaUrl;
-            img.className = "w-full rounded-lg cursor-pointer hover:opacity-90 transition-opacity";
+            img.className = "w-full rounded-lg cursor-pointer active:opacity-70 transition-opacity";
             img.style.maxHeight = "300px";
             img.style.display = "block";
             img.style.objectFit = "contain";
+            img.crossOrigin = "anonymous"; // Safari CORS fix
             
-            // Lazy load GIF when visible
-            const observer = new IntersectionObserver((entries) => {
-              entries.forEach(entry => {
-                if (entry.isIntersecting && img.dataset.src) {
-                  img.src = img.dataset.src;
-                  delete img.dataset.src;
-                  observer.unobserve(img);
-                }
-              });
-            }, { rootMargin: "100px" });
-            observer.observe(img);
+            // Load directly without IntersectionObserver for Safari/iPad compatibility
+            img.src = mediaUrl;
             
             // GIF controls: loop continuously
             img.onload = () => {
@@ -2981,23 +2972,14 @@
             imgContainer.style.maxWidth = "400px";
             
             const img = document.createElement("img");
-            img.dataset.src = mediaUrl;
-            img.className = "w-full rounded-lg cursor-pointer hover:opacity-90 transition-opacity";
+            img.className = "w-full rounded-lg cursor-pointer active:opacity-70 transition-opacity";
             img.style.maxHeight = "300px";
             img.style.display = "block";
             img.style.objectFit = "contain";
+            img.crossOrigin = "anonymous"; // Safari CORS fix
             
-            // Lazy load image when visible
-            const observer = new IntersectionObserver((entries) => {
-              entries.forEach(entry => {
-                if (entry.isIntersecting && img.dataset.src) {
-                  img.src = img.dataset.src;
-                  delete img.dataset.src;
-                  observer.unobserve(img);
-                }
-              });
-            }, { rootMargin: "100px" });
-            observer.observe(img);
+            // Load directly without IntersectionObserver for Safari/iPad compatibility
+            img.src = mediaUrl;
             
             // Scroll after image loads (only if at bottom)
             img.onload = () => {
@@ -3093,7 +3075,8 @@
         // Add delete button for own messages
         if (isMine && messageId) {
           const deleteBtn = document.createElement("button");
-          deleteBtn.className = "absolute top-0 right-0 translate-x-1/2 -translate-y-1/2 z-10 w-7 h-7 rounded-full bg-slate-700 text-white opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center hover:bg-red-600 shadow-md border border-slate-500";
+          // Use opacity-60 by default so buttons are visible on touch devices (iPad)
+          deleteBtn.className = "absolute top-0 right-0 translate-x-1/2 -translate-y-1/2 z-10 w-7 h-7 rounded-full bg-slate-700 text-white opacity-60 sm:opacity-0 sm:group-hover:opacity-100 transition-all flex items-center justify-center hover:bg-red-600 active:bg-red-600 shadow-md border border-slate-500";
           deleteBtn.innerHTML = "🗑️";
           deleteBtn.title = "Delete message";
           
@@ -3104,7 +3087,8 @@
           bubbleContainer.appendChild(deleteBtn);
 
           const editBtn = document.createElement("button");
-          editBtn.className = "absolute top-0 right-9 -translate-y-1/2 z-10 w-7 h-7 rounded-full bg-slate-700 text-white opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center hover:bg-sky-600 shadow-md border border-slate-500";
+          // Use opacity-60 by default so buttons are visible on touch devices (iPad)
+          editBtn.className = "absolute top-0 right-9 -translate-y-1/2 z-10 w-7 h-7 rounded-full bg-slate-700 text-white opacity-60 sm:opacity-0 sm:group-hover:opacity-100 transition-all flex items-center justify-center hover:bg-sky-600 active:bg-sky-600 shadow-md border border-slate-500";
           editBtn.innerHTML = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 20 20\" fill=\"currentColor\" class=\"w-4 h-4\"><path d=\"M15.502 1.94a1.5 1.5 0 0 1 2.122 2.12l-1.06 1.062-2.122-2.122 1.06-1.06Zm-2.829 2.828-9.192 9.193a2 2 0 0 0-.518.94l-.88 3.521a.5.5 0 0 0 .607.607l3.52-.88a2 2 0 0 0 .942-.518l9.193-9.193-2.672-2.67Z\"/></svg>";
           editBtn.title = "Edit message";
 
@@ -3120,7 +3104,8 @@
           // If already reported locally, don't add a report button
           if (!reportedMessages.has(messageId)) {
             const reportBtn = document.createElement("button");
-            reportBtn.className = "absolute top-0 left-0 -translate-x-1/2 -translate-y-1/2 z-10 w-7 h-7 rounded-full bg-slate-700 text-white opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center hover:bg-amber-600 shadow-md text-sm border border-slate-500";
+            // Use opacity-60 by default so buttons are visible on touch devices (iPad)
+            reportBtn.className = "absolute top-0 left-0 -translate-x-1/2 -translate-y-1/2 z-10 w-7 h-7 rounded-full bg-slate-700 text-white opacity-60 sm:opacity-0 sm:group-hover:opacity-100 transition-all flex items-center justify-center hover:bg-amber-600 active:bg-amber-600 shadow-md text-sm border border-slate-500";
             reportBtn.innerHTML = "⚠️";
             reportBtn.title = "Report message";
 
@@ -3139,7 +3124,8 @@
         // Add reply button on all messages
         if (messageId) {
           const replyBtn = document.createElement("button");
-          replyBtn.className = "absolute bottom-0 " + (isMine ? "left-0 -translate-x-1/2" : "right-0 translate-x-1/2") + " translate-y-1/2 z-10 w-7 h-7 rounded-full bg-slate-700 text-white opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center hover:bg-sky-600 shadow-md border border-slate-500";
+          // Use opacity-60 by default so buttons are visible on touch devices (iPad)
+          replyBtn.className = "absolute bottom-0 " + (isMine ? "left-0 -translate-x-1/2" : "right-0 translate-x-1/2") + " translate-y-1/2 z-10 w-7 h-7 rounded-full bg-slate-700 text-white opacity-60 sm:opacity-0 sm:group-hover:opacity-100 transition-all flex items-center justify-center hover:bg-sky-600 active:bg-sky-600 shadow-md border border-slate-500";
           replyBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4"><path fill-rule="evenodd" d="M7.793 2.232a.75.75 0 0 1-.025 1.06L3.622 7.25h10.003a5.375 5.375 0 0 1 0 10.75H10.75a.75.75 0 0 1 0-1.5h2.875a3.875 3.875 0 0 0 0-7.75H3.622l4.146 3.957a.75.75 0 0 1-1.036 1.085l-5.5-5.25a.75.75 0 0 1 0-1.085l5.5-5.25a.75.75 0 0 1 1.06.025Z" clip-rule="evenodd"/></svg>';
           replyBtn.title = "Reply";
 
@@ -3153,7 +3139,8 @@
         // Admin delete button for other users' messages
         if (!isMine && messageId && isAdmin) {
           const adminDeleteBtn = document.createElement("button");
-          adminDeleteBtn.className = "absolute top-0 right-0 translate-x-1/2 -translate-y-1/2 z-10 w-7 h-7 rounded-full bg-red-600 text-white opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center hover:bg-red-700 shadow-md border border-red-300";
+          // Use opacity-60 by default so buttons are visible on touch devices (iPad)
+          adminDeleteBtn.className = "absolute top-0 right-0 translate-x-1/2 -translate-y-1/2 z-10 w-7 h-7 rounded-full bg-red-600 text-white opacity-60 sm:opacity-0 sm:group-hover:opacity-100 transition-all flex items-center justify-center hover:bg-red-700 active:bg-red-700 shadow-md border border-red-300";
           adminDeleteBtn.innerHTML = "🗑️";
           adminDeleteBtn.title = "Admin delete";
           adminDeleteBtn.setAttribute("data-admin-delete", "true");
@@ -3260,7 +3247,7 @@
           if (!messageId) return;
 
           const adminDeleteBtn = document.createElement("button");
-          adminDeleteBtn.className = "absolute top-0 right-0 translate-x-1/2 -translate-y-1/2 z-10 w-7 h-7 rounded-full bg-red-600 text-white opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center hover:bg-red-700 shadow-md border border-red-300";
+          adminDeleteBtn.className = "absolute top-0 right-0 translate-x-1/2 -translate-y-1/2 z-10 w-7 h-7 rounded-full bg-red-600 text-white opacity-60 sm:opacity-0 sm:group-hover:opacity-100 transition-all flex items-center justify-center hover:bg-red-700 active:bg-red-700 shadow-md border border-red-300";
           adminDeleteBtn.innerHTML = "🗑️";
           adminDeleteBtn.title = "Admin delete";
           adminDeleteBtn.setAttribute("data-admin-delete", "true");
