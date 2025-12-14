@@ -1,4 +1,59 @@
-     #messages {
+     /* ========= iPad/Safari Touch Compatibility ========= */
+      
+      /* Prevent iOS text size adjustment */
+      html {
+        -ms-text-size-adjust: 100%;
+        -webkit-text-size-adjust: 100%;
+        text-size-adjust: 100%;
+      }
+      
+      /* Improve touch targets and interactions */
+      button, 
+      [role="button"],
+      input[type="button"],
+      input[type="submit"],
+      .cursor-pointer {
+        -webkit-tap-highlight-color: rgba(56, 189, 248, 0.3);
+        touch-action: manipulation;
+      }
+      
+      /* Fix iOS input zoom on focus */
+      input[type="text"],
+      input[type="password"],
+      input[type="email"],
+      textarea {
+        font-size: 16px; /* Prevents iOS zoom */
+        -webkit-appearance: none;
+        -moz-appearance: none;
+        appearance: none;
+      }
+      
+      /* Ensure smooth scrolling on iOS */
+      .overflow-y-auto,
+      .overflow-y-scroll,
+      #messages {
+        -webkit-overflow-scrolling: touch;
+      }
+      
+      /* Active states for touch feedback (replaces hover on touch devices) */
+      @media (hover: none) and (pointer: coarse) {
+        button:active,
+        [role="button"]:active,
+        .cursor-pointer:active {
+          opacity: 0.7;
+          transform: scale(0.98);
+        }
+        
+        /* Ensure hover-dependent elements are visible on touch */
+        .group:active .group-hover\:opacity-100,
+        .group:focus-within .group-hover\:opacity-100 {
+          opacity: 1 !important;
+        }
+      }
+      
+      /* ========= End iPad/Safari Compatibility ========= */
+
+      #messages {
         scrollbar-width: thin;
         scrollbar-color: rgba(100, 116, 139, 0.6) rgba(15, 23, 42, 0.3);
       }
@@ -360,9 +415,12 @@
         display: flex;
         align-items: center;
         gap: 10px;
-        padding: 10px 14px;
+        padding: 12px 14px;
         cursor: pointer;
         transition: background 0.12s ease;
+        /* Better touch target for iPad */
+        -webkit-tap-highlight-color: rgba(56, 189, 248, 0.3);
+        touch-action: manipulation;
       }
       .mention-item:first-child {
         border-radius: 11px 11px 0 0;
@@ -374,7 +432,8 @@
         border-radius: 11px;
       }
       .mention-item:hover,
-      .mention-item.selected {
+      .mention-item.selected,
+      .mention-item:active {
         background: rgba(56, 189, 248, 0.15);
       }
       .mention-item.selected {
