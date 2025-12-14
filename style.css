@@ -530,6 +530,7 @@
         height: 100%;
         object-fit: cover;
       }
+      /* Update Log placeholder styling removed */
       .mention-info {
         flex: 1;
         min-width: 0;
