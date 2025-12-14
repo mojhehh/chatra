@@ -189,6 +189,7 @@
       let messagesListener = null; // child_added listener
       const seenMessageKeys = new Set();
       let blockedUsersCache = new Set(); // Cache of blocked user UIDs
+      let reportedMessages = new Set(); // locally-track reported message IDs to prevent duplicate reports
 
       // Pagination / infinite scroll
       let PAGE_SIZE = 75; // default page size
@@ -198,6 +199,148 @@
       let isLoadingOlder = false;
       let allHistoryLoaded = false;
       let scrollListenerAttached = false;
+
+      // --- Scroll-to-bottom button ---
+      let scrollToBottomBtn = null;
+      let scrollBtnListenerAttached = false;
+
+      function createScrollToBottomBtn() {
+        if (scrollToBottomBtn) return;
+        const wrapper = messagesDiv.parentElement;
+        if (!wrapper) return;
+        if (getComputedStyle(wrapper).position === "static") {
+          wrapper.style.position = "relative";
+        }
+        const btn = document.createElement("button");
+        btn.id = "scrollToBottomBtn";
+        // Centered above the send box, slightly higher
+        btn.className = "absolute bottom-28 left-1/2 -translate-x-1/2 w-10 h-10 rounded-full bg-slate-700 hover:bg-slate-600 border border-slate-500 shadow-lg flex items-center justify-center text-white transition-all z-30";
+        // Start hidden with inline style to ensure it doesn't flash
+        btn.style.opacity = "0";
+        btn.style.pointerEvents = "none";
+        btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5"><path fill-rule="evenodd" d="M10 3a.75.75 0 0 1 .75.75v10.638l3.96-4.158a.75.75 0 1 1 1.08 1.04l-5.25 5.5a.75.75 0 0 1-1.08 0l-5.25-5.5a.75.75 0 1 1 1.08-1.04l3.96 4.158V3.75A.75.75 0 0 1 10 3Z" clip-rule="evenodd"/></svg>';
+        btn.title = "Scroll to bottom";
+        btn.addEventListener("click", () => {
+          messagesDiv.scrollTo({ top: messagesDiv.scrollHeight, behavior: "smooth" });
+        });
+        wrapper.appendChild(btn);
+        scrollToBottomBtn = btn;
+      }
+
+      function updateScrollToBottomBtn() {
+        if (!scrollToBottomBtn) createScrollToBottomBtn();
+        if (!scrollToBottomBtn) return;
+        const distance = messagesDiv.scrollHeight - messagesDiv.scrollTop - messagesDiv.clientHeight;
+        // Only show when NOT at bottom (more than 50px away)
+        const isAtBottom = distance <= 50;
+        if (isAtBottom) {
+          scrollToBottomBtn.style.opacity = "0";
+          scrollToBottomBtn.style.pointerEvents = "none";
+        } else {
+          scrollToBottomBtn.style.opacity = "1";
+          scrollToBottomBtn.style.pointerEvents = "auto";
+        }
+      }
+
+      // Attach scroll listener once
+      function ensureScrollButtonListeners() {
+        createScrollToBottomBtn();
+        if (!scrollBtnListenerAttached) {
+          messagesDiv.addEventListener("scroll", updateScrollToBottomBtn);
+          scrollBtnListenerAttached = true;
+        }
+        // Initial state - delay to let layout settle
+        setTimeout(updateScrollToBottomBtn, 100);
+      }
+
+      // --- INLINE REPORT UI ---
+      let activeInlineReport = null; // { messageId, container }
+
+      function cancelInlineReport() {
+        if (!activeInlineReport) return;
+        const { container } = activeInlineReport;
+        if (container && container.parentElement) container.parentElement.removeChild(container);
+          const wrapper = document.createElement('div');
+          wrapper.className = 'inline-report-anim mt-2 rounded-lg border border-amber-500/50 bg-amber-500/10 p-2 flex flex-col gap-2';
+      }
+
+      function openInlineReport(messageId, messageData, reportedUsername, bubbleContainer) {
+        if (!messageId || !bubbleContainer) return;
+        // Close any existing inline report
+        cancelInlineReport();
+
+        const wrapper = document.createElement('div');
+        wrapper.className = 'inline-report-anim mt-2 rounded-lg border border-amber-500/50 bg-amber-500/10 p-2 flex flex-col gap-2';
+
+        const label = document.createElement('div');
+        label.className = 'text-xs text-amber-200 font-semibold flex items-center gap-2';
+        label.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4"><path fill-rule="evenodd" d="M8.647 1.276a.75.75 0 0 1 .706 0l7.5 4.167A.75.75 0 0 1 17 6H3a.75.75 0 0 1-.353-1.41l7.5-4.167ZM2.75 7.5A.75.75 0 0 0 2 8.25v8.5A1.25 1.25 0 0 0 3.25 18h13.5A1.25 1.25 0 0 0 18 16.75v-8.5a.75.75 0 0 0-.75-.75h-14.5Zm7.954 2.75a.75.75 0 0 1 .542.916l-.833 3.124a.75.75 0 1 1-1.458-.39l.833-3.124a.75.75 0 0 1 .916-.526Zm.546-2.522a1 1 0 1 0-1.5-1.316l-5 5.75a1 1 0 1 0 1.5 1.316l5-5.75Z" clip-rule="evenodd"/></svg><span>Report ${escapeHtml(reportedUsername)}</span>`;
+
+        const textarea = document.createElement('textarea');
+        textarea.className = 'w-full p-2 rounded-lg bg-slate-900 border border-slate-700 text-sm text-slate-100 focus:outline-none focus:border-amber-400';
+        textarea.placeholder = 'Describe the issue (brief)';
+        textarea.rows = 3;
+
+        const actions = document.createElement('div');
+        actions.className = 'flex items-center gap-2 justify-end';
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.className = 'px-3 py-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-100 text-sm';
+        cancelBtn.textContent = 'Cancel';
+
+        const submitBtn = document.createElement('button');
+        submitBtn.className = 'px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-600 text-slate-900 text-sm font-semibold';
+        submitBtn.textContent = 'Submit';
+
+        actions.appendChild(cancelBtn);
+        actions.appendChild(submitBtn);
+
+        wrapper.appendChild(label);
+        wrapper.appendChild(textarea);
+        wrapper.appendChild(actions);
+
+        bubbleContainer.appendChild(wrapper);
+        activeInlineReport = { messageId, container: wrapper };
+        textarea.focus();
+
+        let submitting = false;
+        const doSubmit = async () => {
+          if (submitting) return;
+          const reason = textarea.value.trim();
+          if (!reason) {
+            textarea.focus();
+            return;
+          }
+          submitting = true;
+          submitBtn.disabled = true;
+          cancelBtn.disabled = true;
+          submitBtn.textContent = 'Submitting...';
+          try {
+            await reportMessage(messageId, messageData, reportedUsername, reason);
+            // reportMessage handles UI; remove inline report
+            cancelInlineReport();
+          } catch (err) {
+            console.error('[inline-report] submit error', err);
+            submitBtn.disabled = false;
+            cancelBtn.disabled = false;
+            submitBtn.textContent = 'Submit';
+          } finally {
+            submitting = false;
+          }
+        };
+
+        submitBtn.addEventListener('click', doSubmit);
+        cancelBtn.addEventListener('click', cancelInlineReport);
+        textarea.addEventListener('keydown', (e) => {
+          if ((e.key === 'Enter' || e.key === 'S') && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+            doSubmit();
+          } else if (e.key === 'Escape') {
+            e.preventDefault();
+            cancelInlineReport();
+          }
+        });
+      }
 
       // Rating prompt cadence
       const RATING_INTERVAL_MS = 10 * 60 * 1000;
@@ -490,6 +633,9 @@
           }
 
           // Clear expired temp bans automatically
+
+                // Update arrow visibility
+                try { updateScrollToBottomBtn(); } catch (_) {}
           clearExpiredBan(uid, data);
 
           const now = Date.now();
@@ -2047,7 +2193,8 @@
 
       // Reply functions
       function setReply(messageId, username, text) {
-        pendingReply = { messageId, username, text: (text || "").slice(0, 100) };
+        // Keep full text in pendingReply; preview will show a friendly ellipsized snippet
+        pendingReply = { messageId, username, text: (text || "") };
         showReplyPreview();
         msgInput.focus();
       }
@@ -2073,7 +2220,7 @@
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-3 h-3"><path fill-rule="evenodd" d="M6.232 2.186a.75.75 0 0 1-.02.848L3.347 6.75h9.028a3.375 3.375 0 0 1 0 6.75H10.5a.75.75 0 0 1 0-1.5h1.875a1.875 1.875 0 0 0 0-3.75H3.347l2.865 3.716a.75.75 0 1 1-1.19.914l-4-5.19a.75.75 0 0 1 0-.915l4-5.19a.75.75 0 0 1 .848-.203.75.75 0 0 1 .362.604Z" clip-rule="evenodd"/></svg>
                 Replying to <span class="text-slate-100">${escapeHtml(pendingReply.username)}</span>
               </div>
-              <p class="text-xs text-slate-400 truncate mt-0.5">${escapeHtml(pendingReply.text)}</p>
+              <p class="text-xs text-slate-400 mt-0.5">"${escapeHtml(previewText(pendingReply.text, 64))}"</p>
             </div>
             <button type="button" id="cancelReplyBtn" class="p-1 hover:bg-slate-700 rounded-lg transition-colors text-slate-400 hover:text-white" title="Cancel reply">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
@@ -2261,6 +2408,7 @@
         // Store messageId in dataset for deletion
         if (messageId) {
           row.dataset.messageId = messageId;
+          row.id = 'msg-' + messageId;
         }
 
         const column = document.createElement("div");
@@ -2369,12 +2517,15 @@
             (isMine 
               ? "bg-sky-400/20 border-l-2 border-sky-300 hover:bg-sky-400/30" 
               : "bg-slate-600/50 border-l-2 border-slate-400 hover:bg-slate-600/70");
+          // Use previewText to create a friendly ellipsized snippet for the reply preview
+          const replyTextRaw = msg.replyTo.text || "(message)";
+          const replySnippet = previewText(replyTextRaw, 64);
           replyPreview.innerHTML = `
             <div class="flex items-center gap-1 text-[10px] ${isMine ? 'text-sky-200' : 'text-slate-300'} font-medium">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-3 h-3"><path fill-rule="evenodd" d="M6.232 2.186a.75.75 0 0 1-.02.848L3.347 6.75h9.028a3.375 3.375 0 0 1 0 6.75H10.5a.75.75 0 0 1 0-1.5h1.875a1.875 1.875 0 0 0 0-3.75H3.347l2.865 3.716a.75.75 0 1 1-1.19.914l-4-5.19a.75.75 0 0 1 0-.915l4-5.19a.75.75 0 0 1 .848-.203.75.75 0 0 1 .362.604Z" clip-rule="evenodd"/></svg>
+              <svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 16 16\" fill=\"currentColor\" class=\"w-3 h-3\"><path fill-rule=\"evenodd\" d=\"M6.232 2.186a.75.75 0 0 1-.02.848L3.347 6.75h9.028a3.375 3.375 0 0 1 0 6.75H10.5a.75.75 0 0 1 0-1.5h1.875a1.875 1.875 0 0 0 0-3.75H3.347l2.865 3.716a.75.75 0 1 1-1.19.914l-4-5.19a.75.75 0 0 1 0-.915l4-5.19a.75.75 0 0 1 .848-.203.75.75 0 0 1 .362.604Z\" clip-rule=\"evenodd\"/></svg>
               ${escapeHtml(msg.replyTo.username || "Unknown")}
             </div>
-            <p class="text-[11px] ${isMine ? 'text-sky-100/80' : 'text-slate-400'} truncate mt-0.5">${escapeHtml(msg.replyTo.text || "(message)")}</p>
+            <p class="text-[11px] ${isMine ? 'text-sky-100/80' : 'text-slate-400'} mt-0.5">"${escapeHtml(replySnippet)}"</p>
           `;
           replyPreview.addEventListener("click", (e) => {
             e.stopPropagation();
@@ -2542,16 +2693,23 @@
         
         // Add report button for other users' messages
         if (!isMine && messageId && msg.userId !== currentUserId) {
-          const reportBtn = document.createElement("button");
-          reportBtn.className = "absolute top-0 left-0 -translate-x-1/2 -translate-y-1/2 z-10 w-7 h-7 rounded-full bg-slate-700 text-white opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center hover:bg-amber-600 shadow-md text-sm border border-slate-500";
-          reportBtn.innerHTML = "⚠️";
-          reportBtn.title = "Report message";
-          
-          reportBtn.addEventListener("click", () => {
-            reportMessage(messageId, msg, username);
-          });
-          
-          bubbleContainer.appendChild(reportBtn);
+          // If already reported locally, don't add a report button
+          if (!reportedMessages.has(messageId)) {
+            const reportBtn = document.createElement("button");
+            reportBtn.className = "absolute top-0 left-0 -translate-x-1/2 -translate-y-1/2 z-10 w-7 h-7 rounded-full bg-slate-700 text-white opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center hover:bg-amber-600 shadow-md text-sm border border-slate-500";
+            reportBtn.innerHTML = "⚠️";
+            reportBtn.title = "Report message";
+
+            reportBtn.addEventListener("click", () => {
+              if (typeof openInlineReport === 'function') {
+                openInlineReport(messageId, msg, username, bubbleContainer);
+              } else {
+                reportMessage(messageId, msg, username);
+              }
+            });
+
+            bubbleContainer.appendChild(reportBtn);
+          }
         }
 
         // Add reply button on all messages
@@ -2683,8 +2841,18 @@
 
       function previewText(text, max = 80) {
         if (!text) return "";
-        const t = text.toString();
-        return t.length > max ? t.slice(0, max) + "…" : t;
+        const t = String(text);
+        if (t.length <= max) return t;
+        // Hard slice
+        let slice = t.slice(0, max);
+        // Prefer truncating at a word boundary to avoid cutting words mid-way
+        const lastSpace = slice.lastIndexOf(' ');
+        if (lastSpace > Math.floor(max * 0.35)) {
+          slice = slice.slice(0, lastSpace);
+        }
+        // Trim trailing non-word characters (punctuation/space) without using Unicode property escapes
+        slice = slice.replace(/[\W_]+$/g, '');
+        return slice + '…';
       }
 
       // Batch render messages for better performance
@@ -2724,6 +2892,9 @@
             if (!options.maintainScroll) {
               messagesDiv.scrollTop = messagesDiv.scrollHeight;
             }
+
+            // Update scroll-to-bottom visibility after rendering
+            try { updateScrollToBottomBtn(); } catch (_) {}
 
             // After batch render, add admin controls if applicable
             if (isAdmin) {
@@ -2885,6 +3056,9 @@
 
               // Attach scroll listener only after we have some messages
               attachScrollListener();
+
+              // Ensure scroll-to-bottom control is available
+              ensureScrollButtonListeners();
 
               // --- REALTIME LISTENER FOR NEW MESSAGES ---
               if (messagesRef && messagesListener) {
@@ -6804,15 +6978,19 @@
       });
 
       // --- REPORT MESSAGE FUNCTIONALITY ---
-      async function reportMessage(messageId, messageData, reportedUsername) {
+      async function reportMessage(messageId, messageData, reportedUsername, reason) {
         if (!messageId || !currentUserId || !currentUsername) {
           console.error("[report] missing required data");
           return;
         }
 
-        const reason = prompt(`Report message from ${reportedUsername}?\n\nPlease describe the issue:\n(e.g., "Harassment", "Threats", "Spam", "Inappropriate content")`);
-        
-        if (!reason || reason.trim() === "") {
+        // If caller didn't supply a reason, fall back to a prompt (legacy callers)
+        let finalReason = reason;
+        if (!finalReason || typeof finalReason !== 'string' || finalReason.trim() === "") {
+          finalReason = prompt(`Report message from ${reportedUsername}?\n\nPlease describe the issue:\n(e.g., "Harassment", "Threats", "Spam", "Inappropriate content")`);
+        }
+
+        if (!finalReason || finalReason.trim() === "") {
           return; // User cancelled
         }
 
@@ -6825,18 +7003,73 @@
             reportedUserUid: messageData.userId || null,
             messageText: messageData.text || "(media only)",
             messageMedia: messageData.media || null,
-            reason: reason.trim(),
+            reason: finalReason.trim(),
             timestamp: firebase.database.ServerValue.TIMESTAMP,
             status: "pending", // pending, reviewed, actioned, dismissed
           };
 
           // Save to reports node in Firebase
           await db.ref("reports").push(reportData);
-          
-          alert(`✓ Report submitted successfully.\n\nOur moderation team will review this message.\nThank you for helping keep Chatra safe.`);
+
+          // Mark locally to avoid duplicate reporting and update UI
+          try {
+            reportedMessages.add(messageId);
+            const row = messagesDiv.querySelector(`[data-message-id="${messageId}"]`);
+            if (row) {
+              // remove any report button
+              const reportBtn = row.querySelector('button[title="Report message"]');
+              if (reportBtn && reportBtn.parentElement) {
+                reportBtn.parentElement.removeChild(reportBtn);
+              }
+              const bubbleContainer = row.querySelector('.relative');
+              if (bubbleContainer) {
+                // Show inline transient success banner
+                const existing = bubbleContainer.querySelector('.inline-report-success');
+                if (existing) existing.remove();
+                const success = document.createElement('div');
+                success.className = 'inline-report-success mt-2 text-sm inline-block rounded px-2 py-1 bg-emerald-200 text-emerald-900 font-medium';
+                success.textContent = 'Report submitted — thank you.';
+                bubbleContainer.appendChild(success);
+                setTimeout(() => {
+                  success.classList.add('fade-out');
+                  setTimeout(() => success.remove(), 600);
+                }, 3000);
+              }
+            }
+          } catch (uiErr) {
+            console.warn('[report] could not update UI after reporting', uiErr);
+          }
+
+          // Close inline report UI if it's open for this message
+          if (activeInlineReport && activeInlineReport.messageId === messageId) {
+            try { cancelInlineReport(); } catch(_) {}
+          }
+
           console.log("[report] message reported successfully:", messageId);
         } catch (err) {
           console.error("[report] error submitting report:", err);
+          // Show inline error banner if possible
+          try {
+            const row = messagesDiv.querySelector(`[data-message-id="${messageId}"]`);
+            if (row) {
+              const bubbleContainer = row.querySelector('.relative');
+              if (bubbleContainer) {
+                const existing = bubbleContainer.querySelector('.inline-report-error');
+                if (existing) existing.remove();
+                const errBanner = document.createElement('div');
+                errBanner.className = 'inline-report-error mt-2 text-sm inline-block rounded px-2 py-1 bg-rose-200 text-rose-900 font-medium';
+                errBanner.textContent = 'Failed to submit report.';
+                bubbleContainer.appendChild(errBanner);
+                setTimeout(() => {
+                  errBanner.classList.add('fade-out');
+                  setTimeout(() => errBanner.remove(), 3500);
+                }, 3000);
+                return;
+              }
+            }
+          } catch (uiErr) {
+            console.warn('[report] could not show inline error banner', uiErr);
+          }
           alert("Failed to submit report. Please try again or contact support.");
         }
       }
