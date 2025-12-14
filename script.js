@@ -107,6 +107,7 @@
       let dmMessagesListener = null;
       let dmInboxRef = null;
       let dmInboxListener = null;
+      let dmUnreadCounts = {}; // threadId -> count
       let dmLastSeenByThread = {};
       let dmLastUpdateTimeByThread = {}; // Track last update time per thread to avoid duplicate notifs
       let dmInboxInitialLoaded = false;
@@ -309,6 +310,62 @@
           let threads = Object.entries(data)
             .map(([threadId, info]) => ({ threadId, ...info }));
 
+          // Also include all friends so the DM list shows every friend even when unread === 0
+          try {
+            const friendsSnap = await db.ref('friends/' + currentUserId).once('value');
+            const friends = friendsSnap.val() || {};
+            Object.keys(friends).forEach(friendUid => {
+              const tid = makeThreadId(currentUserId, friendUid);
+              if (!threads.some(t => t.threadId === tid)) {
+                threads.push({ threadId: tid, withUid: friendUid, withUsername: friendUid, lastTime: 0, lastMsg: '', unread: 0 });
+              }
+            });
+          } catch (e) {
+            // ignore errors fetching friends
+          }
+
+          // Normalize and deduplicate threads by canonical thread id.
+          // Some entries may have mismatched keys or missing withUid; compute a canonical id
+          const canonicalMap = {};
+          function canonicalIdFor(thread) {
+            if (thread.threadId && typeof thread.threadId === 'string' && thread.threadId.includes('__')) {
+              // If withUid is present, prefer makeThreadId to ensure ordering
+              if (thread.withUid) return makeThreadId(currentUserId, thread.withUid);
+              const parts = thread.threadId.split('__');
+              if (parts.length === 2) {
+                if (parts[0] === currentUserId) return makeThreadId(currentUserId, parts[1]);
+                if (parts[1] === currentUserId) return makeThreadId(currentUserId, parts[0]);
+              }
+              return thread.threadId;
+            }
+            if (thread.withUid) return makeThreadId(currentUserId, thread.withUid);
+            return thread.threadId || null;
+          }
+
+          threads.forEach(thread => {
+            const cid = canonicalIdFor(thread);
+            if (!cid) return;
+            if (!canonicalMap[cid]) {
+              canonicalMap[cid] = Object.assign({}, thread, { threadId: cid });
+              // ensure withUid/withUsername are set
+              if (!canonicalMap[cid].withUid && thread.withUid) canonicalMap[cid].withUid = thread.withUid;
+              if (!canonicalMap[cid].withUsername && thread.withUsername) canonicalMap[cid].withUsername = thread.withUsername;
+            } else {
+              const existing = canonicalMap[cid];
+              // prefer the entry with a later lastTime
+              if ((thread.lastTime || 0) > (existing.lastTime || 0)) {
+                canonicalMap[cid] = Object.assign({}, existing, thread, { threadId: cid });
+              } else {
+                // merge unread/lastMsg if present
+                if (typeof thread.unread === 'number') existing.unread = thread.unread;
+                if (thread.lastMsg) existing.lastMsg = thread.lastMsg;
+              }
+            }
+          });
+
+          // Rebuild threads from canonicalMap
+          threads = Object.keys(canonicalMap).map(k => canonicalMap[k]);
+
           if (threads.length === 0) {
             listEl.innerHTML = '<p class="text-xs text-slate-500 text-center py-4">No conversations yet</p>';
             return;
@@ -367,6 +424,14 @@
             const title = document.createElement('p');
             title.className = 'text-sm font-medium text-slate-100 truncate';
             title.textContent = displayName;
+            // Per-conversation unread badge
+            const unread = dmUnreadCounts[thread.threadId] || (typeof thread.unread === 'number' ? thread.unread : 0);
+            if (unread && unread > 0) {
+              const ub = document.createElement('span');
+              ub.className = 'ml-2 inline-flex items-center justify-center bg-red-500 text-white text-[11px] rounded-full w-5 h-5';
+              ub.textContent = unread > 9 ? '9+' : String(unread);
+              title.appendChild(ub);
+            }
             const excerpt = document.createElement('p');
             excerpt.className = 'text-xs text-slate-400 truncate';
             // Existing system uses lastMsg for the preview text
@@ -420,16 +485,16 @@
         if (blockBtn) blockBtn.classList.remove('hidden');
         if (messagesEl) messagesEl.innerHTML = '';
 
-        // Mark this thread as seen / recently viewed in the inbox so ordering updates live
+        // Mark this thread as seen locally but DO NOT update `lastTime` in dmInbox
+        // (we only want ordering to change when a message is sent)
         try {
           const now = Date.now();
           if (currentUserId && threadId) {
             db.ref('dmInbox/' + currentUserId + '/' + threadId).update({
               withUid: otherUid || null,
-              withUsername: otherUsername || null,
-              lastTime: now
+              withUsername: otherUsername || null
             }).catch(() => {});
-            // Track last seen time locally
+            // Track last seen time locally (used to clear unread display)
             dmLastSeenByThread[threadId] = now;
           }
         } catch (e) {
@@ -699,9 +764,25 @@
                   lastMsg: text,
                   lastTime: now
                 }).catch(() => {});
-                db.ref('dmInbox/' + activeDMTarget.uid + '/' + activeDMThread).update({
-                  lastMsg: text,
-                  lastTime: now
+                // Increment recipient unread via transaction
+                db.ref('dmInbox/' + activeDMTarget.uid + '/' + activeDMThread).transaction(current => {
+                  if (!current) {
+                    return {
+                      withUid: currentUserId,
+                      withUsername: currentUsername || currentUserId,
+                      lastMsg: text,
+                      lastTime: now,
+                      unread: 1
+                    };
+                  }
+                  return {
+                    ...current,
+                    withUid: currentUserId,
+                    withUsername: currentUsername || currentUserId,
+                    lastMsg: text,
+                    lastTime: now,
+                    unread: (current.unread || 0) + 1
+                  };
                 }).catch(() => {});
                 // Prevent local inbox listener from treating this as an incoming message
                 dmLastUpdateTimeByThread[activeDMThread] = now;
@@ -747,8 +828,38 @@
                   fromUsername: currentUsername,
                   time: firebase.database.ServerValue.TIMESTAMP
                 });
-                // Update local last-update time so our inbox listener doesn't treat this as incoming
-                dmLastUpdateTimeByThread[activeDMThread] = Date.now();
+                const now = Date.now();
+                const lastMsgPreview = '(media)';
+                // Update inbox for both users and increment recipient unread
+                await Promise.all([
+                  db.ref('dmInbox/' + currentUserId + '/' + activeDMThread).set({
+                    withUid: activeDMTarget.uid,
+                    withUsername: activeDMTarget.username || activeDMTarget.uid,
+                    lastMsg: lastMsgPreview,
+                    lastTime: now
+                  }),
+                  db.ref('dmInbox/' + activeDMTarget.uid + '/' + activeDMThread).transaction(current => {
+                    if (!current) {
+                      return {
+                        withUid: currentUserId,
+                        withUsername: currentUsername || currentUserId,
+                        lastMsg: lastMsgPreview,
+                        lastTime: now,
+                        unread: 1
+                      };
+                    }
+                    return {
+                      ...current,
+                      withUid: currentUserId,
+                      withUsername: currentUsername || currentUserId,
+                      lastMsg: lastMsgPreview,
+                      lastTime: now,
+                      unread: (current.unread || 0) + 1
+                    };
+                  })
+                ]).catch(() => {});
+                // Prevent local inbox listener from treating this as incoming
+                dmLastUpdateTimeByThread[activeDMThread] = now;
               }
             } catch (err) {
               console.error('[DM] media upload error', err);
@@ -2735,6 +2846,18 @@
         updateNotifBadge();
       }
 
+      function updateDmTabBadge() {
+        const badge = document.getElementById('navDMBadge');
+        const badge2 = document.getElementById('navDMBadge2');
+        const total = Object.values(dmUnreadCounts).reduce((s, v) => s + (parseInt(v) || 0), 0);
+        if (badge) {
+          if (total > 0) { badge.textContent = total; badge.classList.remove('hidden'); } else { badge.classList.add('hidden'); }
+        }
+        if (badge2) {
+          if (total > 0) { badge2.textContent = total; badge2.classList.remove('hidden'); } else { badge2.classList.add('hidden'); }
+        }
+      }
+
       async function loadDmInbox() {
         if (!currentUserId) return;
         detachDmInboxListener();
@@ -2821,11 +2944,19 @@
             // Update last notified/seen time to current lastTime (only if we have a message)
             dmLastUpdateTimeByThread[item.threadId] = Math.max(item.lastMsg ? lastTime : 0, dmLastUpdateTimeByThread[item.threadId] || 0);
 
-            const hasUnread = lastTime > lastSeen && !isActiveThread;
-            if (hasUnread) {
+            // Only treat a thread as unread if the inbox entry explicitly has an `unread` number.
+            // Do NOT infer unread from timestamps here — that caused every thread to appear unread.
+            const unreadCount = (typeof item.unread === 'number') ? item.unread : 0;
+            if (unreadCount > 0) {
+              dmUnreadCounts[item.threadId] = unreadCount;
               unreadThreadsCount += 1;
+            } else {
+              delete dmUnreadCounts[item.threadId];
             }
           });
+
+          // Update DM tab badge after processing
+          updateDmTabBadge();
 
           dmInboxInitialLoaded = true;
         });
@@ -2855,15 +2986,21 @@
         updateNotifBadge();
         renderNotificationHistory();
         
-        // Ensure self is participant and create own inbox entry
+        // Ensure self is participant and create own inbox entry (do not update lastTime here)
         await Promise.all([
           db.ref("dms/" + threadId + "/participants/" + currentUserId).set(true).catch(() => {}),
-          db.ref("dmInbox/" + currentUserId + "/" + threadId).set({
+          db.ref("dmInbox/" + currentUserId + "/" + threadId).update({
             withUid: targetUid,
-            withUsername: resolvedUsername || targetUid,
-            lastTime: now
+            withUsername: resolvedUsername || targetUid
           }).catch(() => {})
         ]);
+        // Clear unread count for this thread in Firebase and locally
+        try {
+          await db.ref("dmInbox/" + currentUserId + "/" + threadId).update({ unread: 0 }).catch(() => {});
+        } catch (e) {}
+        dmUnreadCounts[threadId] = 0;
+        delete dmUnreadCounts[threadId];
+        updateDmTabBadge();
         // Prevent local inbox listener from treating this self-update as a new notification
         dmLastUpdateTimeByThread[threadId] = now;
         
@@ -6260,7 +6397,25 @@
 
             await Promise.all([
               db.ref("dmInbox/" + currentUserId + "/" + threadId).set(myInboxUpdate),
-              db.ref("dmInbox/" + activeDMTarget.uid + "/" + threadId).set(theirInboxUpdate),
+              db.ref("dmInbox/" + activeDMTarget.uid + "/" + threadId).transaction(current => {
+                if (!current) {
+                  return {
+                    withUid: currentUserId,
+                    withUsername: currentUsername || currentUserId,
+                    lastMsg: lastMsgPreview,
+                    lastTime: now,
+                    unread: 1
+                  };
+                }
+                return {
+                  ...current,
+                  withUid: currentUserId,
+                  withUsername: currentUsername || currentUserId,
+                  lastMsg: lastMsgPreview,
+                  lastTime: now,
+                  unread: (current.unread || 0) + 1
+                };
+              }),
               db
                 .ref("dms/" + threadId + "/participants/" + activeDMTarget.uid)
                 .set(true)
@@ -6366,7 +6521,26 @@
           
           await Promise.all([
             db.ref("dmInbox/" + currentUserId + "/" + threadId).set(myInboxUpdate),
-            db.ref("dmInbox/" + activeDMTarget.uid + "/" + threadId).set(theirInboxUpdate),
+            // Use transaction to increment recipient's unread count
+            db.ref("dmInbox/" + activeDMTarget.uid + "/" + threadId).transaction(current => {
+              if (!current) {
+                return {
+                  withUid: currentUserId,
+                  withUsername: currentUsername || currentUserId,
+                  lastMsg: text,
+                  lastTime: now,
+                  unread: 1
+                };
+              }
+              return {
+                ...current,
+                withUid: currentUserId,
+                withUsername: currentUsername || currentUserId,
+                lastMsg: text,
+                lastTime: now,
+                unread: (current.unread || 0) + 1
+              };
+            }),
             db.ref("dms/" + threadId + "/participants/" + activeDMTarget.uid).set(true).catch(() => {})
           ]);
           // Prevent our inbox listener from considering this local update as a new incoming message
