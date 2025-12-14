@@ -7,6 +7,27 @@
     <link rel="stylesheet" href="style.css">
     <meta name="viewport" content="width=device-width, initial-scale=1" />
 
+    <script>
+      // Redirect to pause page unless user opted to skip
+      (function () {
+        try {
+          var skip = localStorage.getItem('skipRedirect');
+          if (skip !== 'true') {
+            // Only redirect when landing on the root page
+            // Prevent redirect loops
+            if (!location.pathname.endsWith('chatra.html')) {
+              location.replace('chatra.html');
+            }
+          }
+        } catch (e) {
+          // If localStorage is blocked, still redirect
+          if (!location.pathname.endsWith('chatra.html')) {
+            location.replace('chatra.html');
+          }
+        }
+      })();
+    </script>
+
     <!-- Tailwind CSS (optional, for looks) -->
     <script>
       // Suppress Tailwind CDN production warning BEFORE loading
@@ -768,7 +789,7 @@
           <span class="text-sm font-semibold text-amber-300">Development Paused</span>
           <button
             type="button"
-            onclick="window.location.href='chatra.html'"
+                onclick="window.location.href='chatra.html'"
             class="text-xs text-sky-400 hover:text-sky-300 underline underline-offset-2"
             title="More info"
             aria-label="More info"
