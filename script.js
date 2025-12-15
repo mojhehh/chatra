@@ -5098,6 +5098,9 @@
             applyFastMode(settings.fastMode === true, false);
             initRatingSettings(settings);
             
+            // Check if we need to show the mod app popup
+            checkAndShowModAppPopup();
+            
             // Start onboarding walkthrough for new users (after UI is ready)
             setTimeout(() => {
               startWalkthrough();
@@ -6199,6 +6202,64 @@
         registerAppealBtn.addEventListener('click', () => openHelpModalFor('appeal'));
         registerAppealBtn.addEventListener('touchend', (e) => { e.preventDefault(); openHelpModalFor('appeal'); });
       }
+
+      // ======================== MOD APP POPUP ========================
+      const modAppPopup = document.getElementById('modAppPopup');
+      const modAppApplyBtn = document.getElementById('modAppApplyBtn');
+      const modAppDismissBtn = document.getElementById('modAppDismissBtn');
+
+      function openModAppPopup() {
+        if (modAppPopup) {
+          modAppPopup.classList.remove('modal-closed');
+          modAppPopup.classList.add('modal-open');
+          modAppPopup.style.zIndex = '99999';
+          modAppPopup.style.display = 'flex';
+        }
+      }
+
+      function closeModAppPopup() {
+        if (modAppPopup) {
+          modAppPopup.classList.remove('modal-open');
+          modAppPopup.classList.add('modal-closed');
+        }
+      }
+
+      async function dismissModAppPopup() {
+        closeModAppPopup();
+        // Save to Firebase that user has dismissed the popup
+        if (currentUserId) {
+          try {
+            await db.ref("userSettings/" + currentUserId + "/modAppPopupDismissed").set(true);
+          } catch (err) {
+            console.warn("[modApp] failed to save dismissal:", err);
+          }
+        }
+      }
+
+      async function checkAndShowModAppPopup() {
+        if (!currentUserId) return;
+        try {
+          const snap = await db.ref("userSettings/" + currentUserId + "/modAppPopupDismissed").once("value");
+          const dismissed = snap.val() === true;
+          if (!dismissed) {
+            // Small delay to let login settle
+            setTimeout(() => {
+              openModAppPopup();
+            }, 800);
+          }
+        } catch (err) {
+          console.warn("[modApp] failed to check popup status:", err);
+        }
+      }
+
+      // Event listeners for mod app popup
+      if (modAppDismissBtn) {
+        modAppDismissBtn.addEventListener('click', dismissModAppPopup);
+        modAppDismissBtn.addEventListener('touchend', (e) => { e.preventDefault(); dismissModAppPopup(); });
+      }
+      // Note: Do NOT dismiss when clicking the backdrop or Apply — only the Dismiss button closes the popup.
+      // Apply button is a normal link (`<a>`) and will open the form in a new tab; we intentionally do not attach a dismiss handler.
+      // ======================== END MOD APP POPUP ========================
 
       // Global touch-to-click enhancer for iOS/touch devices
       (function(){
