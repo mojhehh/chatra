@@ -266,6 +266,9 @@
           navDMs?.classList.remove('active');
           navGlobal2?.classList.add('active');
           navDMs2?.classList.remove('active');
+          // Show header Staff Applications button on Global page
+          const headerStaffApp = document.getElementById('headerStaffApp');
+          if (headerStaffApp) headerStaffApp.classList.remove('hidden');
         } else if (page === 'dms') {
           // Hide Global Chat, show DMs
           if (chatInterface) chatInterface.classList.add('hidden');
@@ -279,6 +282,9 @@
           
           // Initialize DM page
           initDmPage();
+          // Hide header Staff Applications button when in DMs
+          const headerStaffApp = document.getElementById('headerStaffApp');
+          if (headerStaffApp) headerStaffApp.classList.add('hidden');
         }
       }
 
@@ -6260,6 +6266,14 @@
       // Note: Do NOT dismiss when clicking the backdrop or Apply — only the Dismiss button closes the popup.
       // Apply button is a normal link (`<a>`) and will open the form in a new tab; we intentionally do not attach a dismiss handler.
       // ======================== END MOD APP POPUP ========================
+
+      // Wire sidebar and header Staff Applications links to open the popup
+      const sidePanelModApp = document.getElementById('sidePanelModApp');
+      const headerStaffApp = document.getElementById('headerStaffApp');
+
+      // Leave sidebar Staff Applications link as a normal external link (no JS interception)
+
+      // Header staff link is a normal external link — no JS interception
 
       // Global touch-to-click enhancer for iOS/touch devices
       (function(){
