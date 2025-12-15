@@ -121,6 +121,15 @@
         pointer-events: none;
       }
 
+      /* On touch devices (iPad/Safari), make hide instantaneous while keeping smooth fade-in */
+      @media (hover: none) and (pointer: coarse) {
+        .group:not(.touch-active) button[class*="opacity-0"],
+        .group:not(.touch-active) .group-hover\:opacity-100,
+        .group:not(.touch-active) .opacity-0 {
+          transition-duration: 0s !important;
+        }
+      }
+
 
       /* ========= Page Navigation Tabs ========= */
       .nav-tab {
