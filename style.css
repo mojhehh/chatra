@@ -7,13 +7,30 @@
         text-size-adjust: 100%;
       }
       
-      /* Improve touch targets and interactions */
+      /* Improve touch targets and interactions - apply to ALL interactive elements */
       button, 
       [role="button"],
       input[type="button"],
       input[type="submit"],
-      .cursor-pointer {
+      .cursor-pointer,
+      .nav-tab,
+      .help-tab,
+      .side-panel-item,
+      .clickable,
+      label,
+      select,
+      [onclick],
+      [data-tab] {
         -webkit-tap-highlight-color: rgba(56, 189, 248, 0.3);
+        touch-action: manipulation;
+        -webkit-touch-callout: none;
+        -webkit-user-select: none;
+        user-select: none;
+      }
+
+      /* Ensure anchors and other interactive elements behave well on touch */
+      a, input[type="radio"], input[type="checkbox"], textarea {
+        -webkit-tap-highlight-color: rgba(56, 189, 248, 0.25);
         touch-action: manipulation;
       }
       
@@ -21,17 +38,29 @@
       input[type="text"],
       input[type="password"],
       input[type="email"],
-      textarea {
+      textarea,
+      select {
         font-size: 16px; /* Prevents iOS zoom */
         -webkit-appearance: none;
         -moz-appearance: none;
         appearance: none;
       }
       
-      /* Ensure smooth scrolling on iOS */
+      /* Ensure smooth scrolling on iOS for ALL scrollable containers */
       .overflow-y-auto,
       .overflow-y-scroll,
-      #messages {
+      #messages,
+      .glass-card,
+      .modal-overlay,
+      [style*="overflow"],
+      #dmPageConversationList,
+      #dmPageMessages,
+      #helpModal,
+      #settingsModal,
+      #profileModal,
+      #patchNotesModal,
+      #termsModal,
+      #privacyModal {
         -webkit-overflow-scrolling: touch;
       }
       
@@ -39,19 +68,46 @@
       @media (hover: none) and (pointer: coarse) {
         button:active,
         [role="button"]:active,
-        .cursor-pointer:active {
+        .cursor-pointer:active,
+        .nav-tab:active,
+        .help-tab:active,
+        a:active {
           opacity: 0.7;
           transform: scale(0.98);
         }
         
-        /* Ensure hover-dependent elements are visible on touch */
+        /* Ensure hover-dependent elements (message action buttons) are visible on touch */
         .group:active .group-hover\:opacity-100,
-        .group:focus-within .group-hover\:opacity-100 {
+        .group:focus-within .group-hover\:opacity-100,
+        .group:active .opacity-0,
+        .group:focus-within .opacity-0 {
           opacity: 1 !important;
+        }
+
+        /* Show message action buttons when message bubble is touched */
+        .message-bubble-anim:active ~ button,
+        .group:active button[class*="opacity-0"],
+        .group:focus-within button[class*="opacity-0"] {
+          opacity: 1 !important;
+        }
+
+        /* Larger touch targets on touch devices - but not for message action buttons */
+        .nav-tab, .help-tab {
+          min-height: 44px;
+          min-width: 44px;
         }
       }
       
       /* ========= End iPad/Safari Compatibility ========= */
+
+      /* When a message group has been touched on a touch device, reveal its action buttons transiently */
+      .group.touch-active .group-hover\:opacity-100,
+      .group.touch-active .opacity-0,
+      .group.touch-active button[class*="opacity-0"] {
+        opacity: 1 !important;
+        pointer-events: auto !important;
+      }
+
 
       /* ========= Page Navigation Tabs ========= */
       .nav-tab {
@@ -122,23 +178,68 @@
       }
       /* ========= End DM Page Scrollbars ========= */
 
-      #messages {
+      /* ========= Global Dark Blue Scrollbars ========= */
+      #messages,
+      .overflow-y-auto,
+      .overflow-y-scroll,
+      .glass-card,
+      #helpModal .glass-card,
+      #settingsModal,
+      #profileModal,
+      #patchNotesModal .glass-card,
+      #termsModal .glass-card,
+      #privacyModal .glass-card {
         scrollbar-width: thin;
-        scrollbar-color: rgba(100, 116, 139, 0.6) rgba(15, 23, 42, 0.3);
+        scrollbar-color: rgba(56, 97, 150, 0.7) rgba(15, 23, 42, 0.4);
+        -webkit-overflow-scrolling: touch;
       }
-      #messages::-webkit-scrollbar {
+      #messages::-webkit-scrollbar,
+      .overflow-y-auto::-webkit-scrollbar,
+      .overflow-y-scroll::-webkit-scrollbar,
+      .glass-card::-webkit-scrollbar {
         width: 8px;
       }
-      #messages::-webkit-scrollbar-track {
-        background: rgba(15, 23, 42, 0.3);
-      }
-      #messages::-webkit-scrollbar-thumb {
-        background: rgba(100, 116, 139, 0.6);
+      #messages::-webkit-scrollbar-track,
+      .overflow-y-auto::-webkit-scrollbar-track,
+      .overflow-y-scroll::-webkit-scrollbar-track,
+      .glass-card::-webkit-scrollbar-track {
+        background: rgba(15, 23, 42, 0.4);
         border-radius: 4px;
       }
-      #messages::-webkit-scrollbar-thumb:hover {
-        background: rgba(100, 116, 139, 0.8);
+      #messages::-webkit-scrollbar-thumb,
+      .overflow-y-auto::-webkit-scrollbar-thumb,
+      .overflow-y-scroll::-webkit-scrollbar-thumb,
+      .glass-card::-webkit-scrollbar-thumb {
+        background: linear-gradient(180deg, rgba(56, 97, 150, 0.8) 0%, rgba(30, 64, 110, 0.9) 100%);
+        border-radius: 4px;
+        border: 1px solid rgba(56, 130, 180, 0.3);
       }
+      #messages::-webkit-scrollbar-thumb:hover,
+      .overflow-y-auto::-webkit-scrollbar-thumb:hover,
+      .overflow-y-scroll::-webkit-scrollbar-thumb:hover,
+      .glass-card::-webkit-scrollbar-thumb:hover {
+        background: linear-gradient(180deg, rgba(66, 120, 180, 0.9) 0%, rgba(40, 84, 140, 1) 100%);
+      }
+      /* Light mode global scrollbars */
+      body.light-mode #messages,
+      body.light-mode .overflow-y-auto,
+      body.light-mode .overflow-y-scroll,
+      body.light-mode .glass-card {
+        scrollbar-color: rgba(56, 97, 150, 0.5) rgba(226, 232, 240, 0.6);
+      }
+      body.light-mode #messages::-webkit-scrollbar-track,
+      body.light-mode .overflow-y-auto::-webkit-scrollbar-track,
+      body.light-mode .overflow-y-scroll::-webkit-scrollbar-track,
+      body.light-mode .glass-card::-webkit-scrollbar-track {
+        background: rgba(226, 232, 240, 0.6);
+      }
+      body.light-mode #messages::-webkit-scrollbar-thumb,
+      body.light-mode .overflow-y-auto::-webkit-scrollbar-thumb,
+      body.light-mode .overflow-y-scroll::-webkit-scrollbar-thumb,
+      body.light-mode .glass-card::-webkit-scrollbar-thumb {
+        background: linear-gradient(180deg, rgba(56, 97, 150, 0.6) 0%, rgba(30, 64, 110, 0.7) 100%);
+      }
+      /* ========= End Global Dark Blue Scrollbars ========= */
 
       /* Modal and menu styles */
       .modal-overlay {
@@ -638,3 +739,82 @@
         background: rgba(245, 158, 11, 0.2);
         color: #d97706;
       }
+
+      /* ========= Onboarding Walkthrough Styles ========= */
+      #walkthroughOverlay {
+        /* No blur so the highlighted element stays sharp */
+        backdrop-filter: none;
+      }
+
+      /* Use the highlight element itself to create a "hole" effect by
+         applying a large outward box-shadow that darkens everything
+         outside the highlight while keeping the inside visible. This
+         avoids a separate full-screen backdrop that would dim the
+         highlighted content. */
+      #walkthroughHighlight {
+        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        animation: walkthrough-pulse 2s ease-in-out infinite;
+        /* large outward spread to darken everything outside the rect */
+        box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.65);
+        background: transparent;
+        pointer-events: none;
+        border-radius: 0.5rem;
+        z-index: 10000;
+      }
+      
+      @keyframes walkthrough-pulse {
+        0%, 100% {
+          box-shadow: 0 0 20px 5px rgba(56, 189, 248, 0.5);
+        }
+        50% {
+          box-shadow: 0 0 30px 10px rgba(56, 189, 248, 0.7);
+        }
+      }
+      
+      #walkthroughTooltip {
+        animation: walkthrough-fade-in 0.3s ease-out;
+      }
+
+      /* The backdrop element is kept for legacy browsers but not used
+         when the highlight's box-shadow hole technique is active. */
+      #walkthroughBackdrop {
+        background: transparent !important;
+      }
+      
+      @keyframes walkthrough-fade-in {
+        from {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+      
+      /* Light mode walkthrough */
+      body.light-mode #walkthroughTooltip {
+        background: rgba(255, 255, 255, 0.98);
+        border-color: rgba(148, 163, 184, 0.3);
+      }
+      body.light-mode #walkthroughTitle {
+        color: #1e293b;
+      }
+      body.light-mode #walkthroughDesc {
+        color: #475569;
+      }
+      body.light-mode #walkthroughStepBadge {
+        background: rgba(14, 165, 233, 0.1);
+        color: #0284c7;
+      }
+      /* Reply preview that quotes the current user */
+      .reply-preview.reply-to-me {
+        background: linear-gradient(90deg, rgba(56,189,248,0.06), rgba(56,189,248,0.03));
+        border-left-color: rgba(56,189,248,0.9) !important;
+        box-shadow: 0 0 10px rgba(56,189,248,0.25);
+      }
+      .reply-preview.reply-to-me p {
+        color: #bfebff !important;
+        text-shadow: 0 0 6px rgba(56,189,248,0.9);
+      }
+      /* ========= End Onboarding Walkthrough Styles =========
