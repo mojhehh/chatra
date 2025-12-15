@@ -643,8 +643,14 @@
             let touchFired = false;
             btn.addEventListener('touchstart', (e) => {
               touchFired = true;
-              // make sure action buttons are visible when touched (some CSS hides them via hover)
-              btn.style.opacity = '1';
+              // Show action buttons for the whole message group when touched
+              const grp = btn.closest('.group');
+              if (grp) {
+                grp.classList.add('touch-active');
+                // clear any existing timer
+                if (grp._touchTimer) clearTimeout(grp._touchTimer);
+                grp._touchTimer = setTimeout(() => { grp.classList.remove('touch-active'); grp._touchTimer = null; }, 3000);
+              }
             }, { passive: true });
             btn.addEventListener('touchend', (e) => {
               e.preventDefault();
@@ -657,15 +663,12 @@
               if (touchFired) return; // avoid duplicate action after touch
               handler(e);
             });
-            // if device likely uses touch and CSS hides actions on hover, force visible
-            if (isTouchDevice) {
-              btn.style.opacity = btn.style.opacity || '1';
-              btn.style.pointerEvents = 'auto';
-            }
+            // do not force visibility by default; touch will add 'touch-active' to show buttons
           }
 
           const deleteBtn = document.createElement('button');
-          deleteBtn.className = 'absolute -top-2 -right-2 z-10 w-6 h-6 rounded-full bg-slate-700 text-white opacity-60 sm:opacity-0 sm:group-hover:opacity-100 transition-all flex items-center justify-center hover:bg-red-600 active:bg-red-600 shadow-md border border-slate-500 text-xs';
+          // DM buttons: hidden until hover/touch, slightly shifted left
+          deleteBtn.className = 'absolute -top-2 right-1 z-10 w-6 h-6 rounded-full bg-slate-700 text-white opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center hover:bg-red-600 active:bg-red-600 shadow-md border border-slate-500 text-xs';
           deleteBtn.innerHTML = '🗑️';
           deleteBtn.title = 'Delete message';
           attachActionHandler(deleteBtn, () => {
@@ -674,7 +677,8 @@
           bubbleWrapper.appendChild(deleteBtn);
 
           const editBtn = document.createElement('button');
-          editBtn.className = 'absolute -top-2 -right-9 z-10 w-6 h-6 rounded-full bg-slate-700 text-white opacity-60 sm:opacity-0 sm:group-hover:opacity-100 transition-all flex items-center justify-center hover:bg-sky-600 active:bg-sky-600 shadow-md border border-slate-500';
+          // DM edit button: hidden until hover/touch, aligned left of trashcan
+          editBtn.className = 'absolute -top-2 right-9 z-10 w-6 h-6 rounded-full bg-slate-700 text-white opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center hover:bg-sky-600 active:bg-sky-600 shadow-md border border-slate-500';
           editBtn.innerHTML = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 20 20\" fill=\"currentColor\" class=\"w-3 h-3\"><path d=\"M15.502 1.94a1.5 1.5 0 0 1 2.122 2.12l-1.06 1.062-2.122-2.122 1.06-1.06Zm-2.829 2.828-9.192 9.193a2 2 0 0 0-.518.94l-.88 3.521a.5.5 0 0 0 .607.607l3.52-.88a2 2 0 0 0 .942-.518l9.193-9.193-2.672-2.67Z\"/></svg>";
           editBtn.title = 'Edit message';
           attachActionHandler(editBtn, () => {
@@ -687,7 +691,7 @@
         if (!isMine && msg.key) {
           // Report button
           const reportBtn = document.createElement('button');
-          reportBtn.className = 'absolute -top-2 -left-2 z-10 w-6 h-6 rounded-full bg-slate-700 text-white opacity-60 sm:opacity-0 sm:group-hover:opacity-100 transition-all flex items-center justify-center hover:bg-amber-600 active:bg-amber-600 shadow-md border border-slate-500 text-xs';
+          reportBtn.className = 'absolute -top-2 -left-2 z-10 w-6 h-6 rounded-full bg-slate-700 text-white opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center hover:bg-amber-600 active:bg-amber-600 shadow-md border border-slate-500 text-xs';
           reportBtn.innerHTML = '⚠️';
           reportBtn.title = 'Report message';
           // reuse attachActionHandler if available in this scope, otherwise fallback
@@ -706,7 +710,7 @@
           // Admin delete
           if (isAdmin) {
             const adminDeleteBtn = document.createElement('button');
-            adminDeleteBtn.className = 'absolute -top-2 -right-2 z-10 w-6 h-6 rounded-full bg-red-600 text-white opacity-60 sm:opacity-0 sm:group-hover:opacity-100 transition-all flex items-center justify-center hover:bg-red-700 active:bg-red-700 shadow-md border border-red-300 text-xs';
+            adminDeleteBtn.className = 'absolute -top-2 -right-2 z-10 w-6 h-6 rounded-full bg-red-600 text-white opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center hover:bg-red-700 active:bg-red-700 shadow-md border border-red-300 text-xs';
             adminDeleteBtn.innerHTML = '🗑️';
             adminDeleteBtn.title = 'Admin delete';
             if (typeof attachActionHandler === 'function') {
@@ -2389,19 +2393,17 @@
         if (lastTypingText) parts.push(lastTypingText);
         if (currentWarningText) {
           if (parts.length > 0) {
-            parts.push("• " + currentWarningText);
+            // keep existing order when combining texts
           } else {
             parts.push(currentWarningText);
           }
         }
         typingIndicatorEl.textContent = parts.join(" ");
-        // keep the old warning element visually empty
         if (sendWarningEl) sendWarningEl.textContent = "";
       }
 
       // Helper: clear messages
       function clearLoginMessages() {
-        loginError.textContent = "";
         loginInfo.textContent = "";
       }
 
@@ -4011,10 +4013,17 @@
         // Add reply preview if this message is a reply
         if (msg.replyTo && msg.replyTo.messageId) {
           const replyPreview = document.createElement("div");
-          replyPreview.className = "reply-preview mb-2 px-2 py-1.5 rounded-lg cursor-pointer transition-colors " + 
-            (isMine 
-              ? "bg-sky-400/20 border-l-2 border-sky-300 hover:bg-sky-400/30" 
-              : "bg-slate-600/50 border-l-2 border-slate-400 hover:bg-slate-600/70");
+          // If this reply quotes the current user, add a special class to highlight it
+          let replyPreviewClass = "reply-preview mb-2 px-2 py-1.5 rounded-lg cursor-pointer transition-colors ";
+          replyPreviewClass += (isMine
+            ? "bg-sky-400/20 border-l-2 border-sky-300 hover:bg-sky-400/30"
+            : "bg-slate-600/50 border-l-2 border-slate-400 hover:bg-slate-600/70");
+          try {
+            if (msg.replyTo && msg.replyTo.username && currentUsername && msg.replyTo.username.toLowerCase() === currentUsername.toLowerCase()) {
+              replyPreviewClass += ' reply-to-me';
+            }
+          } catch (e) {}
+          replyPreview.className = replyPreviewClass;
           // Use previewText to create a friendly ellipsized snippet for the reply preview
           const replyTextRaw = msg.replyTo.text || "(message)";
           const replySnippet = previewText(replyTextRaw, 64);
@@ -4207,8 +4216,9 @@
         // Add delete button for own messages
         if (isMine && messageId) {
           const deleteBtn = document.createElement("button");
-          // Use opacity-60 by default so buttons are visible on touch devices (iPad)
-          deleteBtn.className = "absolute top-0 right-0 translate-x-1/2 -translate-y-1/2 z-10 w-7 h-7 rounded-full bg-slate-700 text-white opacity-60 sm:opacity-0 sm:group-hover:opacity-100 transition-all flex items-center justify-center hover:bg-red-600 active:bg-red-600 shadow-md border border-slate-500";
+          // Hidden by default, show on hover (group-hover handles touch via CSS)
+          // Global chat: hidden by default; moved slightly left for spacing
+          deleteBtn.className = "absolute top-0 right-6 -translate-y-1/2 z-10 w-7 h-7 rounded-full bg-slate-700 text-white opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center hover:bg-red-600 active:bg-red-600 shadow-md border border-slate-500";
           deleteBtn.innerHTML = "🗑️";
           deleteBtn.title = "Delete message";
           
@@ -4224,8 +4234,8 @@
           bubbleContainer.appendChild(deleteBtn);
 
           const editBtn = document.createElement("button");
-          // Use opacity-60 by default so buttons are visible on touch devices (iPad)
-          editBtn.className = "absolute top-0 right-9 -translate-y-1/2 z-10 w-7 h-7 rounded-full bg-slate-700 text-white opacity-60 sm:opacity-0 sm:group-hover:opacity-100 transition-all flex items-center justify-center hover:bg-sky-600 active:bg-sky-600 shadow-md border border-slate-500";
+          // Hidden by default, show on hover (group-hover handles touch via CSS)
+          editBtn.className = "absolute top-0 right-14 -translate-y-1/2 z-10 w-7 h-7 rounded-full bg-slate-700 text-white opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center hover:bg-sky-600 active:bg-sky-600 shadow-md border border-slate-500";
           editBtn.innerHTML = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 20 20\" fill=\"currentColor\" class=\"w-4 h-4\"><path d=\"M15.502 1.94a1.5 1.5 0 0 1 2.122 2.12l-1.06 1.062-2.122-2.122 1.06-1.06Zm-2.829 2.828-9.192 9.193a2 2 0 0 0-.518.94l-.88 3.521a.5.5 0 0 0 .607.607l3.52-.88a2 2 0 0 0 .942-.518l9.193-9.193-2.672-2.67Z\"/></svg>";
           editBtn.title = "Edit message";
 
@@ -4241,8 +4251,8 @@
           // If already reported locally, don't add a report button
           if (!reportedMessages.has(messageId)) {
             const reportBtn = document.createElement("button");
-            // Use opacity-60 by default so buttons are visible on touch devices (iPad)
-            reportBtn.className = "absolute top-0 left-0 -translate-x-1/2 -translate-y-1/2 z-10 w-7 h-7 rounded-full bg-slate-700 text-white opacity-60 sm:opacity-0 sm:group-hover:opacity-100 transition-all flex items-center justify-center hover:bg-amber-600 active:bg-amber-600 shadow-md text-sm border border-slate-500";
+            // Hidden by default, show on hover (group-hover handles touch via CSS)
+            reportBtn.className = "absolute top-0 left-0 -translate-x-1/2 -translate-y-1/2 z-10 w-7 h-7 rounded-full bg-slate-700 text-white opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center hover:bg-amber-600 active:bg-amber-600 shadow-md text-sm border border-slate-500";
             reportBtn.innerHTML = "⚠️";
             reportBtn.title = "Report message";
 
@@ -4270,8 +4280,8 @@
         // Add reply button on all messages
         if (messageId) {
           const replyBtn = document.createElement("button");
-          // Use opacity-60 by default so buttons are visible on touch devices (iPad)
-          replyBtn.className = "absolute bottom-0 " + (isMine ? "left-0 -translate-x-1/2" : "right-0 translate-x-1/2") + " translate-y-1/2 z-10 w-7 h-7 rounded-full bg-slate-700 text-white opacity-60 sm:opacity-0 sm:group-hover:opacity-100 transition-all flex items-center justify-center hover:bg-sky-600 active:bg-sky-600 shadow-md border border-slate-500";
+          // Hidden by default, show on hover (group-hover handles touch via CSS)
+          replyBtn.className = "absolute bottom-0 " + (isMine ? "left-0 -translate-x-1/2" : "right-0 translate-x-1/2") + " translate-y-1/2 z-10 w-7 h-7 rounded-full bg-slate-700 text-white opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center hover:bg-sky-600 active:bg-sky-600 shadow-md border border-slate-500";
           replyBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4"><path fill-rule="evenodd" d="M7.793 2.232a.75.75 0 0 1-.025 1.06L3.622 7.25h10.003a5.375 5.375 0 0 1 0 10.75H10.75a.75.75 0 0 1 0-1.5h2.875a3.875 3.875 0 0 0 0-7.75H3.622l4.146 3.957a.75.75 0 0 1-1.036 1.085l-5.5-5.25a.75.75 0 0 1 0-1.085l5.5-5.25a.75.75 0 0 1 1.06.025Z" clip-rule="evenodd"/></svg>';
           replyBtn.title = "Reply";
 
@@ -4280,14 +4290,17 @@
             let touchFired = false;
             replyBtn.addEventListener('touchstart', (e) => {
               touchFired = true;
-              // ensure visible when touched (some CSS hides via hover)
-              replyBtn.style.opacity = '1';
+              const grp = replyBtn.closest('.group');
+              if (grp) {
+                grp.classList.add('touch-active');
+                if (grp._touchTimer) clearTimeout(grp._touchTimer);
+                grp._touchTimer = setTimeout(() => { grp.classList.remove('touch-active'); grp._touchTimer = null; }, 3000);
+              }
             }, { passive: true });
             replyBtn.addEventListener('touchend', (e) => {
               e.preventDefault();
               e.stopPropagation();
               setReply(messageId, username, msg.text || "(media)");
-              // reset flag shortly after to allow normal clicks later
               setTimeout(() => { touchFired = false; }, 500);
             });
             replyBtn.addEventListener('click', (e) => {
@@ -5082,6 +5095,11 @@
             if (fastModeToggle) fastModeToggle.checked = settings.fastMode === true;
             applyFastMode(settings.fastMode === true, false);
             initRatingSettings(settings);
+            
+            // Start onboarding walkthrough for new users (after UI is ready)
+            setTimeout(() => {
+              startWalkthrough();
+            }, 1500);
           } catch (err) {
             console.error("[auth] error in onAuthStateChanged:", err);
             // Show error and sign out
@@ -5325,36 +5343,6 @@
 
             // Stop typing once message is sent
             setTyping(false);
-
-            // === AI Moderation: background call ===
-            fetch("https://image.modmojheh.workers.dev/moderate-text", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                messageId: newMsgKey,
-                text: text,
-                userId: uid
-              })
-            })
-            .then(async (res) => {
-              let data;
-              try { data = await res.json(); } catch { data = null; }
-              console.log("[moderation] response for message", newMsgKey, data);
-              // Only delete if moderation explicitly requests deletion (deleted: true)
-              if (data && data.deleted === true) {
-                console.warn("[moderation] deleting unsafe message (explicit delete)", newMsgKey);
-                try {
-                  await db.ref("messages/" + newMsgKey).remove();
-                  console.log("[moderation] deleted unsafe message", newMsgKey);
-                } catch (delErr) {
-                  console.error("[moderation] failed to delete unsafe message", newMsgKey, delErr);
-                }
-              }
-              // If replaced, do nothing: UI will update automatically from Firebase
-            })
-            .catch((err) => {
-              console.warn("[moderation] error for message", newMsgKey, err);
-            });
 
             // Reset button after 300ms
             setTimeout(() => {
@@ -5886,6 +5874,412 @@
       sidePanelClose.addEventListener("click", closeSidePanel);
       sidePanelOverlay.addEventListener("click", closeSidePanel);
 
+      // Patch Notes elements
+      const sidePanelPatchNotes = document.getElementById("sidePanelPatchNotes");
+      const patchNotesModal = document.getElementById("patchNotesModal");
+      const patchNotesCloseBtn = document.getElementById("patchNotesCloseBtn");
+      const patchNotesContent = document.getElementById("patchNotesContent");
+
+      function openPatchNotes() {
+        try {
+          document.getElementById('patchNotesTitle').textContent = 'Patch Notes — v5.5';
+          patchNotesContent.innerHTML = `
+            <h4 class="font-semibold text-slate-200">Version 5.5 — Release Notes</h4>
+            <p class="text-xs text-slate-400">Released: December 2025</p>
+            <ul class="list-disc pl-5 space-y-1">
+                <li>Added mentioning others when replying — reply previews now highlight mentions.</li>
+                <li>Added an onboarding walkthrough for new users (shows on first signup).</li>
+                <li>Improved reporting system: inline report flow is clearer and prevents duplicate reports.</li>
+                <li>Fixed compatibility with touchscreens (iPad / Safari) and improved button interactions.</li>
+                <li>Added a Suggestions & Help overlay — send suggestions, bug reports, ideas, or ban appeals directly from the app.</li>
+                <li>Various minor UI and performance enhancements.</li>
+            </ul>
+            <h4 class="font-semibold text-slate-200 mt-4">Next Update</h4>
+            <p class="text-xs text-slate-400">Planned: Group chats — estimated this week.</p>`;
+        } catch (e) {}
+        try {
+          // Primary: use modal classes
+          patchNotesModal.classList.remove('modal-closed');
+          patchNotesModal.classList.add('modal-open');
+          // Fallback: ensure overlay is above other UI on problematic browsers
+          patchNotesModal.style.zIndex = '99999';
+          patchNotesModal.style.display = 'flex';
+          console.debug('[patchNotes] opened');
+        } catch (e) { console.warn('[patchNotes] open failed', e); }
+        closeSidePanel();
+      }
+
+      function closePatchNotes() {
+        try { patchNotesModal.classList.remove('modal-open'); patchNotesModal.classList.add('modal-closed'); } catch (e) {}
+      }
+
+      if (sidePanelPatchNotes) {
+        sidePanelPatchNotes.addEventListener('click', () => openPatchNotes());
+        sidePanelPatchNotes.addEventListener('touchend', (e) => { e.preventDefault(); openPatchNotes(); });
+      }
+      if (patchNotesCloseBtn) {
+        patchNotesCloseBtn.addEventListener('click', closePatchNotes);
+      }
+      if (patchNotesModal) {
+        patchNotesModal.addEventListener('click', (e) => { if (e.target === patchNotesModal) closePatchNotes(); });
+      }
+
+      // ===== SUGGESTIONS & HELP MODAL =====
+      const sidePanelHelp = document.getElementById("sidePanelHelp");
+      const helpModal = document.getElementById("helpModal");
+      const helpCloseBtn = document.getElementById("helpCloseBtn");
+      const helpForm = document.getElementById("helpForm");
+      const helpType = document.getElementById("helpType");
+      const helpTitle = document.getElementById("helpTitle");
+      const helpDesc = document.getElementById("helpDesc");
+      const helpUsername = document.getElementById("helpUsername");
+      const helpEmail = document.getElementById("helpEmail");
+      const helpEmailWrapper = document.getElementById("helpEmailWrapper");
+      const helpTitleLabel = document.getElementById("helpTitleLabel");
+      const helpDescLabel = document.getElementById("helpDescLabel");
+      const helpSubmitBtn = document.getElementById("helpSubmitBtn");
+      const helpStatus = document.getElementById("helpStatus");
+      const appealFields = document.getElementById("appealFields");
+      const appealReason = document.getElementById("appealReason");
+      const helpTabs = document.querySelectorAll(".help-tab");
+
+      const helpLabels = {
+        suggestion: {
+          titleLabel: "Suggestion Title",
+          titlePlaceholder: "Brief title for your suggestion",
+          descLabel: "Description",
+          descPlaceholder: "Describe your suggestion in detail...",
+          submitBtn: "Submit Suggestion"
+        },
+        bug: {
+          titleLabel: "Bug Summary",
+          titlePlaceholder: "What's the issue?",
+          descLabel: "Steps to Reproduce",
+          descPlaceholder: "1. Go to...\n2. Click on...\n3. See error...",
+          submitBtn: "Report Bug"
+        },
+        idea: {
+          titleLabel: "Idea Title",
+          titlePlaceholder: "Name your idea",
+          descLabel: "Describe Your Idea",
+          descPlaceholder: "Share your creative idea for Chatra...",
+          submitBtn: "Submit Idea"
+        },
+        appeal: {
+          titleLabel: "Appeal Subject",
+          titlePlaceholder: "Reason for appeal",
+          descLabel: "What Happened",
+          descPlaceholder: "Describe the situation that led to your ban...",
+          submitBtn: "Submit Appeal"
+        }
+      };
+
+      function openHelpModal() {
+        if (helpModal) {
+          helpModal.classList.remove('modal-closed');
+          helpModal.classList.add('modal-open');
+          helpModal.style.zIndex = '99999';
+          helpModal.style.display = 'flex';
+        }
+        // Clear any previous status message
+        if (helpStatus) {
+          helpStatus.classList.add('hidden');
+          helpStatus.textContent = '';
+        }
+        closeSidePanel();
+      }
+
+      // Open help modal and optionally switch to a specific tab (e.g., 'appeal')
+      function openHelpModalFor(type) {
+        if (type) switchHelpTab(type);
+        openHelpModal();
+        // If user is not signed in, inform them they must register/login to submit
+        if (!currentUserId) {
+          helpStatus.textContent = "You are not signed in — this will be submitted anonymously.";
+          helpStatus.className = "text-center text-sm text-yellow-400";
+          helpStatus.classList.remove('hidden');
+          helpSubmitBtn.disabled = false;
+        } else {
+          helpStatus.classList.add('hidden');
+          helpSubmitBtn.disabled = false;
+        }
+      }
+
+      function closeHelpModal() {
+        if (helpModal) {
+          helpModal.classList.remove('modal-open');
+          helpModal.classList.add('modal-closed');
+        }
+      }
+
+      function switchHelpTab(type) {
+        helpType.value = type;
+        const labels = helpLabels[type];
+        
+        // Update labels and placeholders
+        helpTitleLabel.textContent = labels.titleLabel;
+        helpTitle.placeholder = labels.titlePlaceholder;
+        helpDescLabel.textContent = labels.descLabel;
+        helpDesc.placeholder = labels.descPlaceholder;
+        helpSubmitBtn.textContent = labels.submitBtn;
+        
+        // Show/hide appeal-specific fields and email field
+        if (type === 'appeal') {
+          appealFields.classList.remove('hidden');
+          if (helpEmailWrapper) helpEmailWrapper.classList.remove('hidden');
+        } else {
+          appealFields.classList.add('hidden');
+          if (helpEmailWrapper) helpEmailWrapper.classList.add('hidden');
+        }
+        
+        // Update tab styling
+        helpTabs.forEach(tab => {
+          if (tab.dataset.tab === type) {
+            tab.classList.remove('bg-slate-700', 'text-slate-300', 'hover:bg-slate-600');
+            tab.classList.add('bg-indigo-600', 'text-white', 'active');
+          } else {
+            tab.classList.remove('bg-indigo-600', 'text-white', 'active');
+            tab.classList.add('bg-slate-700', 'text-slate-300', 'hover:bg-slate-600');
+          }
+        });
+      }
+
+      // Tab click handlers
+      helpTabs.forEach(tab => {
+        tab.addEventListener('click', () => switchHelpTab(tab.dataset.tab));
+        tab.addEventListener('touchend', (e) => { e.preventDefault(); switchHelpTab(tab.dataset.tab); });
+      });
+
+      // Form submission
+      if (helpForm) {
+        helpForm.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          
+          const type = helpType.value;
+          const title = helpTitle.value.trim();
+          const desc = helpDesc.value.trim();
+          const username = helpUsername ? helpUsername.value.trim() : '';
+          const email = helpEmail ? helpEmail.value.trim() : '';
+          
+          // Validate required fields: title, desc, and username
+          if (!title || !desc || !username) {
+            helpStatus.textContent = "Please fill in all required fields (title, description, and username).";
+            helpStatus.className = "text-center text-sm text-red-400";
+            helpStatus.classList.remove('hidden');
+            return;
+          }
+          
+          helpSubmitBtn.disabled = true;
+          helpSubmitBtn.textContent = "Submitting...";
+          
+          try {
+            const submission = {
+              type: type,
+              title: title,
+              description: desc,
+              username: username,
+              email: (type === 'appeal' && email) ? email : null,
+              submittedBy: currentUserId || 'anonymous',
+              submittedByUsername: currentUsername || 'anonymous',
+              timestamp: firebase.database.ServerValue.TIMESTAMP
+            };
+            
+            // Add appeal-specific fields
+            if (type === 'appeal') {
+              submission.appealReason = appealReason ? appealReason.value.trim() : null;
+            }
+            
+            // Support anonymous submissions via a client-generated id (stored in localStorage)
+            // and atomically write submission + update appropriate last-submission timestamp (user or anon)
+            const newKey = db.ref().child('helpSubmissions').push().key;
+            const updates = {};
+
+            // If user is not signed in, ensure a clientId exists in localStorage
+            let clientId = null;
+            if (!currentUserId) {
+              try {
+                clientId = localStorage.getItem('helpClientId');
+                if (!clientId) {
+                  clientId = 'anon-' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+                  localStorage.setItem('helpClientId', clientId);
+                }
+                submission.clientId = clientId;
+                submission.submittedBy = 'anonymous';
+              } catch (err) {
+                console.warn('[help] could not access localStorage for clientId', err);
+              }
+            }
+
+            updates['/helpSubmissions/' + newKey] = submission;
+
+            // First: write the submission itself using a discrete set() so we get clearer per-path permission
+            try {
+              await db.ref('/helpSubmissions/' + newKey).set(submission);
+              console.debug('[help] submission write succeeded, key=', newKey);
+            } catch (err) {
+              console.error('[help] submission write failed:', err);
+              throw err;
+            }
+
+            // Then: update per-user or per-anon timestamp separately (non-fatal)
+            // Appeals use separate timestamp node (1 hour rate limit), others use general node (5 sec rate limit)
+            try {
+              if (currentUserId) {
+                const tsPath = type === 'appeal' ? '/userHelpLastAppeal/' : '/userHelpLastSubmission/';
+                await db.ref(tsPath + currentUserId).set(firebase.database.ServerValue.TIMESTAMP);
+                console.debug('[help] user timestamp set for', currentUserId, 'path=', tsPath);
+              } else if (clientId) {
+                const tsPath = type === 'appeal' ? '/anonHelpLastAppeal/' : '/anonHelpLastSubmission/';
+                await db.ref(tsPath + clientId).set(firebase.database.ServerValue.TIMESTAMP);
+                console.debug('[help] anon timestamp set for', clientId, 'path=', tsPath);
+              }
+            } catch (err) {
+              console.warn('[help] timestamp update failed (non-fatal):', err);
+            }
+
+            console.debug('[help] submission succeeded, key=', newKey, 'type=', type, 'clientId=', submission.clientId || null, 'uid=', currentUserId || null);
+
+            // Friendly names for success message
+            const typeNames = { suggestion: 'suggestion', bug: 'bug report', idea: 'idea', appeal: 'ban appeal' };
+            const friendlyType = typeNames[type] || type;
+            helpStatus.textContent = "✓ Thank you! Your " + friendlyType + " has been submitted.";
+            helpStatus.className = "text-center text-sm text-green-400";
+            helpStatus.classList.remove('hidden');
+
+            // Reset form fields
+            helpTitle.value = "";
+            helpDesc.value = "";
+            if (helpUsername) helpUsername.value = "";
+            if (helpEmail) helpEmail.value = "";
+            if (appealReason) appealReason.value = "";
+
+            // Keep the modal open briefly so user sees confirmation, then close and clear status
+            setTimeout(() => {
+              try { helpStatus.classList.add('hidden'); helpStatus.textContent = ''; } catch(e){}
+              try { closeHelpModal(); } catch (e) {}
+              try { if (helpModal) { helpModal.style.display = 'none'; } } catch(e){}
+            }, 3500);
+            
+          } catch (err) {
+            console.error("[help] submission failed:", err);
+            const msg = (err && err.message) ? err.message : String(err || 'Unknown error');
+            helpStatus.textContent = "Failed to submit: " + msg;
+            helpStatus.className = "text-center text-sm text-red-400";
+            helpStatus.classList.remove('hidden');
+          } finally {
+            helpSubmitBtn.disabled = false;
+            helpSubmitBtn.textContent = helpLabels[type].submitBtn;
+          }
+        });
+      }
+
+      // Open/close handlers
+      if (sidePanelHelp) {
+        sidePanelHelp.addEventListener('click', () => openHelpModal());
+        sidePanelHelp.addEventListener('touchend', (e) => { e.preventDefault(); openHelpModal(); });
+      }
+      if (helpCloseBtn) {
+        helpCloseBtn.addEventListener('click', closeHelpModal);
+        helpCloseBtn.addEventListener('touchend', (e) => { e.preventDefault(); closeHelpModal(); });
+      }
+      if (helpModal) {
+        helpModal.addEventListener('click', (e) => { if (e.target === helpModal) closeHelpModal(); });
+      }
+
+      // Ensure the submit button responds to touch on iPad/Safari
+      if (helpSubmitBtn) {
+        helpSubmitBtn.addEventListener('touchend', (e) => { e.preventDefault(); try { helpSubmitBtn.click(); } catch (err) { /* fallback: submit the form */ try { helpForm.dispatchEvent(new Event('submit', {cancelable: true})); } catch(e){} } });
+      }
+
+      // Registration page appeal button
+      const registerAppealBtn = document.getElementById('registerAppealBtn');
+      if (registerAppealBtn) {
+        registerAppealBtn.addEventListener('click', () => openHelpModalFor('appeal'));
+        registerAppealBtn.addEventListener('touchend', (e) => { e.preventDefault(); openHelpModalFor('appeal'); });
+      }
+
+      // Global touch-to-click enhancer for iOS/touch devices
+      (function(){
+        if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
+          // Expanded selectors for all interactive elements (exclude message bubbles to avoid interfering with action buttons)
+          const selectors = 'button, [role="button"], a[href], .nav-tab, .help-tab, .reply-button, .side-panel-item, .clickable, [data-tab], label[for], select, [onclick]';
+          
+          function enhanceElement(el) {
+            if (!el.dataset.touchEnhanced) {
+              el.addEventListener('touchend', function(e){
+                // Don't interfere with scrolling
+                if (e.cancelable) {
+                  e.preventDefault();
+                }
+                try { el.click(); } catch (err) {
+                  const ev = new MouseEvent('click', { bubbles: true, cancelable: true });
+                  el.dispatchEvent(ev);
+                }
+              }, { passive: false });
+              el.dataset.touchEnhanced = '1';
+            }
+          }
+          
+          // Enhance existing elements
+          document.querySelectorAll(selectors).forEach(enhanceElement);
+          
+          // Use MutationObserver to enhance dynamically added elements
+          const observer = new MutationObserver((mutations) => {
+            mutations.forEach((mutation) => {
+              mutation.addedNodes.forEach((node) => {
+                if (node.nodeType === 1) {
+                  if (node.matches && node.matches(selectors)) {
+                    enhanceElement(node);
+                  }
+                  // Also check descendants
+                  if (node.querySelectorAll) {
+                    node.querySelectorAll(selectors).forEach(enhanceElement);
+                  }
+                }
+              });
+            });
+          });
+          observer.observe(document.body, { childList: true, subtree: true });
+
+          // Prevent quick double-tap causing zoom on iOS
+          let __lastTouch = 0;
+          document.addEventListener('touchend', function(e){
+            const now = Date.now();
+            if (now - __lastTouch <= 300 && e.cancelable) {
+              e.preventDefault();
+            }
+            __lastTouch = now;
+          }, { passive: false });
+          
+          // Add touch feedback to modals - close on background tap
+          document.querySelectorAll('.modal-overlay').forEach(modal => {
+            modal.addEventListener('touchend', function(e) {
+              if (e.target === modal && e.cancelable) {
+                e.preventDefault();
+                modal.classList.remove('modal-open');
+                modal.classList.add('modal-closed');
+              }
+            }, { passive: false });
+          });
+
+          // Show message action buttons on touch for iPad - tap on message bubble shows buttons
+          document.addEventListener('touchstart', function(e) {
+            const group = e.target.closest('.group');
+            if (group) {
+              // remove touch-active from other groups
+              document.querySelectorAll('.group.touch-active').forEach(g => {
+                if (g !== group) g.classList.remove('touch-active');
+              });
+              // add touch-active to this group (CSS will reveal action buttons)
+              group.classList.add('touch-active');
+              // set/refresh hide timer
+              if (group._touchTimer) clearTimeout(group._touchTimer);
+              group._touchTimer = setTimeout(() => { group.classList.remove('touch-active'); group._touchTimer = null; }, 3000);
+            }
+          }, { passive: true });
+        }
+      })();
+
       // Close settings modal
       settingsCloseBtn.addEventListener("click", () => {
         settingsModal.classList.remove("modal-open");
@@ -6127,6 +6521,13 @@
 
       function maybeShowRatingPrompt(reason = "interval") {
         if (!currentUserId || ratingOptOut) return;
+        // Do not show rating while onboarding walkthrough is active
+        if (typeof walkthroughActive !== 'undefined' && walkthroughActive) {
+          console.log('[rating] walkthrough active, deferring prompt');
+          // Try again later after the normal interval
+          setTimeout(() => maybeShowRatingPrompt('deferred-after-walkthrough'), RATING_INTERVAL_MS);
+          return;
+        }
         const now = Date.now();
         if (now - ratingLastPrompt < RATING_INTERVAL_MS) return;
         ratingLastPrompt = now;
@@ -6139,7 +6540,8 @@
         stopRatingPromptLoop();
         if (!currentUserId || ratingOptOut) return;
         ratingIntervalId = setInterval(() => maybeShowRatingPrompt("interval"), RATING_INTERVAL_MS);
-        setTimeout(() => maybeShowRatingPrompt("initial"), 2000);
+        // Initial prompt should wait the interval to avoid interfering with onboarding
+        setTimeout(() => maybeShowRatingPrompt("initial"), RATING_INTERVAL_MS);
       }
 
       async function submitRating() {
@@ -8853,3 +9255,277 @@
         blockedUsersModal.classList.add("modal-open");
         loadBlockedUsers();
       });
+
+      // ===== ONBOARDING WALKTHROUGH SYSTEM =====
+      const walkthroughOverlay = document.getElementById("walkthroughOverlay");
+      const walkthroughBackdrop = document.getElementById("walkthroughBackdrop");
+      const walkthroughHighlight = document.getElementById("walkthroughHighlight");
+      const walkthroughTooltip = document.getElementById("walkthroughTooltip");
+      const walkthroughStepBadge = document.getElementById("walkthroughStepBadge");
+      const walkthroughTitle = document.getElementById("walkthroughTitle");
+      const walkthroughDesc = document.getElementById("walkthroughDesc");
+      const walkthroughProgress = document.getElementById("walkthroughProgress");
+      const walkthroughPrevBtn = document.getElementById("walkthroughPrevBtn");
+      const walkthroughNextBtn = document.getElementById("walkthroughNextBtn");
+      const walkthroughSkipBtn = document.getElementById("walkthroughSkipBtn");
+
+      let walkthroughStep = 0;
+      let walkthroughActive = false;
+
+      // Walkthrough steps configuration
+      const walkthroughSteps = [
+        {
+          target: null, // Center screen welcome
+          title: "Welcome to Chatra! 👋",
+          desc: "Let's take a quick 1-minute tour to help you get the most out of Chatra. You can skip this anytime.",
+          position: "center"
+        },
+        {
+          target: "#msgInput",
+          title: "Send Messages 💬",
+          desc: "Type your message here and press Enter or click Send. You can chat with everyone in the Global Chat!",
+          position: "top"
+        },
+        {
+          target: "#mediaUploadBtn",
+          title: "Share Media 📷",
+          desc: "Click here to upload images or videos to share with others. Supports most common formats.",
+          position: "top"
+        },
+        {
+          target: "#menuToggle",
+          title: "Open the Menu ☰",
+          desc: "Click the menu button (three dots) to access your profile, settings, friends, DMs, Patch Notes, Suggestions & Help (submit suggestions, bug reports, ideas, or ban appeals), and more!",
+          position: "bottom"
+        },
+        {
+          target: "#navDMs",
+          title: "Direct Messages 📨",
+          desc: "Click here to switch to Direct Messages. You can access DMs from the DMs tab next to Global Chat or via the Menu — use them for private conversations with friends.",
+          position: "bottom"
+        },
+        {
+          target: "#messages",
+          title: "Chat Area 📜",
+          desc: "Messages appear here. You can reply to messages, react to them, and report inappropriate content.",
+          position: "left"
+        },
+        {
+          target: null, // Center screen final
+          title: "You're All Set! 🎉",
+          desc: "That's the basics! Explore the menu for more features like adding friends, customizing your profile, and adjusting settings. Have fun chatting!",
+          position: "center"
+        }
+      ];
+
+      // Check if user should see the walkthrough
+      async function checkWalkthroughStatus() {
+        if (!currentUserId) return false;
+        
+        try {
+          // Check if walkthrough already completed
+          const walkthroughSnap = await db.ref("userSettings/" + currentUserId + "/walkthroughCompleted").once("value");
+          if (walkthroughSnap.val() === true) {
+            console.log("[walkthrough] already completed");
+            return false;
+          }
+
+          // Check if user has ever sent a message (existing user)
+          const messagesSnap = await db.ref("messages")
+            .orderByChild("userId")
+            .equalTo(currentUserId)
+            .limitToFirst(1)
+            .once("value");
+          
+          if (messagesSnap.exists()) {
+            console.log("[walkthrough] user has sent messages, marking as completed");
+            await db.ref("userSettings/" + currentUserId + "/walkthroughCompleted").set(true);
+            return false;
+          }
+
+          // New user, show walkthrough
+          console.log("[walkthrough] new user, showing walkthrough");
+          return true;
+        } catch (err) {
+          console.warn("[walkthrough] error checking status:", err);
+          return false;
+        }
+      }
+
+      // Start the walkthrough
+      async function startWalkthrough() {
+        const shouldShow = await checkWalkthroughStatus();
+        if (!shouldShow) return;
+
+        walkthroughActive = true;
+        walkthroughStep = 0;
+        walkthroughOverlay.classList.remove("hidden");
+        showWalkthroughStep(0);
+      }
+
+      // Show a specific walkthrough step
+      function showWalkthroughStep(stepIndex) {
+        const step = walkthroughSteps[stepIndex];
+        if (!step) return;
+
+        // Update step badge
+        walkthroughStepBadge.textContent = `Step ${stepIndex + 1} of ${walkthroughSteps.length}`;
+
+        // Update title and description
+        walkthroughTitle.textContent = step.title;
+        walkthroughDesc.textContent = step.desc;
+
+        // Update progress bar
+        const progress = ((stepIndex + 1) / walkthroughSteps.length) * 100;
+        walkthroughProgress.style.width = progress + "%";
+
+        // Update navigation buttons
+        walkthroughPrevBtn.disabled = stepIndex === 0;
+        walkthroughNextBtn.textContent = stepIndex === walkthroughSteps.length - 1 ? "Finish ✓" : "Next →";
+
+        // Position highlight and tooltip
+        if (step.target && step.position !== "center") {
+          const targetEl = document.querySelector(step.target);
+          if (targetEl) {
+            positionHighlight(targetEl);
+            positionTooltip(targetEl, step.position);
+            walkthroughHighlight.classList.remove("hidden");
+          } else {
+            // Target not found, center it
+            centerTooltip();
+            walkthroughHighlight.classList.add("hidden");
+          }
+        } else {
+          // Center screen step
+          centerTooltip();
+          walkthroughHighlight.classList.add("hidden");
+        }
+      }
+
+      // Position highlight around target element
+      function positionHighlight(targetEl) {
+        const rect = targetEl.getBoundingClientRect();
+        const padding = 8;
+        
+        walkthroughHighlight.style.top = (rect.top - padding) + "px";
+        walkthroughHighlight.style.left = (rect.left - padding) + "px";
+        walkthroughHighlight.style.width = (rect.width + padding * 2) + "px";
+        walkthroughHighlight.style.height = (rect.height + padding * 2) + "px";
+      }
+
+      // Position tooltip near target element
+      function positionTooltip(targetEl, position) {
+        const rect = targetEl.getBoundingClientRect();
+        const tooltipRect = walkthroughTooltip.getBoundingClientRect();
+        const margin = 20;
+
+        let top, left;
+
+        switch (position) {
+          case "top":
+            top = rect.top - tooltipRect.height - margin;
+            left = rect.left + (rect.width / 2) - (tooltipRect.width / 2);
+            break;
+          case "bottom":
+            top = rect.bottom + margin;
+            left = rect.left + (rect.width / 2) - (tooltipRect.width / 2);
+            break;
+          case "left":
+            top = rect.top + (rect.height / 2) - (tooltipRect.height / 2);
+            left = rect.left - tooltipRect.width - margin;
+            break;
+          case "right":
+            top = rect.top + (rect.height / 2) - (tooltipRect.height / 2);
+            left = rect.right + margin;
+            break;
+          default:
+            top = rect.bottom + margin;
+            left = rect.left;
+        }
+
+        // Keep tooltip within viewport
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+
+        if (left < margin) left = margin;
+        if (left + tooltipRect.width > vw - margin) left = vw - tooltipRect.width - margin;
+        if (top < margin) top = margin;
+        if (top + tooltipRect.height > vh - margin) top = vh - tooltipRect.height - margin;
+
+        walkthroughTooltip.style.top = top + "px";
+        walkthroughTooltip.style.left = left + "px";
+      }
+
+      // Center tooltip on screen
+      function centerTooltip() {
+        walkthroughTooltip.style.top = "50%";
+        walkthroughTooltip.style.left = "50%";
+        walkthroughTooltip.style.transform = "translate(-50%, -50%)";
+        
+        // Reset transform after a frame for smooth animations
+        requestAnimationFrame(() => {
+          const rect = walkthroughTooltip.getBoundingClientRect();
+          walkthroughTooltip.style.top = (window.innerHeight / 2 - rect.height / 2) + "px";
+          walkthroughTooltip.style.left = (window.innerWidth / 2 - rect.width / 2) + "px";
+          walkthroughTooltip.style.transform = "";
+        });
+      }
+
+      // Complete the walkthrough
+      async function completeWalkthrough() {
+        walkthroughActive = false;
+        walkthroughOverlay.classList.add("hidden");
+        
+        if (currentUserId) {
+          try {
+            await db.ref("userSettings/" + currentUserId + "/walkthroughCompleted").set(true);
+            console.log("[walkthrough] marked as completed in Firebase");
+          } catch (err) {
+            console.warn("[walkthrough] failed to save completion status:", err);
+          }
+        }
+      }
+
+      // Skip the walkthrough
+      async function skipWalkthrough() {
+        await completeWalkthrough();
+      }
+
+      // Navigate to next step
+      function nextWalkthroughStep() {
+        if (walkthroughStep < walkthroughSteps.length - 1) {
+          walkthroughStep++;
+          showWalkthroughStep(walkthroughStep);
+        } else {
+          completeWalkthrough();
+        }
+      }
+
+      // Navigate to previous step
+      function prevWalkthroughStep() {
+        if (walkthroughStep > 0) {
+          walkthroughStep--;
+          showWalkthroughStep(walkthroughStep);
+        }
+      }
+
+      // Event listeners for walkthrough
+      if (walkthroughNextBtn) {
+        walkthroughNextBtn.addEventListener("click", nextWalkthroughStep);
+      }
+      if (walkthroughPrevBtn) {
+        walkthroughPrevBtn.addEventListener("click", prevWalkthroughStep);
+      }
+      if (walkthroughSkipBtn) {
+        walkthroughSkipBtn.addEventListener("click", skipWalkthrough);
+      }
+
+      // Handle window resize during walkthrough
+      window.addEventListener("resize", () => {
+        if (walkthroughActive) {
+          showWalkthroughStep(walkthroughStep);
+        }
+      });
+
+      // Expose startWalkthrough for testing
+      window.startWalkthrough = startWalkthrough;
