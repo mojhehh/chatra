@@ -108,6 +108,19 @@
         pointer-events: auto !important;
       }
 
+      /* Quick fade transitions for action buttons to match desktop behavior */
+      .group button[class*="opacity-0"],
+      .group .group-hover\:opacity-100,
+      .group .opacity-0 {
+        transition: opacity 0.14s ease, transform 0.08s ease;
+        will-change: opacity, transform;
+      }
+
+      /* Ensure hidden action buttons are non-interactive until visible */
+      .group button[class*="opacity-0"] {
+        pointer-events: none;
+      }
+
 
       /* ========= Page Navigation Tabs ========= */
       .nav-tab {
