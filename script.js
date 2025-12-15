@@ -647,9 +647,7 @@
               const grp = btn.closest('.group');
               if (grp) {
                 grp.classList.add('touch-active');
-                // clear any existing timer
-                if (grp._touchTimer) clearTimeout(grp._touchTimer);
-                grp._touchTimer = setTimeout(() => { grp.classList.remove('touch-active'); grp._touchTimer = null; }, 3000);
+                // visibility is cleared when user touches elsewhere (no fixed timeout)
               }
             }, { passive: true });
             btn.addEventListener('touchend', (e) => {
@@ -4293,8 +4291,7 @@
               const grp = replyBtn.closest('.group');
               if (grp) {
                 grp.classList.add('touch-active');
-                if (grp._touchTimer) clearTimeout(grp._touchTimer);
-                grp._touchTimer = setTimeout(() => { grp.classList.remove('touch-active'); grp._touchTimer = null; }, 3000);
+                // visibility cleared when touching elsewhere
               }
             }, { passive: true });
             replyBtn.addEventListener('touchend', (e) => {
@@ -4637,32 +4634,37 @@
                 }
               });
 
-              // Batch render all messages at once
-              batchRenderMessages(msgs, { maintainScroll: true });
+              // Render messages after yielding to the browser so the loading spinner can animate smoothly
+              setTimeout(() => {
+                // Batch render all messages at once
+                batchRenderMessages(msgs, { maintainScroll: true });
 
-              // After initial render, jump to bottom (wait for images to load)
-              const scrollToBottom = () => {
-                messagesDiv.scrollTop = messagesDiv.scrollHeight;
-                console.log("[scroll] scrolled to bottom, scrollHeight:", messagesDiv.scrollHeight);
-              };
+                // After initial render, jump to bottom (wait for images to load)
+                const scrollToBottom = () => {
+                  messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                  console.log("[scroll] scrolled to bottom, scrollHeight:", messagesDiv.scrollHeight);
+                };
 
-              // Try multiple times to ensure we catch all image loads
-              setTimeout(scrollToBottom, 300);
-              setTimeout(scrollToBottom, 800);
-              setTimeout(scrollToBottom, 1500);
+                // Try multiple times to ensure we catch all image loads
+                setTimeout(scrollToBottom, 300);
+                setTimeout(scrollToBottom, 800);
+                setTimeout(scrollToBottom, 1500);
 
-              // Hide loading screen after messages are loaded
-              loadingScreen.classList.add("hidden");
+                // Hide loading screen after messages are loaded — keep it visible slightly longer for a smooth transition.
+                // If fast mode is enabled, use a shorter extra delay.
+                const extraDelay = (typeof FAST_MODE_ENABLED !== 'undefined' && FAST_MODE_ENABLED) ? 1000 : 1500;
+                setTimeout(() => { loadingScreen.classList.add("hidden"); }, extraDelay);
 
-              if (count < PAGE_SIZE) {
-                allHistoryLoaded = true;
-              }
+                if (count < PAGE_SIZE) {
+                  allHistoryLoaded = true;
+                }
 
-              // Attach scroll listener only after we have some messages
-              attachScrollListener();
+                // Attach scroll listener only after we have some messages
+                attachScrollListener();
 
-              // Ensure scroll-to-bottom control is available
-              ensureScrollButtonListeners();
+                // Ensure scroll-to-bottom control is available
+                ensureScrollButtonListeners();
+              }, 20);
 
               // --- REALTIME LISTENER FOR NEW MESSAGES ---
               if (messagesRef && messagesListener) {
@@ -6272,9 +6274,9 @@
               });
               // add touch-active to this group (CSS will reveal action buttons)
               group.classList.add('touch-active');
-              // set/refresh hide timer
-              if (group._touchTimer) clearTimeout(group._touchTimer);
-              group._touchTimer = setTimeout(() => { group.classList.remove('touch-active'); group._touchTimer = null; }, 3000);
+            } else {
+              // touched outside any message group -> hide all action buttons immediately
+              document.querySelectorAll('.group.touch-active').forEach(g => g.classList.remove('touch-active'));
             }
           }, { passive: true });
         }
