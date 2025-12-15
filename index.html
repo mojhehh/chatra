@@ -12,26 +12,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="format-detection" content="telephone=no" />
 
-    <script>
-      // Redirect to pause page unless user opted to skip
-      (function () {
-        try {
-          var skip = localStorage.getItem('skipRedirect');
-          if (skip !== 'true') {
-            // Only redirect when landing on the root page
-            // Prevent redirect loops
-            if (!location.pathname.endsWith('chatra.html')) {
-              location.replace('chatra.html');
-            }
-          }
-        } catch (e) {
-          // If localStorage is blocked, still redirect
-          if (!location.pathname.endsWith('chatra.html')) {
-            location.replace('chatra.html');
-          }
-        }
-      })();
-    </script>
+    <!-- Redirect removed per user request -->
 
     <!-- Tailwind CSS (optional, for looks) -->
     <script>
@@ -264,6 +245,10 @@
         >
           Register
         </button>
+
+        <div class="mt-3 text-center">
+          <button id="registerAppealBtn" class="text-sm text-sky-300 hover:text-sky-200 underline underline-offset-4 bg-none border-none cursor-pointer">Submit a Ban Appeal</button>
+        </div>
 
         <!-- Terms and Privacy Policy -->
         <p class="mt-4 text-xs text-gray-300 text-center">
@@ -742,6 +727,152 @@
       </div>
     </div>
 
+    <!-- Patch Notes / Update Log Modal (global full-page overlay) -->
+    <div
+      id="patchNotesModal"
+      class="modal-overlay fixed inset-0 z-60 modal-closed items-center justify-center px-4"
+    >
+      <div class="glass-card max-w-3xl w-full rounded-2xl p-6 sm:p-8 max-h-[90vh] overflow-y-auto relative">
+        <div class="flex justify-between items-center mb-4">
+          <h3 id="patchNotesTitle" class="text-2xl font-semibold text-slate-100">Patch Notes</h3>
+          <button
+            id="patchNotesCloseBtn"
+            title="Close"
+            class="p-1 hover:bg-slate-700 rounded-lg transition-colors text-slate-300"
+            aria-label="Close patch notes"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div id="patchNotesContent" class="text-sm text-slate-300 space-y-4 leading-relaxed">
+          <h4 class="font-semibold text-slate-200">Version 5.6 — Release Notes</h4>
+          <p class="text-xs text-slate-400">Released: December 2025</p>
+          <ul class="list-disc pl-5 space-y-1">
+            <li>Added "Suggestions & Help" — full-page overlay to submit suggestions, bug reports, ideas, and ban appeals.</li>
+            <li>Added anonymous submissions (client-generated ID) with server-side per-user / per-client 1-hour rate-limits.</li>
+            <li>Admins can read submissions and bypass rate-limits for moderation and triage.</li>
+            <li>Added a "Submit a Ban Appeal" shortcut on the registration page that opens the Appeals tab.</li>
+            <li>Improved touch support and iPad/Safari compatibility: touchend handlers, improved modal interactions, playsinline support, and -webkit-overflow-scrolling for smoother scrolling.</li>
+            <li>Fixed submission permission edge-cases and improved error feedback for failed submissions.</li>
+            <li>Reply previews now highlight when replying to your own messages and mentions.</li>
+            <li>Message action buttons (edit/delete): adjusted spacing and improved touch behavior; DM action buttons now show by default on touch devices.</li>
+            <li>Various UI polish and performance improvements.</li>
+          </ul>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Suggestions & Help Modal (full-page overlay) -->
+    <div
+      id="helpModal"
+      class="modal-overlay fixed inset-0 z-60 modal-closed items-center justify-center px-4"
+    >
+      <div class="glass-card max-w-2xl w-full rounded-2xl p-6 sm:p-8 max-h-[90vh] overflow-y-auto relative">
+        <div class="flex justify-between items-center mb-4">
+          <h3 class="text-2xl font-semibold text-slate-100">Suggestions & Help</h3>
+          <button
+            id="helpCloseBtn"
+            title="Close"
+            class="p-1 hover:bg-slate-700 rounded-lg transition-colors text-slate-300"
+            aria-label="Close help"
+          >
+            ✕
+          </button>
+        </div>
+
+        <!-- Category Tabs -->
+        <div class="flex gap-2 mb-6 flex-wrap">
+          <button class="help-tab active px-3 py-1.5 rounded-lg text-sm font-medium bg-indigo-600 text-white" data-tab="suggestion">💡 Suggestion</button>
+          <button class="help-tab px-3 py-1.5 rounded-lg text-sm font-medium bg-slate-700 text-slate-300 hover:bg-slate-600" data-tab="bug">🐛 Bug Report</button>
+          <button class="help-tab px-3 py-1.5 rounded-lg text-sm font-medium bg-slate-700 text-slate-300 hover:bg-slate-600" data-tab="idea">✨ Idea</button>
+          <button class="help-tab px-3 py-1.5 rounded-lg text-sm font-medium bg-slate-700 text-slate-300 hover:bg-slate-600" data-tab="appeal">⚖️ Ban Appeal</button>
+        </div>
+
+        <!-- Form Content -->
+        <form id="helpForm" class="space-y-4">
+          <input type="hidden" id="helpType" value="suggestion">
+          
+          <!-- Dynamic Title based on type -->
+          <div>
+            <label id="helpTitleLabel" class="block text-sm font-medium text-slate-300 mb-1">Suggestion Title</label>
+            <input
+              type="text"
+              id="helpTitle"
+              class="w-full px-4 py-2.5 rounded-lg bg-slate-800/80 border border-slate-700 text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              placeholder="Brief title for your suggestion"
+              maxlength="100"
+              required
+            >
+          </div>
+
+          <!-- Description -->
+          <div>
+            <label id="helpDescLabel" class="block text-sm font-medium text-slate-300 mb-1">Description</label>
+            <textarea
+              id="helpDesc"
+              rows="5"
+              class="w-full px-4 py-2.5 rounded-lg bg-slate-800/80 border border-slate-700 text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+              placeholder="Describe your suggestion in detail..."
+              maxlength="2000"
+              required
+            ></textarea>
+          </div>
+
+          <!-- Ban Appeal Extra Fields (hidden by default) -->
+          <div id="appealFields" class="hidden space-y-4">
+            <div>
+              <label class="block text-sm font-medium text-slate-300 mb-1">Why should your ban be lifted?</label>
+              <textarea
+                id="appealReason"
+                rows="3"
+                class="w-full px-4 py-2.5 rounded-lg bg-slate-800/80 border border-slate-700 text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+                placeholder="Explain why you believe your ban should be reconsidered..."
+                maxlength="1000"
+              ></textarea>
+            </div>
+          </div>
+
+          <!-- Username field (required for all types) -->
+          <div id="helpUsernameWrapper">
+            <label class="block text-sm font-medium text-slate-300 mb-1">Your Username <span class="text-red-400">*</span></label>
+            <input
+              type="text"
+              id="helpUsername"
+              class="w-full px-4 py-2.5 rounded-lg bg-slate-800/80 border border-slate-700 text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              placeholder="Your Chatra username"
+              maxlength="50"
+              required
+            >
+          </div>
+
+          <!-- Contact Email (only shown for appeals, optional) -->
+          <div id="helpEmailWrapper" class="hidden">
+            <label class="block text-sm font-medium text-slate-300 mb-1">Contact Email <span class="text-slate-500">(optional)</span></label>
+            <input
+              type="email"
+              id="helpEmail"
+              class="w-full px-4 py-2.5 rounded-lg bg-slate-800/80 border border-slate-700 text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              placeholder="your@email.com (for follow-up)"
+            >
+          </div>
+
+          <!-- Submit Button -->
+          <button
+            type="submit"
+            id="helpSubmitBtn"
+            class="w-full py-3 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-colors"
+          >
+            Submit Suggestion
+          </button>
+
+          <!-- Status Message -->
+          <p id="helpStatus" class="text-center text-sm hidden" aria-live="polite"></p>
+        </form>
+      </div>
+    </div>
+
     <!-- Chat Interface (hidden by default) -->
 <div
   id="chatInterface"
@@ -760,7 +891,7 @@
         <button
           id="menuToggle"
           class="p-1.5 hover:bg-slate-700 rounded-lg transition-colors"
-          title="Menu"
+          title="Menu — access DMs from the DMs tab next to Global Chat or from the Menu"
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-slate-300">
             <line x1="3" y1="6" x2="21" y2="6"></line>
@@ -792,6 +923,7 @@
         <button
           id="navDMs"
           class="nav-tab flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all relative"
+          title="DMs — open private conversations. You can access DMs from this tab next to Global Chat or via the Menu"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
@@ -1650,6 +1782,14 @@
               </svg>
               Friends
             </button>
+            <!-- Update Log removed; Patch Notes contains release text -->
+            <button
+              id="sidePanelPatchNotes"
+              class="w-full px-4 py-2.5 text-left text-sm text-slate-100 hover:bg-slate-700/50 rounded-lg transition-colors flex items-center gap-3"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-slate-300"><path d="M3 7h18M3 12h18M3 17h18"/></svg>
+              Patch Notes
+            </button>
             <!-- Update Log menu removed -->
             <button
               id="sidePanelDMs"
@@ -1670,6 +1810,17 @@
                 <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
               </svg>
               Blocked Users
+            </button>
+            <button
+              id="sidePanelHelp"
+              class="w-full px-4 py-2.5 text-left text-sm text-slate-100 hover:bg-slate-700/50 rounded-lg transition-colors flex items-center gap-3"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-slate-300">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+                <line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+              Suggestions & Help
             </button>
           </div>
         </div>
@@ -1714,7 +1865,8 @@
             </button>
             <button
               id="navDMs2"
-              class="nav-tab active flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all relative"
+                class="nav-tab active flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all relative"
+                title="DMs — open private conversations. You can access DMs from this tab next to Global Chat or via the Menu"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
@@ -2016,6 +2168,77 @@
             class="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors font-medium"
           >
             Delete
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Onboarding Walkthrough Overlay -->
+    <div
+      id="walkthroughOverlay"
+      class="fixed inset-0 z-[9999] hidden"
+    >
+      <!-- Dark backdrop with hole for highlighted element -->
+      <div id="walkthroughBackdrop" class="absolute inset-0 bg-black/70 transition-all duration-300"></div>
+      
+      <!-- Highlight ring around current element -->
+      <div
+        id="walkthroughHighlight"
+        class="absolute border-4 border-sky-400 rounded-xl pointer-events-none transition-all duration-300 z-[10000]"
+        style="box-shadow: 0 0 20px 5px rgba(56, 189, 248, 0.5); background: transparent;"
+      ></div>
+
+      <!-- Tooltip / Info Card -->
+      <div
+        id="walkthroughTooltip"
+        class="absolute z-[10001] w-80 sm:w-96 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl p-5 transition-all duration-300"
+      >
+        <!-- Step indicator -->
+        <div class="flex items-center justify-between mb-3">
+          <span id="walkthroughStepBadge" class="text-xs font-semibold text-sky-400 bg-sky-400/10 px-2 py-1 rounded-full">
+            Step 1 of 7
+          </span>
+          <button
+            id="walkthroughSkipBtn"
+            class="text-xs text-slate-400 hover:text-slate-200 transition-colors"
+          >
+            Skip tutorial
+          </button>
+        </div>
+
+        <!-- Title -->
+        <h3 id="walkthroughTitle" class="text-lg font-bold text-slate-100 mb-2">
+          Welcome to Chatra! 👋
+        </h3>
+
+        <!-- Description -->
+        <p id="walkthroughDesc" class="text-sm text-slate-300 mb-4 leading-relaxed">
+          Let's take a quick tour to help you get started.
+        </p>
+
+        <!-- Progress bar -->
+        <div class="w-full h-1.5 bg-slate-700 rounded-full mb-4 overflow-hidden">
+          <div
+            id="walkthroughProgress"
+            class="h-full bg-gradient-to-r from-sky-500 to-indigo-500 rounded-full transition-all duration-500"
+            style="width: 14%;"
+          ></div>
+        </div>
+
+        <!-- Navigation buttons -->
+        <div class="flex gap-2">
+          <button
+            id="walkthroughPrevBtn"
+            class="flex-1 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg transition-colors font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled
+          >
+            ← Back
+          </button>
+          <button
+            id="walkthroughNextBtn"
+            class="flex-1 px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-lg transition-colors font-medium text-sm"
+          >
+            Next →
           </button>
         </div>
       </div>
