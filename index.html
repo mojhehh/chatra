@@ -1,42 +1,235 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Website Status - Offline</title>
-    <!-- Using the dark background colors from your original CSS -->
-    <style>
-        body {
-            background-color: #0f172a; /* Very dark blue background */
-            color: #e2e8f0;            /* Off-white text color */
-            font-family: sans-serif;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
-        }
-        .container {
-            padding: 2rem;
-            text-align: center;
-            border: 1px solid rgba(14, 165, 233, 0.3); /* Cyan border from your CSS */
-            border-radius: 0.5rem;
-            background: rgba(51, 65, 85, 0.5); /* Muted gray background from your CSS */
-            box-shadow: 0 0 15px rgba(14, 165, 233, 0.2);
-        }
-        h1 {
-            font-size: 2rem;
-            font-weight: bold;
-            color: #fff;
-        }
-    </style>
-</head>
-<body>
+  <meta charset="UTF-8" />
+  <title>Chatra — Paused</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <div class="container">
-        <h1>Website Status: Temporarily Discontinued</h1>
-        <p>This service is currently offline for maintenance or review.</p>
+  <style>
+    :root {
+      --bg-main: #050b1a;
+      --bg-card: #0b1633;
+      --bg-card-soft: #0e1f44;
+      --blue-main: #3b82f6;
+      --blue-soft: #60a5fa;
+      --text-main: #e5edff;
+      --text-muted: #9fb4ff;
+      --border-soft: rgba(96, 165, 250, 0.2);
+    }
+
+    * {
+      box-sizing: border-box;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: radial-gradient(1200px 600px at top, #0a1a3a, var(--bg-main));
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .card {
+      width: 100%;
+      max-width: 520px;
+      background: linear-gradient(180deg, var(--bg-card), var(--bg-card-soft));
+      border: 1px solid var(--border-soft);
+      border-radius: 20px;
+      padding: 28px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+      animation: fadeIn 0.6s ease;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    h1 {
+      margin: 0 0 10px;
+      font-size: 1.7rem;
+      color: var(--blue-soft);
+    }
+
+    p {
+      margin: 10px 0;
+      line-height: 1.6;
+      color: var(--text-main);
+    }
+
+    .muted {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+    }
+
+    .buttons {
+      display: flex;
+      gap: 12px;
+      margin-top: 20px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      flex: 1;
+      min-width: 180px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: none;
+      cursor: pointer;
+      font-size: 0.95rem;
+      font-weight: 600;
+      transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+    }
+
+    .keep {
+      background: linear-gradient(180deg, #3b82f6, #2563eb);
+      color: #020617;
+      box-shadow: 0 8px 24px rgba(59, 130, 246, 0.35);
+    }
+
+    .offline {
+      background: transparent;
+      color: var(--blue-soft);
+      border: 1px solid var(--border-soft);
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .results {
+      margin-top: 18px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border-soft);
+      font-size: 0.95rem;
+    }
+
+    .count {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 6px;
+      color: var(--text-muted);
+    }
+
+    .footer {
+      margin-top: 16px;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      text-align: center;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="card">
+    <h1>Chatra is paused</h1>
+
+    <p>
+      Chatra has been temporarily discontinued.
+      Over time, it became harder to moderate safely, and activity slowed down.
+    </p>
+
+    <p class="muted">
+      This pause is intentional and responsible.
+      Nothing is broken — the project is just taking a break.
+    </p>
+
+    <p class="muted">
+      You can choose whether you think Chatra should stay offline
+      or possibly return in the future.
+    </p>
+
+    <div class="buttons">
+      <button id="keepBtn" class="keep">Keep it up / revive later</button>
+      <button id="offlineBtn" class="offline">It’s okay to keep it offline</button>
     </div>
 
+    <div class="results">
+      <div>Community responses:</div>
+      <div class="count">
+        <span>Revive later:</span>
+        <span id="keepCount">—</span>
+      </div>
+      <div class="count">
+        <span>Stay offline:</span>
+        <span id="offlineCount">—</span>
+      </div>
+    </div>
+
+    <div class="footer">
+      Thank you for being respectful.
+    </div>
+  </div>
+
+  <!-- Firebase (modular) -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
+    import { getDatabase, ref, runTransaction, onValue } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyC945jY7UEh4sOOuuk7OMZVXeIh333kxVk",
+      authDomain: "chat-app-710f0.firebaseapp.com",
+      databaseURL: "https://chat-app-710f0-default-rtdb.firebaseio.com",
+      projectId: "chat-app-710f0",
+      storageBucket: "chat-app-710f0.firebasestorage.app",
+      messagingSenderId: "225892837672",
+      appId: "1:225892837672:web:f190f3585c4ffbd0f1c81d",
+      measurementId: "G-JDCBPFSMQ9"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    const votesRef = ref(db, "pauseVotes");
+
+    const keepBtn = document.getElementById("keepBtn");
+    const offlineBtn = document.getElementById("offlineBtn");
+    const keepCount = document.getElementById("keepCount");
+    const offlineCount = document.getElementById("offlineCount");
+
+    const voted = localStorage.getItem("chatraPausedVote");
+
+    if (voted) {
+      keepBtn.disabled = true;
+      offlineBtn.disabled = true;
+    }
+
+    function vote(type) {
+      if (localStorage.getItem("chatraPausedVote")) return;
+
+      localStorage.setItem("chatraPausedVote", type);
+      keepBtn.disabled = true;
+      offlineBtn.disabled = true;
+
+      runTransaction(votesRef, (current) => {
+        if (!current) {
+          return {
+            keep: type === "keep" ? 1 : 0,
+            offline: type === "offline" ? 1 : 0
+          };
+        }
+        current[type] = (current[type] || 0) + 1;
+        return current;
+      });
+    }
+
+    keepBtn.onclick = () => vote("keep");
+    offlineBtn.onclick = () => vote("offline");
+
+    onValue(votesRef, (snap) => {
+      const data = snap.val() || {};
+      keepCount.textContent = data.keep ?? 0;
+      offlineCount.textContent = data.offline ?? 0;
+    });
+  </script>
 </body>
 </html>
