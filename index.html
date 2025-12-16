@@ -22,9 +22,21 @@
     <script src="https://cdn.tailwindcss.com"></script>
 
     <!-- Firebase SDKs -->
+    <!-- QR code generator (client-side) -->
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-analytics-compat.js"></script>
+
+    <!-- Google Analytics (gtag) - replace MEASUREMENT_ID with your GA4 measurement ID -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-JDCBPFSMQ9"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);} 
+      gtag('js', new Date());
+      gtag('config', 'G-JDCBPFSMQ9');
+    </script>
 
     <!-- Hide scrollbar but keep scrolling + custom animations / glassmorphism -->
 
@@ -57,6 +69,28 @@
       </div>
     </div>
 
+    <!-- Share Modal -->
+    <div id="shareModal" class="modal-closed fixed inset-0 z-50 modal-overlay hidden items-center justify-center p-4">
+      <div class="max-w-sm w-full bg-slate-900/95 border border-slate-800 rounded-lg p-4">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-sm font-semibold text-slate-100">Share Chat</h3>
+          <button id="shareCloseBtn" class="text-slate-300 hover:text-white">✕</button>
+        </div>
+        <div class="mb-3">
+          <label class="text-xs text-slate-400">Link</label>
+          <div class="flex items-center gap-2 mt-2">
+            <input id="shareLinkInput" class="flex-1 px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-100 text-sm" readonly value="https://tinyurl.com/chatraa" />
+            <button id="shareCopyBtn" class="px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm text-slate-100">Copy</button>
+            <button id="shareDownloadBtn" class="px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm text-slate-100">Download QR</button>
+          </div>
+        </div>
+        <div class="text-center">
+          <img id="shareQRCode" alt="QR code" class="mx-auto" src="" />
+          <p class="text-xs text-slate-400 mt-2">Scan to open</p>
+        </div>
+      </div>
+    </div>
+
     <!-- Top bar / logo -->
     <header class="px-4 pt-4 pb-2 flex items-center justify-between z-10">
       <div class="flex items-center gap-3">
@@ -80,6 +114,15 @@
         </div>
       </div>
       <div class="flex items-center gap-2">
+        <!-- Share button -->
+        <button id="shareBtn" class="relative px-3 py-2 rounded-full bg-slate-800/70 border border-slate-700/70 text-slate-200 hover:bg-slate-700/70 transition-colors" title="Share this chat" aria-label="Share chat" data-touch-enhanced="1">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="inline align-middle">
+            <path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7" />
+            <path d="M12 3v13" />
+            <path d="M8 7l4-4 4 4" />
+          </svg>
+        </button>
+
         <button
           id="notifBellBtn"
           class="hidden relative px-3 py-2 rounded-full bg-slate-800/70 border border-slate-700/70 text-slate-200 hover:bg-slate-700/70 transition-colors"
@@ -746,19 +789,29 @@
         </div>
 
         <div id="patchNotesContent" class="text-sm text-slate-300 space-y-4 leading-relaxed">
-          <h4 class="font-semibold text-slate-200">Version 7.3 — Release Notes</h4>
-          <p class="text-xs text-slate-400">Released: December 2025</p>
+          <h4 class="font-semibold text-slate-200">Version 6.0 — December 2025</h4>
+          <p class="text-xs text-slate-400">Released: December 15, 2025</p>
+          
+          <h5 class="font-medium text-sky-400 mt-4 mb-2">🆕 New Features</h5>
           <ul class="list-disc pl-5 space-y-1">
-            <li>Added Staff applications — apply via the three-lines menu or the one-time login popup.</li>
-            <li>Added "Suggestions & Help" — full-page overlay to submit suggestions, bug reports, ideas, and ban appeals.</li>
-            <li>Added anonymous submissions (client-generated ID) with server-side per-user / per-client 1-hour rate-limits.</li>
-            <li>Admins can read submissions and bypass rate-limits for moderation and triage.</li>
-            <li>Added a "Submit a Ban Appeal" shortcut on the registration page that opens the Appeals tab.</li>
-            <li>Improved touch support and iPad/Safari compatibility: touchend handlers, improved modal interactions, playsinline support, and -webkit-overflow-scrolling for smoother scrolling.</li>
-            <li>Fixed submission permission edge-cases and improved error feedback for failed submissions.</li>
-            <li>Reply previews now highlight when replying to your own messages and mentions.</li>
-            <li>Message action buttons (edit/delete): adjusted spacing and improved touch behavior; DM action buttons now show by default on touch devices.</li>
-            <li>Various UI polish and performance improvements.</li>
+            <li><strong>Share Button</strong> — Share Chatra with friends! Tap the share icon to copy a link or download a QR code.</li>
+            <li><strong>Google Analytics</strong> — Added analytics to help improve the app.</li>
+            <li><strong>@everyone (Admin)</strong> — Admins can mention everyone with <span class="text-amber-400">@everyone</span>.</li>
+            <li><strong>Timestamps</strong> — Messages now show time or date below each bubble.</li>
+          </ul>
+          
+          <h5 class="font-medium text-emerald-400 mt-4 mb-2">✨ Improvements</h5>
+          <ul class="list-disc pl-5 space-y-1">
+            <li><strong>Slimmer Bubbles</strong> — Cleaner, smaller message bubbles in Global Chat.</li>
+            <li><strong>QR Downloads</strong> — QR codes generate locally and download directly.</li>
+            <li><strong>Mention Persistence</strong> — Seen mentions won't re-notify after refresh.</li>
+          </ul>
+          
+          <h5 class="font-medium text-rose-400 mt-4 mb-2">🐛 Bug Fixes</h5>
+          <ul class="list-disc pl-5 space-y-1">
+            <li>Fixed duplicate mention notifications on refresh/scroll.</li>
+            <li>Fixed ban duration dropdown options not visible.</li>
+            <li>Fixed timestamp styling causing gaps in bubbles.</li>
           </ul>
         </div>
 
@@ -1501,16 +1554,27 @@
           <select
             id="banDuration"
             title="Select ban duration"
-            class="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2 text-slate-100"
+            class="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2 text-slate-100 appearance-none cursor-pointer"
             aria-label="Ban duration"
+            style="min-height: 40px; font-size: 14px;"
           >
             <option value="60">1 hour</option>
             <option value="1440">1 day</option>
             <option value="10080">1 week</option>
             <option value="43200">1 month</option>
             <option value="permanent">🔒 Permanent (delete account)</option>
-
           </select>
+          <style>
+            #banDuration option {
+              background: #1e293b;
+              color: #f1f5f9;
+              padding: 8px 12px;
+              min-height: 36px;
+            }
+            #banDuration option:hover, #banDuration option:focus {
+              background: #334155;
+            }
+          </style>
         </div>
 
         <div class="flex gap-2">
@@ -2021,6 +2085,24 @@
 
             <!-- Messages -->
             <div id="dmPageMessages" class="flex-1 overflow-y-auto px-4 py-3 space-y-2"></div>
+
+            <!-- DM Media Preview -->
+            <div id="dmMediaPreview" class="hidden p-3 bg-slate-800 border-t border-slate-700">
+              <div class="flex items-start gap-3">
+                <div id="dmMediaPreviewContent" class="flex-1"></div>
+                <button
+                  type="button"
+                  id="dmCancelMediaBtn"
+                  title="Cancel media upload"
+                  class="p-1 hover:bg-slate-700 rounded-lg transition-colors text-slate-400"
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                  </svg>
+                </button>
+              </div>
+            </div>
 
             <!-- Input -->
             <form id="dmPageForm" class="p-3 border-t border-slate-800 flex items-center gap-2 bg-slate-900/70">
