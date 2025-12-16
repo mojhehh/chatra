@@ -29,6 +29,27 @@
         return errorObj;
       }
 
+      // Helper: convert data URL to Blob
+      function dataURLToBlob(dataURL) {
+        const parts = dataURL.split(',');
+        const meta = parts[0];
+        const base64 = parts[1];
+        const isBase64 = meta.indexOf('base64') !== -1;
+        const contentType = meta.split(':')[1].split(';')[0];
+        let raw;
+        if (isBase64) {
+          raw = atob(base64);
+        } else {
+          raw = decodeURIComponent(parts[1]);
+        }
+        const rawLength = raw.length;
+        const uInt8Array = new Uint8Array(rawLength);
+        for (let i = 0; i < rawLength; ++i) {
+          uInt8Array[i] = raw.charCodeAt(i);
+        }
+        return new Blob([uInt8Array], { type: contentType });
+      }
+
       // Firebase configuration
       const firebaseConfig = {
         apiKey: "AIzaSyC945jY7UEh4sOOuuk7OMZVXeIh333kxVk",
@@ -44,8 +65,28 @@
 
       // Initialize Firebase
       firebase.initializeApp(firebaseConfig);
+      // Initialize Firebase Analytics (if available)
+      try {
+        if (firebase && firebase.analytics) {
+          try { firebase.analytics(); } catch (e) { console.warn('[analytics] firebase.analytics init failed', e); }
+        }
+      } catch (e) {}
       const auth = firebase.auth();
       const db = firebase.database();
+
+      // Analytics helper: sends to gtag and firebase.analytics (if available)
+      function sendAnalyticsEvent(name, params = {}) {
+        try {
+          if (window.gtag) {
+            try { window.gtag('event', name, params); } catch (e) { console.warn('[analytics] gtag event failed', e); }
+          }
+        } catch (e) {}
+        try {
+          if (firebase && firebase.analytics) {
+            try { firebase.analytics().logEvent(name, params); } catch (e) { /* ignore */ }
+          }
+        } catch (e) {}
+      }
 
       console.log("[init] firebase initialized");
 
@@ -210,17 +251,20 @@
 
       function replayGif(imgElement) {
         if (!imgElement || !imgElement.src) return;
-        const src = imgElement.src;
+        // Remove any existing cache-busting param
+        let src = imgElement.src.split('?')[0];
+        // Add cache-busting param to force full reload
+        const cacheBuster = '?t=' + Date.now();
         imgElement.src = '';
         // Small delay to ensure browser reloads
         setTimeout(() => {
-          imgElement.src = src;
-        }, 10);
+          imgElement.src = src + cacheBuster;
+        }, 50);
       }
 
       function loadMentionedNotifsFromStorage() {
         try {
-          const raw = sessionStorage.getItem('mentions-notified');
+          const raw = localStorage.getItem('mentions-notified');
           if (raw) {
             const arr = JSON.parse(raw);
             mentionNotified = new Set(Array.isArray(arr) ? arr : []);
@@ -234,7 +278,7 @@
         try {
           if (!id) return;
           mentionNotified.add(id);
-          sessionStorage.setItem('mentions-notified', JSON.stringify(Array.from(mentionNotified)));
+          localStorage.setItem('mentions-notified', JSON.stringify(Array.from(mentionNotified)));
         } catch (e) {
           // ignore
         }
@@ -323,7 +367,8 @@
             Object.keys(friends).forEach(friendUid => {
               const tid = makeThreadId(currentUserId, friendUid);
               if (!threads.some(t => t.threadId === tid)) {
-                threads.push({ threadId: tid, withUid: friendUid, withUsername: friendUid, lastTime: 0, lastMsg: '', unread: 0 });
+                // Use null for withUsername - it will be fetched from database
+                threads.push({ threadId: tid, withUid: friendUid, withUsername: null, lastTime: 0, lastMsg: '', unread: 0 });
               }
             });
           } catch (e) {
@@ -401,15 +446,35 @@
           });
 
           listEl.innerHTML = '';
+          
+          // Helper to check if string looks like a Firebase UID (random alphanumeric, typically 20+ chars)
+          function looksLikeUid(str) {
+            if (!str || typeof str !== 'string') return false;
+            // UIDs are typically long alphanumeric strings without spaces
+            return str.length >= 20 && /^[a-zA-Z0-9]+$/.test(str);
+          }
+          
           threads.forEach(thread => {
             const row = document.createElement('div');
             row.className = 'flex items-center gap-3 p-3 rounded-lg hover:bg-slate-800/50 cursor-pointer transition-colors' +
               (activeDMThread === thread.threadId ? ' bg-slate-800/70' : '');
 
-            // Try to get display name from various possible fields (existing system uses withUsername)
+            // Extract otherUid from thread ID if not set
+            let otherUid = thread.withUid || thread.otherUid || null;
+            if (!otherUid && thread.threadId && thread.threadId.includes('__')) {
+              const parts = thread.threadId.split('__');
+              otherUid = parts[0] === currentUserId ? parts[1] : parts[0];
+            }
+            
+            // Try to get display name from various possible fields
             let displayName = thread.withUsername || thread.displayName || thread.otherUsername || 'Unknown';
+            
+            // If displayName looks like a UID, mark as unknown so we fetch the real name
+            if (looksLikeUid(displayName)) {
+              displayName = 'Loading...';
+            }
+            
             let profilePic = thread.profilePic || null;
-            const otherUid = thread.withUid || thread.otherUid || null;
 
             // Avatar
             const avatar = document.createElement('div');
@@ -429,7 +494,12 @@
             info.className = 'flex-1 min-w-0';
             const title = document.createElement('p');
             title.className = 'text-sm font-medium text-slate-100 truncate';
-            title.textContent = displayName;
+            
+            // Create a text span for the username (so we can update it separately from badge)
+            const usernameSpan = document.createElement('span');
+            usernameSpan.textContent = displayName;
+            title.appendChild(usernameSpan);
+            
             // Per-conversation unread badge
             const unread = dmUnreadCounts[thread.threadId] || (typeof thread.unread === 'number' ? thread.unread : 0);
             if (unread && unread > 0) {
@@ -448,21 +518,30 @@
             row.appendChild(avatar);
             row.appendChild(info);
 
+            // Store the actual username once fetched for click handlers
+            let actualUsername = displayName;
+            
             // Click/touch to open thread
-            row.addEventListener('click', () => openDmPageThread(otherUid, displayName, thread.threadId));
-            row.addEventListener('touchend', (e) => { e.preventDefault(); openDmPageThread(otherUid, displayName, thread.threadId); });
+            row.addEventListener('click', () => openDmPageThread(otherUid, actualUsername, thread.threadId));
+            row.addEventListener('touchend', (e) => { e.preventDefault(); openDmPageThread(otherUid, actualUsername, thread.threadId); });
 
-            // Try to fetch better info if missing
-            if (otherUid && (!displayName || displayName === 'Unknown' || !profilePic)) {
+            // Always fetch user info if we have otherUid to ensure correct name/pic
+            if (otherUid) {
               db.ref('users/' + otherUid).once('value').then(userSnap => {
                 const user = userSnap.val() || {};
-                if (displayName === 'Unknown' && (user.displayName || user.username)) {
-                  title.textContent = user.displayName || user.username;
+                const realUsername = user.displayName || user.username;
+                if (realUsername) {
+                  usernameSpan.textContent = realUsername;
+                  actualUsername = realUsername;
+                  // Update avatar initials if no profile pic
+                  if (!profilePic && avatar.textContent) {
+                    avatar.textContent = realUsername.slice(0,2).toUpperCase();
+                  }
                 }
               }).catch(() => {});
               db.ref('userProfiles/' + otherUid).once('value').then(profSnap => {
                 const prof = profSnap.val() || {};
-                if (prof.profilePic && !profilePic) {
+                if (prof.profilePic) {
                   avatar.innerHTML = '';
                   const img = document.createElement('img');
                   img.src = prof.profilePic;
@@ -483,6 +562,9 @@
         activeDMThread = threadId;
         activeDMTarget = { uid: otherUid, username: otherUsername };
 
+        // Analytics: DM opened (fullscreen)
+        try { sendAnalyticsEvent('dm_open', { thread_id: threadId, other_uid: otherUid, mode: 'page' }); } catch (e) {}
+
         const activeUserEl = document.getElementById('dmPageActiveUser');
         const blockBtn = document.getElementById('dmPageBlockBtn');
         const messagesEl = document.getElementById('dmPageMessages');
@@ -491,16 +573,20 @@
         if (blockBtn) blockBtn.classList.remove('hidden');
         if (messagesEl) messagesEl.innerHTML = '';
 
-        // Mark this thread as seen locally but DO NOT update `lastTime` in dmInbox
-        // (we only want ordering to change when a message is sent)
+        // Mark this thread as seen and clear unread count
         try {
           const now = Date.now();
           if (currentUserId && threadId) {
+            // Clear unread count when opening the thread
             db.ref('dmInbox/' + currentUserId + '/' + threadId).update({
               withUid: otherUid || null,
-              withUsername: otherUsername || null
+              withUsername: otherUsername || null,
+              unread: 0
             }).catch(() => {});
-            // Track last seen time locally (used to clear unread display)
+            // Update local unread tracking
+            dmUnreadCounts[threadId] = 0;
+            updateDmTabBadge();
+            // Track last seen time locally
             dmLastSeenByThread[threadId] = now;
           }
         } catch (e) {
@@ -635,6 +721,30 @@
           textEl.className = 'message-text-reveal';
           textEl.textContent = msg.text;
           bubble.appendChild(textEl);
+        }
+
+        // Add small timestamp/date under the message (same logic as populateDmBubble)
+        try {
+          const ts = msg && (msg.time || msg.timestamp) ? Number(msg.time || msg.timestamp) : null;
+          if (ts) {
+            const now = Date.now();
+            const ONE_DAY = 24 * 60 * 60 * 1000;
+            const d = new Date(ts);
+            let metaText = '';
+            if (now - ts < ONE_DAY) {
+              metaText = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            } else {
+              const opts = { month: 'short', day: 'numeric' };
+              if (d.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric';
+              metaText = d.toLocaleDateString([], opts);
+            }
+            const meta = document.createElement('div');
+            meta.className = 'text-[11px] text-slate-400 mt-1 select-none';
+            meta.textContent = metaText;
+            bubble.appendChild(meta);
+          }
+        } catch (e) {
+          // ignore
         }
 
         bubbleWrapper.appendChild(bubble);
@@ -777,12 +887,19 @@
         const dmPageForm = document.getElementById('dmPageForm');
         const dmPageInput = document.getElementById('dmPageInput');
         const dmPageError = document.getElementById('dmPageError');
+        // DM media preview elements & pending state
+        const dmMediaPreview = document.getElementById('dmMediaPreview');
+        const dmMediaPreviewContent = document.getElementById('dmMediaPreviewContent');
+        const dmCancelMediaBtn = document.getElementById('dmCancelMediaBtn');
+        let pendingDmMediaUrl = null;
+        let pendingDmMediaFileId = null;
         if (dmPageForm) {
           dmPageForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             if (!activeDMThread || !dmPageInput || !activeDMTarget) return;
             const text = dmPageInput.value.trim();
-            if (!text) return;
+            // Allow sending if there's text or pending media
+            if (!text && !pendingDmMediaUrl) return;
 
             try {
               // Check privacy settings first
@@ -794,45 +911,51 @@
               
               // Use same path as existing DM system: dms/
               const msgRef = db.ref('dms/' + activeDMThread + '/messages').push();
-              await msgRef.set({
-                text,
+              const payload = {
                 fromUid: currentUserId,
                 fromUsername: currentUsername,
                 toUid: activeDMTarget.uid,
                 toUsername: activeDMTarget.username || '',
                 time: firebase.database.ServerValue.TIMESTAMP
-              });
+              };
+              if (text) payload.text = text;
+              if (pendingDmMediaUrl) {
+                payload.media = pendingDmMediaUrl;
+                if (pendingDmMediaFileId) payload.mediaFileId = pendingDmMediaFileId;
+              }
+              await msgRef.set(payload);
+              // Analytics: message sent (fullscreen)
+              try { sendAnalyticsEvent('message_sent', { thread_id: activeDMThread, has_media: Boolean(pendingDmMediaUrl), media_file_id: pendingDmMediaFileId || null }); } catch (e) {}
               // Update inbox for both users
               const now = Date.now();
+              const lastMsgPreview = text || (pendingDmMediaUrl ? '(media)' : '');
               if (activeDMTarget && activeDMTarget.uid) {
                 db.ref('dmInbox/' + currentUserId + '/' + activeDMThread).update({
-                  lastMsg: text,
-                  lastTime: now
-                }).catch(() => {});
-                // Increment recipient unread via transaction
-                db.ref('dmInbox/' + activeDMTarget.uid + '/' + activeDMThread).transaction(current => {
-                  if (!current) {
-                    return {
-                      withUid: currentUserId,
-                      withUsername: currentUsername || currentUserId,
-                      lastMsg: text,
-                      lastTime: now,
-                      unread: 1
-                    };
-                  }
-                  return {
-                    ...current,
-                    withUid: currentUserId,
-                    withUsername: currentUsername || currentUserId,
-                    lastMsg: text,
-                    lastTime: now,
-                    unread: (current.unread || 0) + 1
-                  };
-                }).catch(() => {});
+                    lastMsg: lastMsgPreview,
+                    lastTime: now
+                  }).catch(() => {});
+                // Update recipient inbox using set() - we can't read their unread count due to permissions
+                // so we just set unread to 1 (recipient will see badge, clicking clears it)
+                const recipientInboxRef = db.ref('dmInbox/' + activeDMTarget.uid + '/' + activeDMThread);
+                recipientInboxRef.set({
+                  withUid: currentUserId,
+                  withUsername: currentUsername || currentUserId,
+                  lastMsg: lastMsgPreview,
+                  lastTime: now,
+                  unread: 1
+                }).catch(err => console.error('[DM] failed to update recipient inbox:', err));
                 // Prevent local inbox listener from treating this as an incoming message
                 dmLastUpdateTimeByThread[activeDMThread] = now;
               }
+              // Clear input and pending media preview after sending
               dmPageInput.value = '';
+              if (dmMediaPreview) {
+                dmMediaPreview.classList.add('hidden');
+              }
+              if (dmMediaPreviewContent) dmMediaPreviewContent.innerHTML = '';
+              // Clear pending media state
+              pendingDmMediaUrl = null;
+              pendingDmMediaFileId = null;
               if (dmPageError) dmPageError.textContent = '';
             } catch (err) {
               console.error('[DM] send error', err);
@@ -847,72 +970,99 @@
 
         // Update Log removed: no handlers or DOM lookups remain
 
-        // DM Page media upload
+        // DM Page media upload (reuse global upload flow / ImageKit)
+        let dmUploadInProgress = false;
         const dmPageMediaBtn = document.getElementById('dmPageMediaUploadBtn');
         const dmPageMediaInput = document.getElementById('dmPageMediaInput');
         if (dmPageMediaBtn && dmPageMediaInput) {
           dmPageMediaBtn.addEventListener('click', () => dmPageMediaInput.click());
           dmPageMediaInput.addEventListener('change', async () => {
             const file = dmPageMediaInput.files[0];
-            if (!file || !activeDMThread) return;
-            // Use same upload logic as main chat (simplified)
+            if (!file || !activeDMThread) {
+              dmPageMediaInput.value = '';
+              return;
+            }
+
+            // Prevent duplicate uploads
+            if (dmUploadInProgress) {
+              return;
+            }
+            dmUploadInProgress = true;
+            dmPageMediaInput.value = ''; // Clear immediately to prevent re-triggering
+
             try {
-              const formData = new FormData();
-              formData.append('file', file);
-              formData.append('upload_preset', 'chatra_unsigned');
-              const isVideo = file.type.startsWith('video/');
-              const endpoint = isVideo 
-                ? 'https://api.cloudinary.com/v1_1/dvlmxpms4/video/upload'
-                : 'https://api.cloudinary.com/v1_1/dvlmxpms4/image/upload';
-              const res = await fetch(endpoint, { method: 'POST', body: formData });
-              const data = await res.json();
-              if (data.secure_url) {
-                // Use same path as existing DM system: dms/
-                const msgRef = db.ref('dms/' + activeDMThread + '/messages').push();
-                await msgRef.set({
-                  media: data.secure_url,
-                  fromUid: currentUserId,
-                  fromUsername: currentUsername,
-                  time: firebase.database.ServerValue.TIMESTAMP
-                });
-                const now = Date.now();
-                const lastMsgPreview = '(media)';
-                // Update inbox for both users and increment recipient unread
-                await Promise.all([
-                  db.ref('dmInbox/' + currentUserId + '/' + activeDMThread).set({
-                    withUid: activeDMTarget.uid,
-                    withUsername: activeDMTarget.username || activeDMTarget.uid,
-                    lastMsg: lastMsgPreview,
-                    lastTime: now
-                  }),
-                  db.ref('dmInbox/' + activeDMTarget.uid + '/' + activeDMThread).transaction(current => {
-                    if (!current) {
-                      return {
-                        withUid: currentUserId,
-                        withUsername: currentUsername || currentUserId,
-                        lastMsg: lastMsgPreview,
-                        lastTime: now,
-                        unread: 1
-                      };
-                    }
-                    return {
-                      ...current,
-                      withUid: currentUserId,
-                      withUsername: currentUsername || currentUserId,
-                      lastMsg: lastMsgPreview,
-                      lastTime: now,
-                      unread: (current.unread || 0) + 1
-                    };
-                  })
-                ]).catch(() => {});
-                // Prevent local inbox listener from treating this as incoming
-                dmLastUpdateTimeByThread[activeDMThread] = now;
+              if (!(await canUpload())) {
+                alert('Slow down! Wait a few seconds.');
+                return;
+              }
+
+              // Show spinner state while uploading/moderating
+              try {
+                dmPageMediaBtn.disabled = true;
+                dmPageMediaBtn.innerHTML = '<svg class="animate-spin" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" stroke-opacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10" stroke-opacity="0.75"/></svg>';
+              } catch (e) {}
+
+              const processed = await prepareFileForUpload(file);
+              const uploadResult = await uploadToImageKit(processed);
+              storeUploadTime();
+
+              // Reset button state
+              try {
+                dmPageMediaBtn.disabled = false;
+                dmPageMediaBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-slate-400"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/></svg>';
+              } catch (e) {}
+
+              if (uploadResult && uploadResult.url) {
+                // Store pending media and show preview; do NOT auto-send — user will press Send
+                pendingDmMediaUrl = uploadResult.url;
+                pendingDmMediaFileId = uploadResult.fileId || null;
+
+                // Analytics: image uploaded (preview stored)
+                try { sendAnalyticsEvent('image_uploaded', { thread_id: activeDMThread || null, media_file_id: pendingDmMediaFileId || null }); } catch (e) {}
+
+                // Show preview UI
+                if (dmMediaPreviewContent && dmMediaPreview) {
+                  dmMediaPreviewContent.innerHTML = '';
+                  const isVideo = file.type.startsWith('video/');
+                  if (isVideo) {
+                    const video = document.createElement('video');
+                    video.src = pendingDmMediaUrl;
+                    video.controls = true;
+                    video.className = 'max-h-20 rounded-lg';
+                    dmMediaPreviewContent.appendChild(video);
+                  } else {
+                    const img = document.createElement('img');
+                    img.src = pendingDmMediaUrl;
+                    img.className = 'max-h-20 rounded-lg';
+                    dmMediaPreviewContent.appendChild(img);
+                  }
+                  dmMediaPreview.classList.remove('hidden');
+                  // Focus input so user can add caption
+                  try { dmPageInput && dmPageInput.focus(); } catch(e) {}
+                }
               }
             } catch (err) {
               console.error('[DM] media upload error', err);
+              try { if (err && err.message) alert('Media upload failed: ' + err.message); } catch (e) {}
+            } finally {
+              dmUploadInProgress = false;
             }
-            dmPageMediaInput.value = '';
           });
+
+          // Cancel pending DM media upload
+          if (dmCancelMediaBtn) {
+            dmCancelMediaBtn.addEventListener('click', async () => {
+              if (pendingDmMediaFileId) {
+                try {
+                  await deleteFromImageKit(pendingDmMediaFileId);
+                } catch (e) { console.error('[DM] delete ImageKit error', e); }
+              }
+              pendingDmMediaUrl = null;
+              pendingDmMediaFileId = null;
+              if (dmMediaPreview) dmMediaPreview.classList.add('hidden');
+              if (dmMediaPreviewContent) dmMediaPreviewContent.innerHTML = '';
+            });
+          }
         }
 
         // DM Page start new conversation with live search
@@ -935,12 +1085,38 @@
               return;
             }
             
-            // Search through mentionUsers (already loaded) or fetch
-            const matches = [];
+            // Search through mentionUsers (already loaded)
+            let matches = [];
             for (const [key, user] of mentionUsers) {
               if (key.includes(query) || user.username.toLowerCase().includes(query)) {
                 matches.push(user);
                 if (matches.length >= 8) break;
+              }
+            }
+            
+            // If no results from mentionUsers, search database directly
+            if (matches.length === 0) {
+              try {
+                const [usersSnap, profilesSnap] = await Promise.all([
+                  db.ref('users').once('value'),
+                  db.ref('userProfiles').once('value')
+                ]);
+                const allUsers = usersSnap.val() || {};
+                const allProfiles = profilesSnap.val() || {};
+                
+                Object.entries(allUsers).forEach(([uid, val]) => {
+                  const uname = val?.username || val?.displayName;
+                  if (!uname || uid === currentUserId) return;
+                  if (uname.toLowerCase().includes(query)) {
+                    const prof = allProfiles[uid] || {};
+                    matches.push({ username: uname, uid, profilePic: prof.profilePic || null });
+                    // Also add to mentionUsers for future searches
+                    mentionUsers.set(uname.toLowerCase(), { username: uname, uid, profilePic: prof.profilePic || null });
+                  }
+                });
+                matches = matches.slice(0, 8);
+              } catch (err) {
+                console.warn('[DM search] database search failed', err);
               }
             }
             
@@ -977,7 +1153,7 @@
             return;
           }
           try {
-            const threadId = [currentUserId, otherUid].sort().join('_');
+            const threadId = makeThreadId(currentUserId, otherUid);
             // Use same path as existing DM system: dms/
             await db.ref('dms/' + threadId + '/participants/' + currentUserId).set(true);
             await db.ref('dms/' + threadId + '/participants/' + otherUid).set(true);
@@ -1134,14 +1310,22 @@
       function getMentionSuggestions(query) {
         const q = (query || "").toLowerCase();
         const suggestions = [];
+        
+        // Add @everyone option for admins at the top if query matches
+        if (isAdmin && 'everyone'.includes(q)) {
+          suggestions.push({ username: 'everyone', uid: null, profilePic: null, isEveryone: true });
+        }
+        
         for (const [key, user] of mentionUsers) {
           if (key.includes(q) || user.username.toLowerCase().includes(q)) {
             suggestions.push(user);
           }
         }
         console.debug(`[mentions] getMentionSuggestions q='${q}' -> ${suggestions.length} suggestions`);
-        // Sort by relevance (starts with query first, then alphabetically)
+        // Sort by relevance (starts with query first, then alphabetically) but keep @everyone at top
         suggestions.sort((a, b) => {
+          if (a.isEveryone) return -1;
+          if (b.isEveryone) return 1;
           const aStarts = a.username.toLowerCase().startsWith(q);
           const bStarts = b.username.toLowerCase().startsWith(q);
           if (aStarts && !bStarts) return -1;
@@ -1185,16 +1369,19 @@
 
         mentionSelectedIndex = 0;
         mentionAutocomplete.innerHTML = suggestions.map((user, i) => {
-          const initials = user.username.slice(0, 2).toUpperCase();
-          const avatarContent = user.profilePic 
-            ? `<img src="${escapeHtml(user.profilePic)}" alt="" onerror="this.parentElement.innerHTML='${initials}'">` 
-            : initials;
+          const initials = user.isEveryone ? '📢' : user.username.slice(0, 2).toUpperCase();
+          const avatarContent = user.isEveryone
+            ? '📢'
+            : (user.profilePic 
+              ? `<img src="${escapeHtml(user.profilePic)}" alt="" onerror="this.parentElement.innerHTML='${initials}'">` 
+              : initials);
+          const hintText = user.isEveryone ? 'Mention everyone (admin only)' : 'Click to mention';
           return `
-            <div class="mention-item ${i === 0 ? 'selected' : ''}" data-username="${escapeHtml(user.username)}" data-index="${i}">
-              <div class="mention-avatar">${avatarContent}</div>
+            <div class="mention-item ${i === 0 ? 'selected' : ''}${user.isEveryone ? ' everyone-option' : ''}" data-username="${escapeHtml(user.username)}" data-index="${i}">
+              <div class="mention-avatar" ${user.isEveryone ? 'style="font-size:18px;background:linear-gradient(135deg,#f59e0b,#d97706);"' : ''}>${avatarContent}</div>
               <div class="mention-info">
-                <div class="mention-username">@${escapeHtml(user.username)}</div>
-                <div class="mention-hint">Click to mention</div>
+                <div class="mention-username" ${user.isEveryone ? 'style="color:#fbbf24"' : ''}>@${escapeHtml(user.username)}</div>
+                <div class="mention-hint">${hintText}</div>
               </div>
             </div>
           `;
@@ -1360,8 +1547,8 @@
       function renderTextWithMentions(text, isMine = false) {
         if (!text) return "";
         
-        // Match @username pattern (letters, numbers, underscores, dashes)
-        const mentionRegex = /@([a-zA-Z0-9_-]{2,12})\b/g;
+        // Match @username pattern (letters, numbers, underscores, dashes) or @everyone
+        const mentionRegex = /@(everyone|[a-zA-Z0-9_-]{2,12})\b/g;
         
         let result = "";
         let lastIndex = 0;
@@ -1372,8 +1559,10 @@
           result += escapeHtml(text.slice(lastIndex, match.index));
           
           const mentionedUsername = match[1];
+          // @everyone highlights for everyone (orange like mention-me)
+          const isEveryone = mentionedUsername.toLowerCase() === 'everyone';
           const isMe = mentionedUsername.toLowerCase() === (currentUsername || "").toLowerCase();
-          const mentionClass = isMe ? "mention-highlight mention-me" : "mention-highlight";
+          const mentionClass = (isMe || isEveryone) ? "mention-highlight mention-me" : "mention-highlight";
           
           result += `<span class="${mentionClass}" data-mention="${escapeHtml(mentionedUsername)}">@${escapeHtml(mentionedUsername)}</span>`;
           
@@ -2773,6 +2962,33 @@
           textSpan.textContent = msg.text;
           bubble.appendChild(textSpan);
         }
+
+        // Add small timestamp/date under the message
+        try {
+          const ts = msg && (msg.time || msg.timestamp) ? Number(msg.time || msg.timestamp) : null;
+          if (ts) {
+            const now = Date.now();
+            const ONE_DAY = 24 * 60 * 60 * 1000;
+            const d = new Date(ts);
+            let metaText = '';
+            if (now - ts < ONE_DAY) {
+              // Show time for messages within the last day
+              metaText = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            } else {
+              // Show date for older messages (include year only if different)
+              const opts = { month: 'short', day: 'numeric' };
+              if (d.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric';
+              metaText = d.toLocaleDateString([], opts);
+            }
+
+            const meta = document.createElement('div');
+            meta.className = 'text-[11px] text-slate-400 mt-1 select-none';
+            meta.textContent = metaText;
+            bubble.appendChild(meta);
+          }
+        } catch (e) {
+          // ignore formatting errors
+        }
       }
       function renderDmMessage(msg) {
         const mine = msg.fromUid === currentUserId;
@@ -2847,10 +3063,11 @@
               // Update inbox and fire notification if new message from other user
               if (activeDMTarget && msg.fromUid !== currentUserId && dmInboxInitialLoaded) {
                 const now = Date.now();
+                const lastMsgPreview = (msg.text && String(msg.text)) || (msg.media ? '(media)' : '');
                 db.ref("dmInbox/" + currentUserId + "/" + threadId).update({
                   withUid: activeDMTarget.uid,
                   withUsername: activeDMTarget.username || activeDMTarget.uid,
-                  lastMsg: msg.text,
+                  lastMsg: lastMsgPreview,
                   lastTime: now
                 }).catch(() => {});
                 // Fire notification
@@ -4007,8 +4224,8 @@
         const padding = isSmallMessage ? "px-3 py-1.5" : "px-3 py-2";
         
         bubble.className = isMine
-          ? `message-bubble-anim mine ${padding} sm:px-3 sm:py-2 rounded-2xl text-xs sm:text-sm leading-relaxed break-words shadow-sm bg-gradient-to-br from-sky-500 to-sky-600 text-white rounded-br-md font-medium shadow-md shadow-sky-500/20 inline-block max-w-full`
-          : `message-bubble-anim ${padding} sm:px-3 sm:py-2 rounded-2xl text-xs sm:text-sm leading-relaxed break-words shadow-sm bg-slate-700/90 text-slate-50 rounded-bl-md border border-slate-600/50 backdrop-blur-sm inline-block max-w-full`;
+          ? `message-bubble-anim mine ${padding} sm:px-3 sm:py-2 rounded-2xl text-left text-[12px] sm:text-[13px] leading-relaxed break-words shadow-sm bg-gradient-to-br from-sky-500 to-sky-600 text-white rounded-br-md font-light shadow-md shadow-sky-500/20 inline-block max-w-full`
+          : `message-bubble-anim ${padding} sm:px-3 sm:py-2 rounded-2xl text-left text-[12px] sm:text-[13px] leading-relaxed break-words shadow-sm bg-slate-700/90 text-slate-50 rounded-bl-md border border-slate-600/50 backdrop-blur-sm font-light inline-block max-w-full`;
 
         // Ensure bubble width hugs content for short messages
         bubble.style.display = "inline-block";
@@ -4159,11 +4376,13 @@
           });
           
           bubble.appendChild(textSpan);
-          // If this message mentions the current user, mark the whole bubble and notify
+          // If this message mentions the current user OR @everyone, mark the whole bubble and notify
           try {
             if (currentUsername && !isMine) {
               const lowered = (msg.text || '').toLowerCase();
-              if (lowered.includes('@' + currentUsername.toLowerCase())) {
+              const mentionsMe = lowered.includes('@' + currentUsername.toLowerCase());
+              const mentionsEveryone = lowered.includes('@everyone');
+              if (mentionsMe || mentionsEveryone) {
                 bubble.classList.add('mentioned');
                 // Only notify once per message id (avoid repeat on refresh)
                 if (messageId) {
@@ -4216,6 +4435,31 @@
         }
         
         bubbleContainer.appendChild(bubble);
+
+        // Add small timestamp/date under the message as a sibling (prevents bubble resizing/centering)
+        try {
+          const ts = msg && (msg.time || msg.timestamp) ? Number(msg.time || msg.timestamp) : null;
+          if (ts) {
+            const now = Date.now();
+            const ONE_DAY = 24 * 60 * 60 * 1000;
+            const d = new Date(ts);
+            let metaText = '';
+            if (now - ts < ONE_DAY) {
+              metaText = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            } else {
+              const opts = { month: 'short', day: 'numeric' };
+              if (d.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric';
+              metaText = d.toLocaleDateString([], opts);
+            }
+            const meta = document.createElement('div');
+            // Align timestamp right for own messages, left for others; keep it visually unobtrusive
+            meta.className = (isMine ? 'text-[10px] text-slate-400 mt-1 font-thin select-none text-right mr-1' : 'text-[10px] text-slate-400 mt-1 font-thin select-none text-left ml-1');
+            meta.textContent = metaText;
+            bubbleContainer.appendChild(meta);
+          }
+        } catch (e) {
+          // ignore formatting errors
+        }
 
         // Add delete button for own messages
         if (isMine && messageId) {
@@ -5848,6 +6092,15 @@
       const notifCloseBtn = document.getElementById("notifCloseBtn");
       const notifClearBtn = document.getElementById("notifClearBtn");
       const notifList = document.getElementById("notifList");
+      
+      // Share UI
+      const shareBtn = document.getElementById('shareBtn');
+      const shareModal = document.getElementById('shareModal');
+      const shareCloseBtn = document.getElementById('shareCloseBtn');
+      const shareLinkInput = document.getElementById('shareLinkInput');
+      const shareCopyBtn = document.getElementById('shareCopyBtn');
+      const shareDownloadBtn = document.getElementById('shareDownloadBtn');
+      const shareQRCode = document.getElementById('shareQRCode');
 
       // Blocked Users Elements
       const blockedUsersModal = document.getElementById("blockedUsersModal");
@@ -5893,20 +6146,44 @@
 
       function openPatchNotes() {
         try {
-          document.getElementById('patchNotesTitle').textContent = 'Patch Notes — v5.5';
+          document.getElementById('patchNotesTitle').textContent = 'Patch Notes — v6.0';
           patchNotesContent.innerHTML = `
-            <h4 class="font-semibold text-slate-200">Version 5.5 — Release Notes</h4>
-            <p class="text-xs text-slate-400">Released: December 2025</p>
+            <h4 class="font-semibold text-slate-200">Version 6.0 — December 2025</h4>
+            <p class="text-xs text-slate-400">Released: December 15, 2025</p>
+            
+            <h5 class="font-medium text-sky-400 mt-4 mb-2">🆕 New Features</h5>
             <ul class="list-disc pl-5 space-y-1">
-                <li>Added mentioning others when replying — reply previews now highlight mentions.</li>
-                <li>Added an onboarding walkthrough for new users (shows on first signup).</li>
-                <li>Improved reporting system: inline report flow is clearer and prevents duplicate reports.</li>
-                <li>Fixed compatibility with touchscreens (iPad / Safari) and improved button interactions.</li>
-                <li>Added a Suggestions & Help overlay — send suggestions, bug reports, ideas, or ban appeals directly from the app.</li>
-                <li>Various minor UI and performance enhancements.</li>
+                <li><strong>Share Button</strong> — Share Chatra with friends! Tap the share icon in the header to copy a link or download a QR code.</li>
+                <li><strong>Google Analytics</strong> — Added analytics to help improve the app experience.</li>
+                <li><strong>@everyone (Admin)</strong> — Admins can now mention everyone in global chat with <span class="text-amber-400">@everyone</span> — all users will see the orange highlight and notification.</li>
+                <li><strong>Timestamps</strong> — Messages in Global Chat and DMs now show time (today) or date (older) below each message.</li>
             </ul>
-            <h4 class="font-semibold text-slate-200 mt-4">Next Update</h4>
-            <p class="text-xs text-slate-400">Planned: Group chats — estimated this week.</p>`;
+            
+            <h5 class="font-medium text-emerald-400 mt-4 mb-2">✨ Improvements</h5>
+            <ul class="list-disc pl-5 space-y-1">
+                <li><strong>Slimmer Bubbles</strong> — Global chat message bubbles are now smaller and thinner for a cleaner look.</li>
+                <li><strong>QR Downloads</strong> — Share QR codes are generated locally and download directly to your device.</li>
+                <li><strong>Mention Persistence</strong> — Mentions you've already seen won't re-notify after refresh or scrolling.</li>
+            </ul>
+            
+            <h5 class="font-medium text-rose-400 mt-4 mb-2">🐛 Bug Fixes</h5>
+            <ul class="list-disc pl-5 space-y-1">
+                <li>Fixed duplicate mention notifications when refreshing or scrolling to old messages.</li>
+                <li>Fixed ban duration dropdown not showing all options (hour, day, week, month, permanent).</li>
+                <li>Fixed timestamp styling causing centered text and gaps in message bubbles.</li>
+            </ul>
+            
+            <h4 class="font-semibold text-slate-200 mt-6">Previous Updates</h4>
+            <details class="text-xs text-slate-400 mt-2">
+              <summary class="cursor-pointer hover:text-slate-300">v5.5 — Click to expand</summary>
+              <ul class="list-disc pl-5 space-y-1 mt-2">
+                <li>Added mentioning others when replying — reply previews now highlight mentions.</li>
+                <li>Added an onboarding walkthrough for new users.</li>
+                <li>Improved reporting system with inline report flow.</li>
+                <li>Fixed touchscreen compatibility (iPad/Safari).</li>
+                <li>Added Suggestions & Help overlay.</li>
+              </ul>
+            </details>`;
         } catch (e) {}
         try {
           // Primary: use modal classes
@@ -6421,6 +6698,175 @@
         renderNotificationHistory();
       });
 
+      // Share button behavior
+      if (shareBtn) {
+        shareBtn.addEventListener('click', async () => {
+          // Use the provided TinyURL instead of current page URL
+          const link = 'https://tinyurl.com/chatraa';
+          try { if (shareLinkInput) shareLinkInput.value = link; } catch (e) {}
+          try {
+            // Generate QR client-side (avoids CORS). Use the QRCode library to create a data URL.
+            if (window.QRCode && QRCode.toDataURL) {
+              try {
+                const dataUrl = await QRCode.toDataURL(link, { margin: 1, width: 300 });
+                if (shareQRCode) shareQRCode.src = dataUrl;
+                if (shareDownloadBtn) shareDownloadBtn.dataset.qr = dataUrl;
+              } catch (err) {
+                console.warn('[share] QR generation failed, falling back to provided image', err);
+                const providedQr = 'https://image2url.com/images/1765859919064-72a6905d-3b5b-4ed0-82e3-fd76963651d4.png';
+                if (shareQRCode) shareQRCode.src = providedQr;
+                if (shareDownloadBtn) shareDownloadBtn.dataset.qr = providedQr;
+              }
+            } else {
+              // No QR library available; fall back to provided QR image
+              const providedQr = 'https://image2url.com/images/1765859919064-72a6905d-3b5b-4ed0-82e3-fd76963651d4.png';
+              if (shareQRCode) shareQRCode.src = providedQr;
+              if (shareDownloadBtn) shareDownloadBtn.dataset.qr = providedQr;
+            }
+          } catch (e) {}
+          try {
+            if (shareModal) {
+              shareModal.classList.remove('modal-closed');
+              shareModal.classList.add('modal-open');
+              shareModal.style.display = 'flex';
+            }
+          } catch (e) {}
+          try { sendAnalyticsEvent('share_open', { source: 'header' }); } catch (e) {}
+        });
+        shareBtn.addEventListener('touchend', (e) => { e.preventDefault(); shareBtn.click(); });
+      }
+
+      if (shareCloseBtn) {
+        shareCloseBtn.addEventListener('click', () => {
+          try { if (shareModal) { shareModal.classList.remove('modal-open'); shareModal.classList.add('modal-closed'); shareModal.style.display = 'none'; } } catch (e) {}
+        });
+        shareCloseBtn.addEventListener('touchend', (e) => { e.preventDefault(); shareCloseBtn.click(); });
+      }
+
+      if (shareModal) {
+        shareModal.addEventListener('click', (e) => {
+          if (e.target === shareModal) {
+            try { shareModal.classList.remove('modal-open'); shareModal.classList.add('modal-closed'); shareModal.style.display = 'none'; } catch (e) {}
+          }
+        });
+      }
+
+      if (shareCopyBtn) {
+        shareCopyBtn.addEventListener('click', async () => {
+          const text = (shareLinkInput && shareLinkInput.value) ? shareLinkInput.value : 'https://tinyurl.com/chatraa';
+          try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              await navigator.clipboard.writeText(text);
+            } else {
+              const ta = document.createElement('textarea');
+              ta.value = text;
+              document.body.appendChild(ta);
+              ta.select();
+              document.execCommand('copy');
+              ta.remove();
+            }
+            const old = shareCopyBtn.textContent;
+            shareCopyBtn.textContent = 'Copied!';
+            setTimeout(() => { try { shareCopyBtn.textContent = old; } catch (e) {} }, 1500);
+            try { sendAnalyticsEvent('share_copy', { method: 'copy' }); } catch (e) {}
+          } catch (err) {
+            console.error('[share] copy failed', err);
+          }
+        });
+        shareCopyBtn.addEventListener('touchend', (e) => { e.preventDefault(); shareCopyBtn.click(); });
+      }
+
+      // Download QR button behavior — fetch the image as a blob then download.
+      if (shareDownloadBtn) {
+        shareDownloadBtn.addEventListener('click', async (e) => {
+          const qr = shareDownloadBtn.dataset.qr || (shareQRCode ? shareQRCode.src : null) || 'https://image2url.com/images/1765859919064-72a6905d-3b5b-4ed0-82e3-fd76963651d4.png';
+
+          // If the QR is a data URL (generated client-side), convert it to a blob without fetching remote
+          if (qr && qr.startsWith('data:')) {
+            try {
+              const blob = dataURLToBlob(qr);
+              const blobUrl = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = blobUrl;
+              a.download = 'chatra-qr.png';
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
+              setTimeout(() => URL.revokeObjectURL(blobUrl), 15000);
+              try { sendAnalyticsEvent('share_download', { method: 'download', qr_url: 'data:' }); } catch (e) {}
+              return;
+            } catch (err) {
+              console.warn('[share] data URL -> blob download failed, continuing to other fallbacks', err);
+            }
+          }
+
+          try {
+            // Try fetching the image as a blob (best for cross-browser downloads)
+            const resp = await fetch(qr, { mode: 'cors' });
+            if (!resp.ok) throw new Error('Network response was not ok: ' + resp.status);
+            const blob = await resp.blob();
+
+            // Create object URL and trigger anchor download
+            const blobUrl = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = blobUrl;
+            a.download = 'chatra-qr.png';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            // Revoke the object URL after a short delay to allow the download to start
+            setTimeout(() => URL.revokeObjectURL(blobUrl), 15000);
+            try { sendAnalyticsEvent('share_download', { method: 'download', qr_url: qr }); } catch (e) {}
+            return;
+          } catch (err) {
+            console.warn('[share] fetch->blob download failed, falling back to opening image in new tab', err);
+          }
+
+          // Fallback: try drawing the image to a canvas (may fail if CORS prevents it)
+          try {
+            await new Promise((resolve, reject) => {
+              const img = new Image();
+              img.crossOrigin = 'anonymous';
+              img.onload = () => resolve(img);
+              img.onerror = (ev) => reject(new Error('Image load error'));
+              img.src = qr;
+            }).then((img) => {
+              const canvas = document.createElement('canvas');
+              canvas.width = img.width;
+              canvas.height = img.height;
+              const ctx = canvas.getContext('2d');
+              ctx.drawImage(img, 0, 0);
+              canvas.toBlob((blob) => {
+                if (!blob) {
+                  throw new Error('Canvas toBlob returned null');
+                }
+                const blobUrl = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = blobUrl;
+                a.download = 'chatra-qr.png';
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                setTimeout(() => URL.revokeObjectURL(blobUrl), 15000);
+                try { sendAnalyticsEvent('share_download', { method: 'canvas', qr_url: qr }); } catch (e) {}
+              }, 'image/png');
+            });
+            return;
+          } catch (err) {
+            console.warn('[share] canvas fallback failed, will open image in new tab', err);
+          }
+
+          // Last resort: open the image in a new tab so user can manually save it
+          try {
+            window.open(qr, '_blank', 'noopener');
+            try { sendAnalyticsEvent('share_download', { method: 'open_tab', qr_url: qr }); } catch (e) {}
+          } catch (err) {
+            console.error('[share] final fallback open failed', err);
+          }
+        });
+        shareDownloadBtn.addEventListener('touchend', (e) => { e.preventDefault(); shareDownloadBtn.click(); });
+      }
+
       // Load Privacy Settings
       async function loadPrivacySettings() {
         const uid = auth.currentUser?.uid;
@@ -6493,6 +6939,8 @@
         dmModal.classList.remove("modal-closed");
         dmModal.classList.add("modal-open");
         dmActiveUser.textContent = activeDMTarget?.username || "Select a conversation";
+        // Analytics: DM opened (modal)
+        try { sendAnalyticsEvent('dm_open', { thread_id: activeDMThread || null, other_uid: activeDMTarget?.uid || null, mode: 'modal' }); } catch (e) {}
         
         // Show friends by default
         dmConversationList.innerHTML = '';
@@ -6948,6 +7396,9 @@
             const uploadResult = await uploadToImageKit(processed);
             storeUploadTime();
 
+            // Analytics: image uploaded for modal DM
+            try { sendAnalyticsEvent('image_uploaded', { thread_id: threadId || null, media_file_id: uploadResult.fileId || null }); } catch (e) {}
+
             const now = Date.now();
             const msg = {
               fromUid: currentUserId,
@@ -6960,7 +7411,11 @@
               toUsername: activeDMTarget.username || "",
             };
 
+
             await db.ref("dms/" + threadId + "/messages").push(msg);
+
+            // Analytics: message sent with media (modal)
+            try { sendAnalyticsEvent('message_sent', { thread_id: threadId, has_media: true, media_file_id: uploadResult.fileId || null }); } catch (e) {}
 
             const lastMsgPreview = caption ? caption : "(media)";
 
@@ -6984,24 +7439,12 @@
 
             await Promise.all([
               db.ref("dmInbox/" + currentUserId + "/" + threadId).set(myInboxUpdate),
-              db.ref("dmInbox/" + activeDMTarget.uid + "/" + threadId).transaction(current => {
-                if (!current) {
-                  return {
-                    withUid: currentUserId,
-                    withUsername: currentUsername || currentUserId,
-                    lastMsg: lastMsgPreview,
-                    lastTime: now,
-                    unread: 1
-                  };
-                }
-                return {
-                  ...current,
-                  withUid: currentUserId,
-                  withUsername: currentUsername || currentUserId,
-                  lastMsg: lastMsgPreview,
-                  lastTime: now,
-                  unread: (current.unread || 0) + 1
-                };
+              db.ref("dmInbox/" + activeDMTarget.uid + "/" + threadId).set({
+                withUid: currentUserId,
+                withUsername: currentUsername || currentUserId,
+                lastMsg: lastMsgPreview,
+                lastTime: now,
+                unread: 1
               })
             ]);
             // Prevent our inbox listener from considering this local update as a new incoming message
@@ -7087,6 +7530,9 @@
 
           await db.ref("dms/" + threadId + "/messages").push(msg);
 
+          // Analytics: message sent (modal)
+          try { sendAnalyticsEvent('message_sent', { thread_id: threadId, has_media: false }); } catch (e) {}
+
           // Update BOTH inboxes so recipient gets notified
           const myInboxUpdate = {
             withUid: activeDMTarget.uid,
@@ -7108,25 +7554,12 @@
 
           await Promise.all([
             db.ref("dmInbox/" + currentUserId + "/" + threadId).set(myInboxUpdate),
-            // Use transaction to increment recipient's unread count
-            db.ref("dmInbox/" + activeDMTarget.uid + "/" + threadId).transaction(current => {
-              if (!current) {
-                return {
-                  withUid: currentUserId,
-                  withUsername: currentUsername || currentUserId,
-                  lastMsg: text,
-                  lastTime: now,
-                  unread: 1
-                };
-              }
-              return {
-                ...current,
-                withUid: currentUserId,
-                withUsername: currentUsername || currentUserId,
-                lastMsg: text,
-                lastTime: now,
-                unread: (current.unread || 0) + 1
-              };
+            db.ref("dmInbox/" + activeDMTarget.uid + "/" + threadId).set({
+              withUid: currentUserId,
+              withUsername: currentUsername || currentUserId,
+              lastMsg: text,
+              lastTime: now,
+              unread: 1
             })
           ]);
           // Prevent our inbox listener from considering this local update as a new incoming message
