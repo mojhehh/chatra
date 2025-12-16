@@ -2,32 +2,35 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Website Status Update</title>
-    <!-- Use Tailwind CSS for easy styling that complements your dark mode aesthetic -->
+    
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- Firebase SDK Scripts (Realtime Database specific) -->
+    <!-- Firebase SDK Scripts -->
     <script src="www.gstatic.com"></script>
     <script src="www.gstatic.com"></script>
     <script src="www.gstatic.com"></script>
     
     <style>
-        /* Incorporate key styles from your provided CSS for consistency */
         body {
-            background-color: #0f172a; /* matches a dark background from your scrollbar CSS */
-            color: #e2e8f0; /* matches text color from your CSS */
+            background-color: #0f172a;
+            color: #e2e8f0;
+            /* Prevent scrolling/bouncing on iOS */
+            height: 100vh;
+            overflow: hidden;
         }
         button {
             transition: opacity 0.14s ease, transform 0.08s ease;
             -webkit-tap-highlight-color: rgba(56, 189, 248, 0.3);
-            touch-action: manipulation;
+            touch-action: manipulation; /* Essential for smooth touch interactions */
         }
-        button:hover {
-            opacity: 0.9;
-        }
-        button:active {
-            transform: scale(0.98);
+        /* Visual feedback for pressing on a touch screen */
+        @media (hover: none) and (pointer: coarse) {
+            button:active {
+                transform: scale(0.98);
+                opacity: 0.8;
+            }
         }
     </style>
 </head>
@@ -43,11 +46,13 @@
         <div id="poll-container">
             <h2 class="text-xl mb-4 font-semibold">Should we keep it running?</h2>
             
-            <button id="vote-keep" onclick="vote('keep')" class="w-full mb-3 p-3 rounded-lg bg-cyan-600 hover:bg-cyan-700 text-white font-semibold">
+            <!-- Added ontouchstart="vote('keep')" for better iOS compatibility -->
+            <button id="vote-keep" onclick="vote('keep')" ontouchstart="vote('keep')" class="w-full mb-3 p-3 rounded-lg bg-cyan-600 hover:bg-cyan-700 text-white font-semibold">
                 Yes, please keep it up!
             </button>
             
-            <button id="vote-close" onclick="vote('close')" class="w-full p-3 rounded-lg bg-gray-600 hover:bg-gray-700 text-white font-semibold">
+            <!-- Added ontouchstart="vote('close')" for better iOS compatibility -->
+            <button id="vote-close" onclick="vote('close')" ontouchstart="vote('close')" class="w-full p-3 rounded-lg bg-gray-600 hover:bg-gray-700 text-white font-semibold">
                 No, shut it down.
             </button>
         </div>
@@ -56,7 +61,6 @@
     </div>
 
     <script>
-        // Your provided Firebase configuration
         const firebaseConfig = {
           apiKey: "AIzaSyC945jY7UEh4sOOuuk7OMZVXeIh333kxVk",
           authDomain: "chat-app-710f0.firebaseapp.com",
@@ -68,23 +72,20 @@
           measurementId: "G-JDCBPFSMQ9"
         };
 
-        // Initialize Firebase
         const app = firebase.initializeApp(firebaseConfig);
         const analytics = firebase.analytics();
         const database = app.database();
 
-        // Elements
         const pollContainer = document.getElementById('poll-container');
         const messageArea = document.getElementById('message');
 
         function showMessage(msg, isError = false) {
             messageArea.textContent = msg;
+            // Use tailwind classes to set color based on success/error
             messageArea.className = `mt-4 text-center ${isError ? 'text-red-400' : 'text-green-400'}`;
-            messageArea.classList.remove('hidden');
         }
 
         function hasVoted() {
-            // Check local storage to prevent double voting from the same browser/device
             return localStorage.getItem('site_status_voted') === 'true';
         }
 
@@ -94,33 +95,36 @@
 
         window.vote = function(option) {
             if (hasVoted()) {
-                showMessage("You have already voted! Thank you for your input.", false);
+                showMessage("You have already voted! Thank you for your input.");
                 return;
             }
+            
+            // Disable buttons immediately on tap to prevent double-firing
+            document.getElementById('vote-keep').disabled = true;
+            document.getElementById('vote-close').disabled = true;
 
-            // Reference to the votes count in the Firebase Realtime Database
             const votesRef = database.ref(`poll/site_status/${option}`);
 
-            // Atomically increment the vote count
             votesRef.transaction((current_value) => {
-                // If value is null, start at 1, otherwise increment
                 return (current_value || 0) + 1;
             }, (error, committed, snapshot) => {
                 if (error) {
                     showMessage("A network error occurred. Please try again.", true);
+                    document.getElementById('vote-keep').disabled = false;
+                    document.getElementById('vote-close').disabled = false;
                 } else if (committed) {
                     setVoted();
                     pollContainer.classList.add('hidden');
-                    showMessage(`Your vote for "${option}" has been recorded!`);
+                    showMessage("Your vote has been recorded! Thank you for your input.");
                 }
             });
         }
         
         // Check on load if user already voted
-        document.addEventListener('DOMContentLoaded', (event) => {
+        document.addEventListener('DOMContentLoaded', () => {
             if (hasVoted()) {
                 pollContainer.classList.add('hidden');
-                showMessage("You have already voted! Thank you for your input.", false);
+                showMessage("You have already voted! Thank you for your input.");
             }
         });
     </script>
