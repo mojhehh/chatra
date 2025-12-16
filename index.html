@@ -16,21 +16,24 @@
         body {
             background-color: #0f172a;
             color: #e2e8f0;
-            /* Prevent scrolling/bouncing on iOS */
             height: 100vh;
             overflow: hidden;
         }
         button {
             transition: opacity 0.14s ease, transform 0.08s ease;
             -webkit-tap-highlight-color: rgba(56, 189, 248, 0.3);
-            touch-action: manipulation; /* Essential for smooth touch interactions */
+            touch-action: manipulation;
         }
-        /* Visual feedback for pressing on a touch screen */
         @media (hover: none) and (pointer: coarse) {
             button:active {
                 transform: scale(0.98);
                 opacity: 0.8;
             }
+        }
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: scale(1);
         }
     </style>
 </head>
@@ -46,13 +49,11 @@
         <div id="poll-container">
             <h2 class="text-xl mb-4 font-semibold">Should we keep it running?</h2>
             
-            <!-- Added ontouchstart="vote('keep')" for better iOS compatibility -->
-            <button id="vote-keep" onclick="vote('keep')" ontouchstart="vote('keep')" class="w-full mb-3 p-3 rounded-lg bg-cyan-600 hover:bg-cyan-700 text-white font-semibold">
+            <button id="vote-keep" class="w-full mb-3 p-3 rounded-lg bg-cyan-600 text-white font-semibold">
                 Yes, please keep it up!
             </button>
             
-            <!-- Added ontouchstart="vote('close')" for better iOS compatibility -->
-            <button id="vote-close" onclick="vote('close')" ontouchstart="vote('close')" class="w-full p-3 rounded-lg bg-gray-600 hover:bg-gray-700 text-white font-semibold">
+            <button id="vote-close" class="w-full p-3 rounded-lg bg-gray-600 text-white font-semibold">
                 No, shut it down.
             </button>
         </div>
@@ -72,17 +73,21 @@
           measurementId: "G-JDCBPFSMQ9"
         };
 
+        // Initialize Firebase
         const app = firebase.initializeApp(firebaseConfig);
-        const analytics = firebase.analytics();
+        // const analytics = firebase.analytics(); // Analytics initialized but not used in vote logic
         const database = app.database();
 
+        // Elements
         const pollContainer = document.getElementById('poll-container');
         const messageArea = document.getElementById('message');
+        const btnKeep = document.getElementById('vote-keep');
+        const btnClose = document.getElementById('vote-close');
 
         function showMessage(msg, isError = false) {
             messageArea.textContent = msg;
-            // Use tailwind classes to set color based on success/error
             messageArea.className = `mt-4 text-center ${isError ? 'text-red-400' : 'text-green-400'}`;
+            messageArea.classList.remove('hidden');
         }
 
         function hasVoted() {
@@ -93,25 +98,27 @@
             localStorage.setItem('site_status_voted', 'true');
         }
 
-        window.vote = function(option) {
+        function handleVote(option) {
             if (hasVoted()) {
                 showMessage("You have already voted! Thank you for your input.");
                 return;
             }
-            
-            // Disable buttons immediately on tap to prevent double-firing
-            document.getElementById('vote-keep').disabled = true;
-            document.getElementById('vote-close').disabled = true;
+
+            // Disable buttons immediately to prevent multiple clicks
+            btnKeep.disabled = true;
+            btnClose.disabled = true;
 
             const votesRef = database.ref(`poll/site_status/${option}`);
 
             votesRef.transaction((current_value) => {
+                // If value is null, start at 1, otherwise increment
                 return (current_value || 0) + 1;
             }, (error, committed, snapshot) => {
                 if (error) {
                     showMessage("A network error occurred. Please try again.", true);
-                    document.getElementById('vote-keep').disabled = false;
-                    document.getElementById('vote-close').disabled = false;
+                    // Re-enable buttons if an error occurs so the user can retry
+                    btnKeep.disabled = false;
+                    btnClose.disabled = false;
                 } else if (committed) {
                     setVoted();
                     pollContainer.classList.add('hidden');
@@ -120,6 +127,10 @@
             });
         }
         
+        // Use standard, reliable event listeners for clicks/taps
+        btnKeep.addEventListener('click', () => handleVote('keep'));
+        btnClose.addEventListener('click', () => handleVote('close'));
+
         // Check on load if user already voted
         document.addEventListener('DOMContentLoaded', () => {
             if (hasVoted()) {
