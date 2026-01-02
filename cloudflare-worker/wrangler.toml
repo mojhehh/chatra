@@ -1,0 +1,5 @@
+name = "recovery-modmojheh"
+main = "verify-email-worker.js"
+compatibility_date = "2025-12-23"
+
+# No vars here; use `wrangler secret put` to upload sensitive values.
