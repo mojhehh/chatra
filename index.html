@@ -22,8 +22,7 @@
 
 <!-- full review trigger -->
 
-    <!-- Tailwind CSSS (optional, for looks) -->
-    <script>
+    <!-- Tailwind CSS (optional, for looks) -->    <script>
       // Suppress Tailwind CDN production warning BEFORE loading
       window.tailwindConfig = {};
     </script>
@@ -37,13 +36,18 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-analytics-compat.js"></script>
 
-    <!-- Google Analytics (gtag) - replace MEASUREMENT_ID with your GA4 measurement ID -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-JDCBPFSMQ9"></script>
+    <!-- Google Analytics (gtag) - skip on localhost -->
     <script>
-      window.dataLayer = window.dataLayer || [];
-      function gtag(){dataLayer.push(arguments);} 
-      gtag('js', new Date());
-      gtag('config', 'G-JDCBPFSMQ9');
+      if (location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+        var s = document.createElement('script');
+        s.async = true;
+        s.src = 'https://www.googletagmanager.com/gtag/js?id=G-JDCBPFSMQ9';
+        document.head.appendChild(s);
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'G-JDCBPFSMQ9');
+      }
     </script>
 
     <!-- Hide scrollbar but keep scrolling + custom animations / glassmorphism -->
@@ -59,7 +63,7 @@
     <!-- Loading Screen -->
     <div
       id="loadingScreen"
-      class="fixed inset-0 z-50 bg-slate-950 flex items-center justify-center"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/95 backdrop-blur-sm hidden"
     >
       <div class="flex flex-col items-center gap-6">
         <div class="relative w-20 h-20">

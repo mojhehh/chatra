@@ -81,12 +81,14 @@
 
       // Initialize Firebase
       firebase.initializeApp(firebaseConfig);
-      // Initialize Firebase Analytics (if available)
-      try {
-        if (firebase && firebase.analytics) {
-          try { firebase.analytics(); } catch (e) { console.warn('[analytics] firebase.analytics init failed', e); }
-        }
-      } catch (e) {}
+      // Initialize Firebase Analytics (skip on localhost to avoid Tracking Prevention warnings)
+      if (location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+        try {
+          if (firebase && firebase.analytics) {
+            try { firebase.analytics(); } catch (e) { console.warn('[analytics] firebase.analytics init failed', e); }
+          }
+        } catch (e) {}
+      }
       const auth = firebase.auth();
       const db = firebase.database();
 
@@ -6646,7 +6648,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
 
                 // Hide loading screen after messages are loaded — keep it visible slightly longer for a smooth transition.
                 const extraDelay = (typeof FAST_MODE_ENABLED !== 'undefined' && FAST_MODE_ENABLED) ? 50 : 1500;
-                setTimeout(() => { loadingScreen.classList.add("hidden"); }, extraDelay);
+                setTimeout(() => { if (loadingScreen) loadingScreen.classList.add("hidden"); }, extraDelay);
 
                 if (count < PAGE_SIZE) {
                   allHistoryLoaded = true;
@@ -7032,9 +7034,9 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
               // Continue anyway
             }
 
-            loginForm.classList.add("hidden");
-            registerForm.classList.add("hidden");
-            chatInterface.classList.remove("hidden");
+            if (loginForm) loginForm.classList.add("hidden");
+            if (registerForm) registerForm.classList.add("hidden");
+            if (chatInterface) chatInterface.classList.remove("hidden");
             
             // Ensure messages container is always visible
             if (messagesDiv) {
@@ -7042,12 +7044,12 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             }
             
             // Only show loading screen if messages container is empty
-            if (!messagesDiv || messagesDiv.children.length === 0) {
+            if (loadingScreen && (!messagesDiv || messagesDiv.children.length === 0)) {
               loadingScreen.classList.remove("hidden");
             }
             
             // Show notification bell when logged in
-            notifBellBtn.classList.remove("hidden");
+            if (notifBellBtn) notifBellBtn.classList.remove("hidden");
             
             // Request notification permission
             if ("Notification" in window && Notification.permission === "default") {
@@ -7152,13 +7154,13 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           if (dmPage) dmPage.classList.add('hidden');
           currentPage = 'global';
 
-          chatInterface.classList.add("hidden");
-          loginForm.classList.remove("hidden");
+          if (chatInterface) chatInterface.classList.add("hidden");
+          if (loginForm) loginForm.classList.remove("hidden");
           // Hide loading screen if not logged in
-          loadingScreen.classList.add("hidden");
+          if (loadingScreen) loadingScreen.classList.add("hidden");
           
           // Hide notification bell when not logged in
-          notifBellBtn.classList.add("hidden");
+          if (notifBellBtn) notifBellBtn.classList.add("hidden");
           
           updateChatUserLabel("");
         }
@@ -7755,7 +7757,12 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         }
 
         const processed = await prepareFileForUpload(file);
-        const url = await uploadToImageKit(processed);
+        const uploadResult = await uploadToImageKit(processed);
+        const { url, fileId } = uploadResult || {};
+        if (!url) {
+          console.error('[sendImageMessage] upload failed, no URL returned');
+          return;
+        }
         storeUploadTime();
 
         const messageData = {
@@ -7764,6 +7771,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           media: url,
           time: firebase.database.ServerValue.TIMESTAMP,
         };
+        if (fileId) messageData.mediaFileId = fileId;
 
         return db.ref("messages").push(messageData);
       }
@@ -11007,9 +11015,9 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
 
       // Update viewUserProfile to track username
       const originalViewUserProfile = window.viewUserProfile;
-      window.viewUserProfile = function(username) {
+      window.viewUserProfile = function(username, ...args) {
         currentViewingUsername = username;
-        originalViewUserProfile.call(this, username);
+        return originalViewUserProfile.call(this, username, ...args);
       };
 
       // Current friends filter state

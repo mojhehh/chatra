@@ -15,7 +15,7 @@
       ".read": "auth != null && !root.child('bannedUsers').child(auth.uid).exists()",
       ".indexOn": ["time"],
       "$msgId": {
-          ".write": "auth != null && !root.child('bannedUsers').child(auth.uid).exists() && (!data.exists() ? (newData.child('userId').val() === auth.uid || newData.child('userId').val() === 'aEY7gNeuGcfBErxOHNEQYFzvhpp2') : data.child('userId').val() === auth.uid || root.child('admins').child(auth.uid).exists()) && (\n          ( !newData.child('media').exists() && ( !root.child('userLastMessageTime').child(auth.uid).exists() || now - root.child('userLastMessageTime').child(auth.uid).val() >= 500 ) ) ||\n          ( newData.child('media').exists() && ( !root.child('userLastMediaTime').child(auth.uid).exists() || now - root.child('userLastMediaTime').child(auth.uid).val() >= 1000 ) )\n        )",
+          ".write": "auth != null && !root.child('bannedUsers').child(auth.uid).exists() && (!data.exists() ? (newData.child('userId').val() === auth.uid || newData.child('userId').val() === 'aEY7gNeuGcfBErxOHNEQYFzvhpp2') : (data.child('userId').val() === auth.uid || root.child('admins').child(auth.uid).exists())) && ( !data.exists() ? (( !newData.child('media').exists() && ( !root.child('userLastMessageTime').child(auth.uid).exists() || now - root.child('userLastMessageTime').child(auth.uid).val() >= 500 ) ) || ( newData.child('media').exists() && ( !root.child('userLastMediaTime').child(auth.uid).exists() || now - root.child('userLastMediaTime').child(auth.uid).val() >= 1000 ) )) : true)",
         ".validate": "newData.hasChildren(['user','userId','text','time']) && newData.child('user').isString() && newData.child('userId').isString() && newData.child('text').isString() && newData.child('text').val().length <= 2000 && !newData.child('text').val().contains('[FILTERED') && newData.child('time').isNumber() && (!newData.child('media').exists() || newData.child('media').isString()) && (!newData.child('deleteToken').exists() || newData.child('deleteToken').isString()) && (!newData.child('replyTo').exists() || (newData.child('replyTo').hasChildren(['messageId','username','text']) && newData.child('replyTo').child('messageId').isString() && newData.child('replyTo').child('username').isString() && newData.child('replyTo').child('text').isString())) && (!newData.child('editedAt').exists() || newData.child('editedAt').isNumber() || newData.child('editedAt').child('.sv').exists())"
       }
     },
@@ -247,8 +247,8 @@
     },
 
     "bannedEmails": {
-      ".read": true,
-      ".write": "root.child('admins').child(auth.uid).exists()",
+      ".read": "auth != null && root.child('admins').child(auth.uid).exists()",
+      ".write": "auth != null && root.child('admins').child(auth.uid).exists()",
       "$email": {
         ".validate": "newData.hasChildren(['uid','reason','timestamp']) && newData.child('uid').isString() && newData.child('reason').isString() && newData.child('timestamp').isNumber()"
       }
@@ -348,17 +348,17 @@
     ,
     "anonHelpLastSubmission": {
       "$clientId": {
-        ".read": "root.child('admins').child(auth.uid).exists()",
-        ".write": true,
-        ".validate": "newData.isNumber()"
+        ".read": "auth != null && root.child('admins').child(auth.uid).exists()",
+        ".write": "newData.isNumber()",
+        ".validate": "newData.isNumber() && newData.val() === now"
       }
     }
     ,
     "anonHelpLastAppeal": {
       "$clientId": {
-        ".read": "root.child('admins').child(auth.uid).exists()",
-        ".write": true,
-        ".validate": "newData.isNumber()"
+        ".read": "auth != null && root.child('admins').child(auth.uid).exists()",
+        ".write": "newData.isNumber()",
+        ".validate": "newData.isNumber() && newData.val() === now"
       }
     }
   }
