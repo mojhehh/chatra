@@ -100,12 +100,12 @@
       function generateAiReply(query) {
         try {
           const q = (query || '').toLowerCase();
-          if (!q) return "I'm here â€” ask me anything!";
+          if (!q) return "I'm here — ask me anything!";
           if (q.includes('hello') || q.includes('hi')) return 'Hello! How can I help you today?';
-          if (q.includes('help')) return 'Sure â€” what do you need help with?';
+          if (q.includes('help')) return 'Sure — what do you need help with?';
           if (q.includes('rules')) return 'You can find the community rules in the header or ask a moderator.';
-          if (q.includes('joke')) return 'Why did the developer go broke? Because he used up all his cache. ðŸ˜„';
-          if (q.length < 30) return `You asked: "${query}" â€” I think that sounds interesting. Tell me more.`;
+          if (q.includes('joke')) return 'Why did the developer go broke? Because he used up all his cache. 😄';
+          if (q.length < 30) return `You asked: "${query}" — I think that sounds interesting. Tell me more.`;
           return `AI summary: ${query.slice(0, 140)}${query.length > 140 ? '...' : ''}`;
         } catch (e) {
           return "Sorry, I couldn't process that.";
@@ -1584,7 +1584,7 @@
           if (msg.indexOf('permission_denied') !== -1 || msg.indexOf('permission-denied') !== -1) {
             const attempts = parseInt(listEl.dataset.groupLoadAttempts || '0', 10) || 0;
             listEl.dataset.groupLoadAttempts = attempts + 1;
-            listEl.innerHTML = '<p class="text-xs text-yellow-300 text-center py-4">Unable to load groups yet â€” retrying...</p>';
+            listEl.innerHTML = '<p class="text-xs text-yellow-300 text-center py-4">Unable to load groups yet — retrying...</p>';
             if (attempts < 3) {
               // retry after a short delay (may be due to auth/rules timing)
               setTimeout(() => loadGroupsPageConversations(), 800 + attempts * 400);
@@ -1754,7 +1754,7 @@
               
               // Sanitize response
               botReply = botReply.replace(/\n{3,}/g, '\n\n').trim();
-              botReply = botReply.replace(/@everyone/gi, '@â€‹everyone');
+              botReply = botReply.replace(/@everyone/gi, '@​everyone');
               
               addToAiMemory(currentUserId, 'assistant', botReply, currentUsername);
               
@@ -4003,7 +4003,7 @@
               } catch (e) {}
 
               if (uploadResult && uploadResult.url) {
-                // Store pending media and show preview; do NOT auto-send â€” user will press Send
+                // Store pending media and show preview; do NOT auto-send — user will press Send
                 pendingDmMediaUrl = uploadResult.url;
                 pendingDmMediaFileId = uploadResult.fileId || null;
 
@@ -5655,7 +5655,7 @@
             msgInput.placeholder = "You are muted for " + timeLeft + "s";
             if (muteInlineBanner && muteInlineText) {
               muteInlineBanner.classList.remove("hidden");
-              muteInlineText.textContent = "Muted: " + (data.reason || "Rule break") + " â€” " + timeLeft + "s left";
+              muteInlineText.textContent = "Muted: " + (data.reason || "Rule break") + " — " + timeLeft + "s left";
             }
             
             // Show mute popup
@@ -5683,7 +5683,7 @@
                 muteTimer.textContent = timeLeft2 + "s remaining";
                 msgInput.placeholder = "You are muted for " + timeLeft2 + "s";
                 if (muteInlineText) {
-                  muteInlineText.textContent = "Muted: " + (data.reason || "Rule break") + " â€” " + timeLeft2 + "s left";
+                  muteInlineText.textContent = "Muted: " + (data.reason || "Rule break") + " — " + timeLeft2 + "s left";
                 }
               }
             }, 1000);
@@ -6165,12 +6165,12 @@
               console.log("[init] auto-created friendRequests incoming for target", targetUid);
             }
           } else {
-            // Not the target user â€” skip creating other users' nodes to avoid permission errors
+            // Not the target user — skip creating other users' nodes to avoid permission errors
             console.log("[init] skipping auto-create friendRequests for other user:", targetUid);
           }
         } catch (err) {
           // Permission denied is common if rules disallow creating other users' nodes.
-          // Don't block the flow â€” just log details for debugging.
+          // Don't block the flow — just log details for debugging.
           logDetailedError("ensureTargetFriendRequestsIncoming", err, { targetUid });
         }
       }
@@ -6213,7 +6213,7 @@
         console.log("[ui] chat user label set to:", currentUsername || "");
       }
 
-      // On-screen warning (2 seconds) â€” now combined with typing in one line
+      // On-screen warning (2 seconds) — now combined with typing in one line
       function showRateLimitWarning() {
         currentWarningText = "Slow down!";
         if (sendWarningTimeoutId) {
@@ -6671,7 +6671,7 @@
             dmLastUpdateTimeByThread[item.threadId] = Math.max(item.lastMsg ? lastTime : 0, dmLastUpdateTimeByThread[item.threadId] || 0);
 
             // Only treat a thread as unread if the inbox entry explicitly has an `unread` number.
-            // Do NOT infer unread from timestamps here â€” that caused every thread to appear unread.
+            // Do NOT infer unread from timestamps here — that caused every thread to appear unread.
             const unreadCount = (typeof item.unread === 'number') ? item.unread : 0;
             if (unreadCount > 0) {
               dmUnreadCounts[item.threadId] = unreadCount;
@@ -7161,7 +7161,7 @@
             const recoveryEmail = profileSnap.exists() ? profileSnap.val() : null;
             console.log('[recovery] fetched recoveryEmail =', recoveryEmail);
             if (!recoveryEmail) {
-              loginError.textContent = 'No recovery email set â€” contact support at chatrahelpcenter@gmail.com';
+              loginError.textContent = 'No recovery email set — contact support at chatrahelpcenter@gmail.com';
               return;
             }
             // Call worker to create token and return verify link
@@ -7184,7 +7184,7 @@
               const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
               if (!emailRegex.test(recoveryEmail || '')) {
                 console.warn('[recovery] invalid recoveryEmail, aborting send', recoveryEmail);
-                loginError.textContent = 'Recovery email on file is invalid â€” update your profile before requesting a reset.';
+                loginError.textContent = 'Recovery email on file is invalid — update your profile before requesting a reset.';
                 return;
               }
               const EMAILJS_SERVICE = 'service_sf4vssc';
@@ -7484,7 +7484,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             if (bubbleWrapper) {
               const success = document.createElement('div');
               success.className = 'mt-2 text-xs inline-block rounded px-2 py-1 bg-emerald-200 text-emerald-900 font-medium';
-              success.textContent = 'Report submitted â€” thank you.';
+              success.textContent = 'Report submitted — thank you.';
               bubbleWrapper.appendChild(success);
               setTimeout(() => {
                 success.style.opacity = '0';
@@ -8422,7 +8422,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         }
         // Trim trailing non-word characters (punctuation/space) without using Unicode property escapes
         slice = slice.replace(/[\W_]+$/g, '');
-        return slice + 'â€¦';
+        return slice + '…';
       }
 
       // Batch render messages for better performance
@@ -8618,7 +8618,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
                 const scrollDelays = (typeof FAST_MODE_ENABLED !== 'undefined' && FAST_MODE_ENABLED) ? [50, 150, 400] : [300, 800, 1500];
                 scrollDelays.forEach(d => setTimeout(scrollToBottom, d));
 
-                // Hide loading screen after messages are loaded â€” keep it visible slightly longer for a smooth transition.
+                // Hide loading screen after messages are loaded — keep it visible slightly longer for a smooth transition.
                 const extraDelay = (typeof FAST_MODE_ENABLED !== 'undefined' && FAST_MODE_ENABLED) ? 50 : 1500;
                 setTimeout(() => { if (loadingScreen) loadingScreen.classList.add("hidden"); }, extraDelay);
 
@@ -8796,13 +8796,13 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
 
         let text = "";
         if (typingUsers.length === 1) {
-          text = typingUsers[0] + " is typingâ€¦";
+          text = typingUsers[0] + " is typing…";
         } else if (typingUsers.length === 2) {
-          text = typingUsers[0] + " and " + typingUsers[1] + " are typingâ€¦";
+          text = typingUsers[0] + " and " + typingUsers[1] + " are typing…";
         } else if (typingUsers.length === 3) {
-          text = typingUsers[0] + ", " + typingUsers[1] + ", and " + typingUsers[2] + " are typingâ€¦";
+          text = typingUsers[0] + ", " + typingUsers[1] + ", and " + typingUsers[2] + " are typing…";
         } else if (typingUsers.length > 3) {
-          text = "Several people are typingâ€¦";
+          text = "Several people are typing…";
         }
 
         lastTypingText = text;
@@ -9495,7 +9495,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             botReply = botReply.replace(/\n{3,}/g, '\n\n').trim();
             
             // Remove @everyone from AI responses (security)
-            botReply = botReply.replace(/@everyone/gi, '@â€‹everyone'); // Zero-width space breaks the mention
+            botReply = botReply.replace(/@everyone/gi, '@​everyone'); // Zero-width space breaks the mention
             
             // Add AI reply to memory
             addToAiMemory(uid, 'assistant', botReply, currentUsername);
@@ -9589,9 +9589,9 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         // No moderation: directly proceed to upload (skip moderation step)
         const isVideo = file.type.startsWith("video/");
         if (isVideo) {
-          console.log("[upload] video file detected â€” skipping moderation and uploading directly");
+          console.log("[upload] video file detected — skipping moderation and uploading directly");
         } else {
-          console.log("[upload] image file detected â€” moderation disabled, uploading directly");
+          console.log("[upload] image file detected — moderation disabled, uploading directly");
         }
 
         // 2ï¸âƒ£ If safe, upload to ImageKit
@@ -10229,7 +10229,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         openHelpModal();
         // If user is not signed in, inform them they must register/login to submit
         if (!currentUserId) {
-          helpStatus.textContent = "You are not signed in â€” this will be submitted anonymously.";
+          helpStatus.textContent = "You are not signed in — this will be submitted anonymously.";
           helpStatus.className = "text-center text-sm text-yellow-400";
           helpStatus.classList.remove('hidden');
           helpSubmitBtn.disabled = false;
@@ -10486,7 +10486,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         modAppDismissBtn.addEventListener('click', dismissModAppPopup);
         modAppDismissBtn.addEventListener('touchend', (e) => { e.preventDefault(); dismissModAppPopup(); });
       }
-      // Note: Do NOT dismiss when clicking the backdrop or Apply â€” only the Dismiss button closes the popup.
+      // Note: Do NOT dismiss when clicking the backdrop or Apply — only the Dismiss button closes the popup.
       // Apply button is a normal link (`<a>`) and will open the form in a new tab; we intentionally do not attach a dismiss handler.
       // ======================== END MOD APP POPUP ========================
 
@@ -10496,7 +10496,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
 
       // Leave sidebar Staff Applications link as a normal external link (no JS interception)
 
-      // Header staff link is a normal external link â€” no JS interception
+      // Header staff link is a normal external link — no JS interception
 
       // Global touch-to-click enhancer for iOS/touch devices
       (function(){
@@ -10909,7 +10909,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         shareCopyBtn.addEventListener('touchend', (e) => { e.preventDefault(); shareCopyBtn.click(); });
       }
 
-      // Download QR button behavior â€” fetch the image as a blob then download.
+      // Download QR button behavior — fetch the image as a blob then download.
       if (shareDownloadBtn) {
         shareDownloadBtn.addEventListener('click', async (e) => {
           const qr = shareDownloadBtn.dataset.qr || (shareQRCode ? shareQRCode.src : null) || 'https://image2url.com/images/1765859919064-72a6905d-3b5b-4ed0-82e3-fd76963651d4.png';
@@ -13968,7 +13968,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
                 if (existing) existing.remove();
                 const success = document.createElement('div');
                 success.className = 'inline-report-success mt-2 text-sm inline-block rounded px-2 py-1 bg-emerald-200 text-emerald-900 font-medium';
-                success.textContent = 'Report submitted â€” thank you.';
+                success.textContent = 'Report submitted — thank you.';
                 bubbleContainer.appendChild(success);
                 setTimeout(() => {
                   success.classList.add('fade-out');
@@ -14108,7 +14108,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         {
           target: "#navDMs",
           title: "Direct Messages ðŸ“¨",
-          desc: "Click here to switch to Direct Messages. You can access DMs from the DMs tab next to Global Chat or via the Menu â€” use them for private conversations with friends.",
+          desc: "Click here to switch to Direct Messages. You can access DMs from the DMs tab next to Global Chat or via the Menu — use them for private conversations with friends.",
           position: "bottom"
         },
         {
