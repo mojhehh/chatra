@@ -1,9 +1,0 @@
-node_modules/
-.env
-*.log
-
-# secrets (very important)
-*this*
-*_KEY
-*_SECRET
-*_B64
