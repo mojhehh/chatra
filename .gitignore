@@ -2,10 +2,23 @@ node_modules/
 .env
 *.log
 
-# secrets (very important)
+# secrets
 ai api key
 secrets.env
 *.secret
 .env.local
 .env.production
 FIREBASE_SA.json
+this*
+
+# utility files - not needed in repo
+chatra.html
+RUNBOOK.md
+fix-emojis.py
+fix-encoding.py
+fix-patchnotes.py
+remove-comments.js
+strip-all-comments.js
+package.json
+package-lock.json
+*.bak
