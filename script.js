@@ -3393,7 +3393,7 @@
         
         const isMine = msg.fromUid === currentUserId;
         const row = document.createElement('div');
-        row.className = isMine ? 'flex justify-end px-1 items-center' : 'flex justify-start px-1 items-center';
+        row.className = isMine ? 'flex justify-end gap-1 items-center' : 'flex justify-start gap-1 items-center';
         row.dataset.msgKey = msg.key || '';
 
         // Avatar (match global chat style)
@@ -3406,9 +3406,6 @@
         // Hide avatar for own messages to match global chat
         if (isMine) {
           avatarDiv.style.display = 'none';
-        } else {
-          // Nudge DM avatar slightly left to match requested offset
-          try { avatarDiv.style.marginLeft = '-2px'; } catch (e) {}
         }
 
         // Load profile picture async
@@ -5218,7 +5215,7 @@
         console.log('[modPanel] active banned entries:', activeEntries.length);
         
         if (activeEntries.length === 0) {
-          modPanelContent.innerHTML = '<div class="flex flex-col items-center justify-center py-16 text-slate-400"><div class="w-20 h-20 rounded-full bg-green-600/20 flex items-center justify-center mb-4"><span class="text-4xl">âœ“</span></div><p class="text-xl font-medium">No Banned Users</p><p class="text-sm text-slate-500 mt-1">All clear!</p></div>';
+          modPanelContent.innerHTML = '<div class="flex flex-col items-center justify-center py-16 text-slate-400"><div class="w-20 h-20 rounded-full bg-green-600/20 flex items-center justify-center mb-4"><span class="text-4xl">✓</span></div><p class="text-xl font-medium">No Banned Users</p><p class="text-sm text-slate-500 mt-1">All clear!</p></div>';
           return;
         }
         
@@ -5262,7 +5259,7 @@
                 </div>
               </div>
               <div class="flex gap-2 flex-wrap mt-4 pt-4 border-t border-slate-700">
-                <button onclick="modPanelUnban('${uid}')" class="px-5 py-2 bg-green-600 hover:bg-green-500 text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-green-500/25 hover:scale-105">âœ“ Unban</button>
+                <button onclick="modPanelUnban('${uid}')" class="px-5 py-2 bg-green-600 hover:bg-green-500 text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-green-500/25 hover:scale-105">✓ Unban</button>
                 <button onclick="modPanelExtendBan('${uid}')" class="px-5 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-amber-500/25 hover:scale-105">â±ï¸ Extend</button>
                 ${fp && !isHardwareBanned ? `<button onclick="modPanelHardwareBan('${fp}', '${uid}')" class="px-5 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-purple-500/25 hover:scale-105">ðŸ–¥ï¸ HW Ban</button>` : ''}
                 ${fp && isHardwareBanned ? `<button onclick="modPanelUnHardwareBan('${fp}')" class="px-5 py-2 bg-slate-600 hover:bg-slate-500 text-white rounded-xl font-semibold transition-all shadow-lg hover:scale-105">ðŸ–¥ï¸ Remove HW</button>` : ''}
@@ -5300,7 +5297,7 @@
         console.log('[modPanel] active muted entries:', activeEntries.length);
         
         if (activeEntries.length === 0) {
-          modPanelContent.innerHTML = '<div class="flex flex-col items-center justify-center py-16 text-slate-400"><div class="w-20 h-20 rounded-full bg-green-600/20 flex items-center justify-center mb-4"><span class="text-4xl">âœ“</span></div><p class="text-xl font-medium">No Muted Users</p><p class="text-sm text-slate-500 mt-1">All clear!</p></div>';
+          modPanelContent.innerHTML = '<div class="flex flex-col items-center justify-center py-16 text-slate-400"><div class="w-20 h-20 rounded-full bg-green-600/20 flex items-center justify-center mb-4"><span class="text-4xl">✓</span></div><p class="text-xl font-medium">No Muted Users</p><p class="text-sm text-slate-500 mt-1">All clear!</p></div>';
           return;
         }
         
@@ -5332,7 +5329,7 @@
                 </div>
               </div>
               <div class="flex gap-2 flex-wrap mt-4 pt-4 border-t border-slate-700">
-                <button onclick="modPanelUnmute('${uid}')" class="px-5 py-2 bg-green-600 hover:bg-green-500 text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-green-500/25 hover:scale-105">âœ“ Unmute</button>
+                <button onclick="modPanelUnmute('${uid}')" class="px-5 py-2 bg-green-600 hover:bg-green-500 text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-green-500/25 hover:scale-105">✓ Unmute</button>
                 <button onclick="modPanelExtendMute('${uid}')" class="px-5 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-amber-500/25 hover:scale-105">â±ï¸ Extend</button>
               </div>
             </div>
@@ -5373,7 +5370,7 @@
               </div>
               <p class="text-sm text-slate-300 mb-4 pl-12">ðŸ“ ${escapeHtml(reason)}</p>
               <div class="flex gap-2 pl-12">
-                <button onclick="modPanelUnHardwareBan('${fpHash}')" class="px-4 py-1.5 bg-green-600 hover:bg-green-500 text-white text-xs rounded-lg font-medium transition-colors shadow-md">âœ“ Remove HW Ban</button>
+                <button onclick="modPanelUnHardwareBan('${fpHash}')" class="px-4 py-1.5 bg-green-600 hover:bg-green-500 text-white text-xs rounded-lg font-medium transition-colors shadow-md">✓ Remove HW Ban</button>
               </div>
             </div>
           `;
@@ -5395,7 +5392,7 @@
         // Check if list is empty now
         const content = document.getElementById('modPanelContent');
         if (content && !content.querySelector('.bg-slate-800\\/80')) {
-          content.innerHTML = '<div class="flex flex-col items-center justify-center py-16 text-slate-400"><div class="w-20 h-20 rounded-full bg-green-600/20 flex items-center justify-center mb-4"><span class="text-4xl">âœ“</span></div><p class="text-xl font-medium">No Banned Users</p><p class="text-sm text-slate-500 mt-1">All clear!</p></div>';
+          content.innerHTML = '<div class="flex flex-col items-center justify-center py-16 text-slate-400"><div class="w-20 h-20 rounded-full bg-green-600/20 flex items-center justify-center mb-4"><span class="text-4xl">✓</span></div><p class="text-xl font-medium">No Banned Users</p><p class="text-sm text-slate-500 mt-1">All clear!</p></div>';
         }
       };
       
@@ -5447,7 +5444,7 @@
         // Check if list is empty now
         const content = document.getElementById('modPanelContent');
         if (content && !content.querySelector('.bg-slate-800\\/80')) {
-          content.innerHTML = '<div class="flex flex-col items-center justify-center py-16 text-slate-400"><div class="w-20 h-20 rounded-full bg-green-600/20 flex items-center justify-center mb-4"><span class="text-4xl">âœ“</span></div><p class="text-xl font-medium">No Muted Users</p><p class="text-sm text-slate-500 mt-1">All clear!</p></div>';
+          content.innerHTML = '<div class="flex flex-col items-center justify-center py-16 text-slate-400"><div class="w-20 h-20 rounded-full bg-green-600/20 flex items-center justify-center mb-4"><span class="text-4xl">✓</span></div><p class="text-xl font-medium">No Muted Users</p><p class="text-sm text-slate-500 mt-1">All clear!</p></div>';
         }
       };
       
@@ -7773,8 +7770,8 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
 
         const row = document.createElement("div");
         row.className = isMine 
-          ? "w-full flex mb-2 sm:mb-2 justify-end pr-1 sm:pr-2 gap-2 items-center"
-          : "w-full flex mb-2 sm:mb-2 justify-start pl-1 sm:pl-3 gap-2 items-center";
+          ? "w-full flex mb-2 sm:mb-2 justify-end pr-0 sm:pr-1 gap-1 items-center"
+          : "w-full flex mb-2 sm:mb-2 justify-start pl-0 sm:pl-1 gap-1 items-center";
         
         // Store messageId in dataset for deletion
         if (messageId) {
@@ -7873,7 +7870,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
 
         // Add container for bubble + buttons (not timestamp)
         const bubbleContainer = document.createElement("div");
-        bubbleContainer.className = "";
+        bubbleContainer.className = isMine ? "flex justify-end" : "flex justify-start";
 
         const bubble = document.createElement("div");
         const textLength = (msg.text || "").length;
@@ -9363,7 +9360,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
 
         // Add visual feedback to send button
         const originalBtnText = sendBtn.innerHTML;
-        sendBtn.innerHTML = '<span class="animate-pulse">âœ“</span>';
+        sendBtn.innerHTML = '<span class="animate-pulse">✓</span>';
         sendBtn.disabled = true;
 
         // Build message object
@@ -10377,7 +10374,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             // Friendly names for success message
             const typeNames = { suggestion: 'suggestion', bug: 'bug report', idea: 'idea', appeal: 'ban appeal' };
             const friendlyType = typeNames[type] || type;
-            helpStatus.textContent = "âœ“ Thank you! Your " + friendlyType + " has been submitted.";
+            helpStatus.textContent = "✓ Thank you! Your " + friendlyType + " has been submitted.";
             helpStatus.className = "text-center text-sm text-green-400";
             helpStatus.classList.remove('hidden');
 
@@ -12722,7 +12719,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             }
             
             // Success feedback
-            saveProfileBtn.textContent = "âœ“ Username Updated!";
+            saveProfileBtn.textContent = "✓ Username Updated!";
             saveProfileBtn.style.background = "rgb(34, 197, 94)"; // green
             setTimeout(() => {
               saveProfileBtn.textContent = originalText;
@@ -13067,7 +13064,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           });
 
           console.log("[friends] request sent successfully");
-          sendFriendRequestBtn.textContent = "âœ“ Sent!";
+          sendFriendRequestBtn.textContent = "✓ Sent!";
           sendFriendRequestBtn.style.background = "rgb(34, 197, 94)";
           
           setFriendRequestStatus("Friend request sent", "success");
@@ -13746,7 +13743,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
                 if (friendsSnap.exists()) {
                   addBtn.disabled = true;
                   addBtn.style.background = "rgb(34, 197, 94)";
-                  addBtn.textContent = "âœ“ Friends";
+                  addBtn.textContent = "✓ Friends";
                   return;
                 }
 
@@ -13785,7 +13782,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
                 });
 
                 addBtn.style.background = "rgb(34, 197, 94)";
-                addBtn.textContent = "âœ“ Sent!";
+                addBtn.textContent = "✓ Sent!";
                 
                 setTimeout(() => {
                   addBtn.style.background = "rgb(100, 116, 139)";
@@ -13888,7 +13885,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           }
           
           // Show success state
-          confirmDeleteBtn.innerHTML = 'âœ“ Deleted';
+          confirmDeleteBtn.innerHTML = '✓ Deleted';
           confirmDeleteBtn.className = "flex-1 px-4 py-2 bg-green-600 text-white rounded-lg font-medium";
           
           setTimeout(() => {
@@ -14195,7 +14192,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
 
         // Update navigation buttons
         walkthroughPrevBtn.disabled = stepIndex === 0;
-        walkthroughNextBtn.textContent = stepIndex === walkthroughSteps.length - 1 ? "Finish âœ“" : "Next â†’";
+        walkthroughNextBtn.textContent = stepIndex === walkthroughSteps.length - 1 ? "Finish ✓" : "Next →";
 
         // Position highlight and tooltip
         if (step.target && step.position !== "center") {
