@@ -1,0 +1,23 @@
+{
+  "name": "chatra",
+  "version": "1.0.0",
+  "description": "",
+  "main": "script.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "firebase-admin": "^13.6.0"
+  },
+  "devDependencies": {
+    "escodegen": "^2.1.0",
+    "esprima": "^4.0.1",
+    "glob": "^13.0.0",
+    "strip-comments": "^2.0.1",
+    "strip-json-comments": "^4.0.0"
+  }
+}

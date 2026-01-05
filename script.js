@@ -8124,7 +8124,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         if (isMine && messageId) {
           const deleteBtn = document.createElement("button");
           // Hidden by default, show on hover, pushed outside bubble
-          deleteBtn.className = "absolute -top-4 -right-4 z-20 w-7 h-7 rounded-full bg-slate-600 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center hover:bg-red-500 active:bg-red-500 text-sm cursor-pointer";
+          deleteBtn.className = "absolute -top-4 right-4 z-20 w-7 h-7 rounded-full bg-slate-600 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center hover:bg-red-500 active:bg-red-500 text-sm cursor-pointer";
           deleteBtn.textContent = "🗑️";
           deleteBtn.title = "Delete message";
           
@@ -8186,8 +8186,9 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         // Add copy button on all messages with text
         if (messageId && msg.text) {
           const copyBtn = document.createElement("button");
-          // Hidden by default, show on hover, pushed outside bubble
-          copyBtn.className = "absolute -bottom-4 " + (isMine ? "-right-4" : "-left-4") + " z-20 w-7 h-7 rounded-full bg-slate-600 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center hover:bg-emerald-500 active:bg-emerald-500 cursor-pointer";
+          // Hidden by default, show on hover - left side for own messages, left for others too
+          const copyPosition = isMine ? "bottom-0 -left-4" : "-bottom-4 -left-4";
+          copyBtn.className = `absolute ${copyPosition} z-20 w-7 h-7 rounded-full bg-slate-600 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center hover:bg-emerald-500 active:bg-emerald-500 cursor-pointer`;
           copyBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-3.5 h-3.5"><path d="M7 3.5A1.5 1.5 0 0 1 8.5 2h3.879a1.5 1.5 0 0 1 1.06.44l3.122 3.12a1.5 1.5 0 0 1 .439 1.061V11.5A1.5 1.5 0 0 1 15.5 13H8.5A1.5 1.5 0 0 1 7 11.5v-8Z"/><path d="M4.5 6A1.5 1.5 0 0 0 3 7.5v9A1.5 1.5 0 0 0 4.5 18h7a1.5 1.5 0 0 0 1.5-1.5v-2a.5.5 0 0 0-1 0v2a.5.5 0 0 1-.5.5h-7a.5.5 0 0 1-.5-.5v-9a.5.5 0 0 1 .5-.5h2a.5.5 0 0 0 0-1h-2Z"/></svg>';
           copyBtn.title = "Copy message";
 
@@ -8215,7 +8216,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         if (messageId) {
           const replyBtn = document.createElement("button");
           // Hidden by default, show on hover, pushed outside bubble
-          replyBtn.className = "absolute -bottom-4 " + (isMine ? "-left-4" : "-right-4") + " z-20 w-7 h-7 rounded-full bg-slate-600 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center hover:bg-sky-500 active:bg-sky-500 cursor-pointer";
+          replyBtn.className = "absolute -bottom-4 -left-4 z-20 w-7 h-7 rounded-full bg-slate-600 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center hover:bg-sky-500 active:bg-sky-500 cursor-pointer";
           replyBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-3.5 h-3.5"><path fill-rule="evenodd" d="M7.793 2.232a.75.75 0 0 1-.025 1.06L3.622 7.25h10.003a5.375 5.375 0 0 1 0 10.75H10.75a.75.75 0 0 1 0-1.5h2.875a3.875 3.875 0 0 0 0-7.75H3.622l4.146 3.957a.75.75 0 0 1-1.036 1.085l-5.5-5.25a.75.75 0 0 1 0-1.085l5.5-5.25a.75.75 0 0 1 1.06.025Z" clip-rule="evenodd"/></svg>';
           replyBtn.title = "Reply";
 
