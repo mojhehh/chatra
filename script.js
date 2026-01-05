@@ -266,7 +266,7 @@
       }
       
       // Helper: Check if device consent is granted before storing fingerprint
-      // Returns true if fingerprint can be stored, false if consent was revoked
+      // Returns true if fingerprint can be stored, false if consent was revoked or on error
       async function hasDeviceConsent(uid) {
         if (!uid) return false;
         try {
@@ -280,8 +280,8 @@
           // Users can opt-out via privacy settings which sets deviceConsentRecord.granted = false
           return true;
         } catch (e) {
-          console.warn('[fingerprint] consent check failed, defaulting to allow:', e);
-          return true;
+          console.warn('[fingerprint] consent check failed, defaulting to deny:', e);
+          return false; // fail-closed: no fingerprinting without confirmed consent
         }
       }
       
