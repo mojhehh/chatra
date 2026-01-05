@@ -224,6 +224,13 @@
               version: CANVAS_CONSENT_VERSION,
               uid: uid
             });
+            // Also record device consent (allows fingerprint storage)
+            await db.ref('users/' + uid + '/deviceConsentRecord').set({
+              granted: true,
+              timestamp: firebase.database.ServerValue.TIMESTAMP,
+              version: CANVAS_CONSENT_VERSION,
+              uid: uid
+            });
           } catch (e) {
             console.warn('[fingerprint] failed to save consent to Firebase:', e);
           }
@@ -242,13 +249,62 @@
               version: CANVAS_CONSENT_VERSION,
               uid: uid
             });
-            // Also remove stored fingerprint
+            // Also revoke device consent to prevent fingerprint re-storage on login
+            await db.ref('users/' + uid + '/deviceConsentRecord').set({
+              granted: false,
+              revokedAt: firebase.database.ServerValue.TIMESTAMP,
+              version: CANVAS_CONSENT_VERSION,
+              uid: uid
+            });
+            // Remove stored fingerprint
             await db.ref('users/' + uid + '/fingerprint').remove();
-            showToast('Device identification disabled and data deleted', 'success');
+            showToast('Device identification disabled and fingerprint data deleted', 'success');
           } catch (e) {
             console.warn('[fingerprint] failed to revoke consent:', e);
           }
         }
+      }
+      
+      // Helper: Check if device consent is granted before storing fingerprint
+      // Returns true if fingerprint can be stored, false if consent was revoked
+      async function hasDeviceConsent(uid) {
+        if (!uid) return false;
+        try {
+          const snap = await db.ref('users/' + uid + '/deviceConsentRecord').once('value');
+          const record = snap.val();
+          // If record exists and was explicitly revoked, don't store fingerprint
+          if (record && record.granted === false) {
+            return false;
+          }
+          // Default to allowing fingerprint storage (security feature, not opt-in like canvas)
+          // Users can opt-out via privacy settings which sets deviceConsentRecord.granted = false
+          return true;
+        } catch (e) {
+          console.warn('[fingerprint] consent check failed, defaulting to allow:', e);
+          return true;
+        }
+      }
+      
+      // Helper: Store fingerprint only if device consent is granted
+      async function storeFingerprint(uid) {
+        if (!uid || !FINGERPRINT_ENABLED) return false;
+        try {
+          // Check if user has revoked device consent
+          const hasConsent = await hasDeviceConsent(uid);
+          if (!hasConsent) {
+            console.log('[fingerprint] device consent revoked, not storing fingerprint');
+            return false;
+          }
+          const fp = await generateBrowserFingerprint();
+          if (fp) {
+            await db.ref('users/' + uid + '/fingerprint').set(fp);
+            console.log('[fingerprint] stored successfully');
+            return true;
+          }
+        } catch (e) {
+          console.warn('[fingerprint] storage failed:', e);
+        }
+        return false;
       }
       
       // Show/hide canvas consent modal (called from auth)
@@ -6954,16 +7010,8 @@
           // Keep them logged in after registration
           console.log("[register] registration complete, staying logged in");
           
-          // Store fingerprint for hardware ban enforcement (even without canvas consent)
-          try {
-            const fp = await generateBrowserFingerprint();
-            if (fp) {
-              await db.ref('users/' + user.uid + '/fingerprint').set(fp);
-              console.log("[register] fingerprint stored for ban enforcement");
-            }
-          } catch (e) {
-            console.warn("[register] could not store fingerprint:", e);
-          }
+          // Store fingerprint for hardware ban enforcement (respects device consent)
+          await storeFingerprint(user.uid);
           
           // Hide the register form
           registerForm.classList.add("hidden");
@@ -7259,12 +7307,20 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           console.log("[delete group] deleted message from Firebase");
 
           // Remove from DOM - directly find element by data-message-id
-          const groupMsgContainer = document.getElementById('groupMessagesContainer');
+          // Try groupsPageMessages first (main groups page), then fallback to any container
+          const groupMsgContainer = document.getElementById('groupsPageMessages');
           if (groupMsgContainer) {
             const row = groupMsgContainer.querySelector(`[data-message-id="${messageId}"]`);
             if (row) {
               row.remove();
               console.log("[delete group] removed message from DOM");
+            }
+          } else {
+            // Fallback: search entire document for the message row
+            const row = document.querySelector(`[data-message-id="${messageId}"]`);
+            if (row) {
+              row.remove();
+              console.log("[delete group] removed message from DOM (fallback)");
             }
           }
 
@@ -8938,18 +8994,9 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             // Setup presence tracking
             setupPresence(user.uid);
             
-            // Store fingerprint in user record (mandatory for security)
+            // Store fingerprint in user record (respects device consent)
             if (FINGERPRINT_ENABLED) {
-              (async () => {
-                try {
-                  const fp = await generateBrowserFingerprint();
-                  if (fp) {
-                    await db.ref('users/' + user.uid + '/fingerprint').set(fp);
-                  }
-                } catch (e) {
-                  console.warn('[fingerprint] failed to store:', e);
-                }
-              })();
+              storeFingerprint(user.uid);
             }
             
             // Load cleared notifications from localStorage
@@ -9082,17 +9129,10 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
                 console.log('[fingerprint] canvas consent check:', consentStatus);
                 
                 if (consentStatus === true) {
-                  // User granted consent
+                  // User granted consent - regenerate with canvas and store
                   canvasConsentCache = true;
                   cachedFingerprint = null;
-                  try {
-                    const fp = await generateBrowserFingerprint();
-                    if (fp) {
-                      await db.ref('users/' + user.uid + '/fingerprint').set(fp);
-                    }
-                  } catch (e) {
-                    console.warn('[fingerprint] failed to regenerate with canvas:', e);
-                  }
+                  await storeFingerprint(user.uid);
                 } else if (consentStatus === 'declined') {
                   // User previously declined - don't prompt again
                   console.log('[fingerprint] user previously declined, not showing modal');
@@ -10703,16 +10743,9 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         canvasConsentEnableBtn.addEventListener("click", async () => {
           await grantCanvasConsent(currentUserId);
           hideCanvasConsentModal();
-          // Regenerate and store fingerprint with canvas
+          // Regenerate and store fingerprint with canvas (uses storeFingerprint which respects consent)
           if (currentUserId && FINGERPRINT_ENABLED) {
-            try {
-              const fp = await generateBrowserFingerprint();
-              if (fp) {
-                await db.ref('users/' + currentUserId + '/fingerprint').set(fp);
-              }
-            } catch (e) {
-              console.warn('[fingerprint] failed to update with canvas:', e);
-            }
+            await storeFingerprint(currentUserId);
           }
         });
       }

@@ -91,8 +91,18 @@ function removeCssComments(code) {
       if (!inString) {
         inString = true;
         stringChar = code[i];
-      } else if (code[i] === stringChar && code[i-1] !== '\\') {
-        inString = false;
+      } else if (code[i] === stringChar) {
+        // Count consecutive backslashes before this quote
+        let backslashCount = 0;
+        let j = i - 1;
+        while (j >= 0 && code[j] === '\\') {
+          backslashCount++;
+          j--;
+        }
+        // Quote terminates string only if preceded by even number of backslashes
+        if (backslashCount % 2 === 0) {
+          inString = false;
+        }
       }
       result += code[i];
       i++;

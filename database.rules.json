@@ -197,7 +197,7 @@
         ".read": "auth != null && (data.child('isPublic').val() === true || data.child('members').child(auth.uid).val() === true || data.child('owner').val() === auth.uid || root.child('admins').child(auth.uid).exists())",
         ".write": "auth != null && (!data.exists() ? newData.child('owner').val() === auth.uid : (data.child('owner').val() === auth.uid || root.child('admins').child(auth.uid).exists() || data.child('groupAdmins').child(auth.uid).val() === true))",
         "name": { 
-          ".validate": "newData.isString() && newData.val().length <= 100"
+          ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 100"
         },
         "owner": { 
           ".validate": "newData.isString()",
@@ -233,8 +233,9 @@
           }
         },
         "memberCount": {
-          ".write": "auth != null && (data.parent().child('owner').val() === auth.uid || root.child('admins').child(auth.uid).exists() || data.parent().child('groupAdmins').child(auth.uid).val() === true || ((!data.exists() && newData.val() === 1 && newData.parent().child('members').child(auth.uid).val() === true) || (data.exists() && newData.val() === data.val() + 1 && newData.parent().child('members').child(auth.uid).val() === true && !data.parent().child('members').child(auth.uid).exists()) || (data.exists() && newData.val() === data.val() - 1 && !newData.parent().child('members').child(auth.uid).exists() && data.parent().child('members').child(auth.uid).val() === true)))",
-          ".validate": "newData.isNumber() && newData.val() >= 0 && (!data.parent().child('maxMembers').exists() || data.parent().child('maxMembers').val() === 0 || newData.val() <= data.parent().child('maxMembers').val()) && ((!data.exists() && newData.val() === 1) || (data.exists() && (newData.val() === data.val() + 1 || newData.val() === data.val() - 1)))"
+          "_comment": "DESIGN: memberCount is maintained by trusted Cloud Functions using transactions to avoid race conditions. Rules enforce only basic sanity. A scheduled reconciliation function repairs drift and alerts on discrepancies. See RUNBOOK.md for monitoring procedures.",
+          ".write": "auth != null && (data.parent().child('owner').val() === auth.uid || root.child('admins').child(auth.uid).exists() || data.parent().child('groupAdmins').child(auth.uid).val() === true)",
+          ".validate": "newData.isNumber() && newData.val() >= 0 && (!data.parent().child('maxMembers').exists() || data.parent().child('maxMembers').val() === 0 || newData.val() <= data.parent().child('maxMembers').val())"
         },
         "messages": {
           ".indexOn": ["time"],
@@ -281,8 +282,9 @@
     },
 
     "bannedUsers": {
+      "_comment_superadmin": "SECURITY: u5yKqiZvioWuBGcGK3SWUBpUVrc2 is the SUPER-ADMIN account (owner: platform operator). This UID has special privileges to clear bans/mutes and cannot be banned. RISKS: If compromised, attacker can unban malicious accounts. ROTATION: Document account credentials in secure vault. See RUNBOOK.md for recovery procedures. FUTURE: Migrate to auth.token.superAdmin custom claim for easier rotation.",
       ".read": "auth != null",
-      ".write": "auth != null && auth.uid === 'u5yKqiZvioWuBGcGK3SWUBpUVrc2' && !newData.exists()",
+      ".write": "auth != null && (auth.uid === 'u5yKqiZvioWuBGcGK3SWUBpUVrc2' || auth.token.superAdmin === true) && !newData.exists()",
       "$uid": {
         ".write": "($uid !== 'u5yKqiZvioWuBGcGK3SWUBpUVrc2') && (root.child('admins').child(auth.uid).exists() || (auth != null && auth.uid === $uid && !newData.exists() && data.exists() && data.child('until').isNumber() && now > data.child('until').val()))",
         ".validate": "!newData.exists() || (newData.hasChildren(['until','reason']) && newData.child('until').isNumber() && newData.child('reason').isString())"
@@ -298,8 +300,9 @@
     },
 
     "mutedUsers": {
+      "_comment_superadmin": "SECURITY: u5yKqiZvioWuBGcGK3SWUBpUVrc2 is the SUPER-ADMIN account. See bannedUsers._comment_superadmin for full documentation.",
       ".read": "auth != null",
-      ".write": "auth != null && auth.uid === 'u5yKqiZvioWuBGcGK3SWUBpUVrc2' && !newData.exists()",
+      ".write": "auth != null && (auth.uid === 'u5yKqiZvioWuBGcGK3SWUBpUVrc2' || auth.token.superAdmin === true) && !newData.exists()",
       "$uid": {
         ".write": "($uid !== 'u5yKqiZvioWuBGcGK3SWUBpUVrc2') && (root.child('admins').child(auth.uid).exists() || (auth != null && auth.uid === $uid && !newData.exists() && data.exists() && data.child('until').isNumber() && now > data.child('until').val()))",
         ".read": "auth != null && auth.uid === $uid",
