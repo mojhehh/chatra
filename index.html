@@ -5,38 +5,62 @@
     <meta charset="UTF-8" />
     <title>Chatra</title>
     <link rel="stylesheet" href="style.css">
-    <!-- iPad/Safari-optimized viewport settings -->
+    
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-    <!-- iOS Safari enhancements -->
+    
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="format-detection" content="telephone=no" />
-    <!-- Safari safe area insets -->
+    
     <style>
-      body { padding-top: env(safe-area-inset-top); }
+      /* Safari/iOS viewport fix */
+      :root {
+        --vh: 1vh;
+        --app-height: 100vh;
+        --keyboard-height: 0px;
+      }
+      html {
+        height: 100%;
+        height: -webkit-fill-available;
+      }
+      body { 
+        padding-top: env(safe-area-inset-top);
+        min-height: 100vh;
+        min-height: var(--app-height, 100vh);
+        min-height: -webkit-fill-available;
+      }
+      /* Use --vh for elements that need true viewport height */
+      .h-screen-safe {
+        height: calc(var(--vh, 1vh) * 100);
+      }
       @supports (padding-top: env(safe-area-inset-top)) {
         header { padding-top: env(safe-area-inset-top); }
       }
+      /* iOS keyboard open - adjust input areas */
+      .ios-device input:focus ~ *,
+      .ios-device textarea:focus ~ * {
+        transform: translateZ(0);
+      }
     </style>
 
-<!-- full review trigger -->
 
-    <!-- Tailwind CSS (optional, for looks) -->    <script>
+
+        <script>
       // Suppress Tailwind CDN production warning BEFORE loading
       window.tailwindConfig = {};
     </script>
     <script src="https://cdn.tailwindcss.com"></script>
 
-    <!-- Firebase SDKs -->
-    <!-- QR code generator (client-side) -->
+    
+    
     <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-analytics-compat.js"></script>
 
-    <!-- Google Analytics (gtag) - skip on localhost -->
+    
     <script>
       if (location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
         var s = document.createElement('script');
@@ -50,28 +74,28 @@
       }
     </script>
 
-    <!-- Hide scrollbar but keep scrolling + custom animations / glassmorphism -->
+    
 
   </head>
 
   <body class="bg-slate-950 text-white h-screen min-h-screen flex flex-col relative overflow-hidden">
-    <!-- Glowing background blobs -->
+    
     <div class="bg-orb bg-orb-blue w-72 h-72 -top-20 -left-10"></div>
     <div class="bg-orb bg-orb-purple w-80 h-80 -bottom-32 -right-6"></div>
     <div class="bg-orb bg-orb-pink w-64 h-64 top-1/4 right-1/4"></div>
 
-    <!-- Loading Screen -->
+    
     <div
       id="loadingScreen"
       class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/95 backdrop-blur-sm hidden"
     >
       <div class="flex flex-col items-center gap-6">
         <div class="relative w-20 h-20">
-          <!-- Outer rotating ring -->
+          
           <div class="absolute inset-0 rounded-full border-2 border-transparent border-t-sky-500 border-r-sky-400 animate-spin"></div>
-          <!-- Middle rotating ring (opposite direction) -->
+          
           <div class="absolute inset-2 rounded-full border-2 border-transparent border-b-indigo-500 border-l-indigo-400 animate-spin" style="animation-direction: reverse; animation-duration: 2s;"></div>
-          <!-- Inner pulsing circle -->
+          
           <div class="absolute inset-4 rounded-full bg-gradient-to-r from-sky-500 to-indigo-500 animate-pulse"></div>
         </div>
         <div class="text-center">
@@ -81,7 +105,7 @@
       </div>
     </div>
 
-    <!-- Share Modal -->
+    
     <div id="shareModal" class="modal-closed fixed inset-0 z-50 modal-overlay hidden items-center justify-center p-4">
       <div class="max-w-sm w-full bg-slate-900/95 border border-slate-800 rounded-lg p-4">
         <div class="flex items-center justify-between mb-3">
@@ -103,7 +127,7 @@
       </div>
     </div>
 
-    <!-- Top bar / logo -->
+    
     <header class="px-4 pt-4 pb-2 flex items-center justify-between z-10">
       <div class="flex items-center gap-3">
         <div
@@ -111,9 +135,9 @@
           title="Chatra Chat"
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <!-- Chat bubble with gradient -->
+            
             <path d="M20 2H4C2.9 2 2 2.9 2 4V22L6 18H20C21.1 18 22 17.1 22 16V4C22 2.9 21.1 2 20 2Z" fill="white" opacity="0.95"/>
-            <!-- Inner accent -->
+            
             <circle cx="7" cy="10" r="1.5" fill="#1e40af" opacity="0.9"/>
             <circle cx="12" cy="10" r="1.5" fill="#1e40af" opacity="0.9"/>
             <circle cx="17" cy="10" r="1.5" fill="#1e40af" opacity="0.9"/>
@@ -126,7 +150,7 @@
         </div>
       </div>
       <div class="flex items-center gap-2">
-        <!-- Share button -->
+        
         <button id="shareBtn" class="relative px-3 py-2 rounded-full bg-slate-800/70 border border-slate-700/70 text-slate-200 hover:bg-slate-700/70 transition-colors" title="Share this chat" aria-label="Share chat" data-touch-enhanced="1">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="inline align-middle">
             <path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7" />
@@ -160,7 +184,7 @@
       </div>
     </header>
 
-    <!-- Login Form (visible by default) -->
+    
     <div
       id="loginForm"
       class="flex-1 flex items-center justify-center pb-4 px-3 sm:px-4"
@@ -175,7 +199,7 @@
           </p>
         </div>
 
-        <!-- Username only -->
+        
         <label class="block text-xs font-medium text-slate-300 mb-1 ml-1"
           >Username</label
         >
@@ -187,7 +211,7 @@
           required
         />
 
-        <!-- Password -->
+        
         <label class="block text-xs font-medium text-slate-300 mb-1 ml-1"
           >Password</label
         >
@@ -199,7 +223,7 @@
           required
         />
 
-        <!-- Remember me -->
+        
         <label class="flex items-center gap-2 mb-3 text-xs text-gray-300">
           <input
             id="rememberMe"
@@ -209,7 +233,7 @@
           <span>Remember me on this device</span>
         </label>
 
-        <!-- Error / info messages -->
+        
         <p
           id="loginError"
           class="text-xs text-red-400 min-h-[1.25rem] mb-1"
@@ -242,7 +266,7 @@
       </div>
     </div>
 
-    <!-- Registration Form (hidden by default) -->
+    
     <div
       id="registerForm"
       class="flex-1 flex items-center justify-center pb-4 px-3 sm:px-4 hidden"
@@ -257,7 +281,7 @@
           </p>
         </div>
 
-        <!-- Username -->
+        
         <label class="block text-xs font-medium text-slate-300 mb-1 ml-1"
           >Username</label
         >
@@ -269,7 +293,7 @@
           required
         />
 
-        <!-- Password -->
+        
         <label class="block text-xs font-medium text-slate-300 mb-1 ml-1"
           >Password</label
         >
@@ -281,7 +305,7 @@
           required
         />
 
-        <!-- Confirm Password -->
+        
         <label class="block text-xs font-medium text-slate-300 mb-1 ml-1"
           >Confirm Password</label
         >
@@ -293,7 +317,7 @@
           required
         />
 
-        <!-- Recovery Email (optional) -->
+        
         <label class="block text-xs font-medium text-slate-300 mb-1 ml-1 mt-2">Recovery email (optional)</label>
         <input
           id="regRecoveryEmail"
@@ -302,7 +326,7 @@
           class="mb-3 p-3 rounded-xl w-full bg-slate-800/80 border border-slate-600/60 focus:border-sky-400 focus:ring-2 focus:ring-sky-500/60 outline-none transition-all shadow-inner shadow-slate-900/80"
         />
 
-        <!-- Error / info messages -->
+        
         <p
           id="registerError"
           class="text-xs text-red-400 min-h-[1.25rem] mb-3"
@@ -319,7 +343,7 @@
           <button id="registerAppealBtn" class="text-sm text-sky-300 hover:text-sky-200 underline underline-offset-4 bg-none border-none cursor-pointer">Submit a Ban Appeal</button>
         </div>
 
-        <!-- Terms and Privacy Policy -->
+        
         <p class="mt-4 text-xs text-gray-300 text-center">
           By signing up you agree to our
           <button
@@ -353,7 +377,7 @@
       </div>
     </div>
 
-    <!-- Terms of Service Modal (global) -->
+    
     <div
       id="termsModal"
       class="modal-overlay fixed inset-0 z-50 modal-closed items-center justify-center px-4"
@@ -370,284 +394,220 @@
           </button>
         </div>
 
-        <!-- Terms content - edited for clarity and concision -->
-        <div id="termsContent" class="text-sm text-slate-300 space-y-3 leading-relaxed">
-          <p>
-            <strong>Last Updated:</strong> December 23, 2025
-          </p>
+        
+<div id="termsContent" class="text-sm text-slate-300 space-y-3 leading-relaxed">
+  <p><strong>Effective Date:</strong> January 3, 2026</p>
 
-          <h4 class="font-semibold text-slate-200 mt-4">1. Overview</h4>
-          <p>
-            These Terms of Service ("Terms") govern your use of Chatra. By creating an account or using
-            the Service you accept these Terms. If you disagree, do not use Chatra.
-          </p>
-
-          <h4 class="font-semibold text-slate-200 mt-4">2. Accounts</h4>
-          <p>
-            You are responsible for keeping your account secure and for all activity that occurs under it.
-            Provide accurate information and promptly report unauthorized access.
-          </p>
-
-          <h4 class="font-semibold text-slate-200 mt-4">3. Community Conduct</h4>
-          <p>
-            Use Chatra respectfully. Prohibited behavior includes harassment, hateful speech, threats,
-            doxxing, sexual exploitation, spamming, and sharing illegal or harmful content.
-            Violations may result in content removal, suspension, or permanent ban.
-          </p>
-
-          <h4 class="font-semibold text-slate-200 mt-4">4. Content and Rights</h4>
-          <p>
-            You retain ownership of your content. By posting, you grant Chatra a non-exclusive license to
-            store and display that content to provide the Service. You are responsible for ensuring you
-            have the rights to share any content you post.
-          </p>
-
-          <h4 class="font-semibold text-slate-200 mt-4">5. Moderation and Enforcement</h4>
-          <p>
-            Chatra may remove content, suspend accounts, or take other actions to enforce these Terms and
-            keep the platform safe. We may review content and take action based on reports or automated
-            systems. Serious violations (e.g., threats, child exploitation) will be escalated and may be
-            reported to law enforcement.
-          </p>
-
-          <h4 class="font-semibold text-slate-200 mt-4">6. Limitations and Disclaimers</h4>
-          <p>
-            The Service is provided "as is". Chatra is not liable for indirect, incidental, or consequential
-            damages resulting from your use. Our total liability to you is limited to the extent permitted
-            by law.
-          </p>
-
-          <h4 class="font-semibold text-slate-200 mt-4">7. Changes to These Terms</h4>
-          <p>
-            We may update these Terms. When we do, we will update the "Last Updated" date. Continued use
-            after changes constitutes acceptance of the revised Terms.
+  <p class="text-xs text-slate-400 italic">
+    Please read these Terms of Service (“Terms”) carefully. By accessing or using Chatra, you agree to these Terms and our Privacy Policy.
+    If you do not agree, do not use the Service.
   </p>
 
-  <h4 class="font-semibold text-slate-200 mt-4">7. Acceptable Use Policy (AUP)</h4>
+  
+
+  <h4 class="font-semibold text-slate-200 mt-4">1. Definitions</h4>
   <p>
-    To keep Chatra safe for everyone, you agree not to use the Service to:
+    <strong>“Chatra,” “we,” “us,” “our,”</strong> means the Chatra service, website/app, and its operators.
+    <strong>“Service”</strong> means all Chatra features including chats, DMs, uploads, moderation tools, and related services.
+    <strong>“User,” “you,”</strong> means anyone who accesses or uses the Service.
+    <strong>“User Content”</strong> means anything you submit to Chatra (messages, usernames, images, videos, files, links, profile info, etc.).
   </p>
 
-  <h5 class="font-semibold text-slate-200 mt-4">Safety & Respect</h5>
+  <h4 class="font-semibold text-slate-200 mt-4">2. Acceptance of Terms</h4>
   <p>
-    - Harass, threaten, bully, or encourage harm,  
-    - Post hate speech, racism, slurs, or discrimination,  
-    - Target or attack people based on gender, identity, nationality, religion, disability, or similar traits.
+    These Terms are a legally binding agreement between you and Chatra. By creating an account, logging in, or using the Service,
+    you confirm you understand and accept these Terms and our Privacy Policy.
+  </p>
+  <p>
+    We may update these Terms from time to time. If you keep using Chatra after an update, that means you accept the updated Terms.
   </p>
 
-  <h5 class="font-semibold text-slate-200 mt-4">Content Rules</h5>
+  <h4 class="font-semibold text-slate-200 mt-4">3. Eligibility (Age Requirements)</h4>
   <p>
-    - Share pornography, sexual content, nudity, or graphic violence,  
-    - Post extremely disturbing or dangerous content,  
-    - Upload copyrighted content you do not own,  
-    - Spread false information that could harm others.
+    You must be at least <strong>13 years old</strong> to use Chatra. If you are under 18, you represent that you have permission from a parent
+    or legal guardian to use the Service.
+  </p>
+  <p>
+    We may suspend or terminate accounts that we believe do not meet eligibility requirements.
   </p>
 
-  <h5 class="font-semibold text-slate-200 mt-4">Security & Misuse</h5>
+  <h4 class="font-semibold text-slate-200 mt-4">4. Accounts and Security</h4>
+  <ul class="list-disc pl-5 space-y-1 mt-2">
+    <li><strong>Account responsibility:</strong> You are responsible for activity under your account.</li>
+    <li><strong>Accurate info:</strong> You agree to provide accurate account information and keep it updated.</li>
+    <li><strong>Protect credentials:</strong> Do not share passwords or login tokens. Tell us if you suspect unauthorized access.</li>
+    <li><strong>No ban evasion:</strong> Do not create new accounts to avoid restrictions, suspensions, or bans.</li>
+  </ul>
+
+  <h4 class="font-semibold text-slate-200 mt-4">5. Acceptable Use and Community Rules</h4>
+  <p>You agree to use Chatra lawfully and respectfully. The following is strictly prohibited:</p>
+
+  <h5 class="font-semibold text-slate-200 mt-3">A. Safety & Harm</h5>
+  <ul class="list-disc pl-5 space-y-1 mt-2">
+    <li>Credible threats of violence, death threats, or encouraging violence.</li>
+    <li>Encouraging self-harm, suicide, or dangerous stunts.</li>
+    <li>Stalking, intimidation, or targeted harassment.</li>
+  </ul>
+
+  <h5 class="font-semibold text-slate-200 mt-3">B. Harassment & Hate</h5>
+  <ul class="list-disc pl-5 space-y-1 mt-2">
+    <li>Bullying, humiliation campaigns, or repeated targeted abuse.</li>
+    <li>Hate speech or attacks based on protected characteristics (race, ethnicity, religion, gender identity, sexual orientation, disability, nationality, etc.).</li>
+  </ul>
+
+  <h5 class="font-semibold text-slate-200 mt-3">C. Sexual Content & Child Safety</h5>
+  <ul class="list-disc pl-5 space-y-1 mt-2">
+    <li>Pornography or sexually explicit content where it is not allowed by the Service.</li>
+    <li>Any sexual content involving minors in any way (zero tolerance).</li>
+    <li>Grooming, exploitation, or attempting to obtain sexual content from minors.</li>
+  </ul>
+
+  <h5 class="font-semibold text-slate-200 mt-3">D. Privacy Violations (Doxxing)</h5>
+  <ul class="list-disc pl-5 space-y-1 mt-2">
+    <li>Posting someone’s private info without permission (addresses, phone numbers, school info, private photos, etc.).</li>
+    <li>Threatening to expose private information to harm or intimidate someone.</li>
+  </ul>
+
+  <h5 class="font-semibold text-slate-200 mt-3">E. Fraud, Spam, and Malware</h5>
+  <ul class="list-disc pl-5 space-y-1 mt-2">
+    <li>Scams, phishing, impersonation, or attempts to steal accounts or money.</li>
+    <li>Spam, mass messaging, botting, or manipulating engagement.</li>
+    <li>Uploading or linking malware or harmful code.</li>
+  </ul>
+
+  <h5 class="font-semibold text-slate-200 mt-3">F. Security & Service Abuse</h5>
+  <ul class="list-disc pl-5 space-y-1 mt-2">
+    <li>Hacking attempts, exploiting vulnerabilities, or reverse engineering restricted parts of the Service.</li>
+    <li>Bypassing moderation systems or rate limits.</li>
+    <li>Using automation in a way that harms the Service or other users.</li>
+  </ul>
+
+  <h4 class="font-semibold text-slate-200 mt-4">6. User Content</h4>
   <p>
-    - Spread malware, scams, or harmful links,  
-    - Attempt to hack, overload, abuse, or reverse-engineer the Service,  
-    - Use bots, exploits, or automate features without permission,  
-    - Manipulate or break security or moderation systems.
+    <strong>Ownership:</strong> You keep ownership of your User Content.
+  </p>
+  <p>
+    <strong>License to operate Chatra:</strong> By posting or uploading User Content, you grant Chatra a
+    <strong>non-exclusive, worldwide, royalty-free, sublicensable license</strong> to host, store, reproduce, display,
+    distribute, and make technical modifications to your content <strong>only as needed to operate, secure, and improve the Service</strong>
+    (for example: showing messages to chat participants, resizing images, creating thumbnails, or preventing abuse).
+  </p>
+  <p>
+    <strong>Your responsibility:</strong> You are responsible for your User Content. You represent that you have the rights to post it and that it
+    does not violate these Terms or any law.
   </p>
 
-  <h4 class="font-semibold text-slate-200 mt-4">8. Privacy and Safety</h4>
-  <p>
-    Chatra stores limited information — such as usernames, messages, and timestamps — to provide chat features.
-    Private chats and DMs are visible only to people in the conversation.
-    However, authorized administrators may review stored content for moderation, safety checks, legal requests, or technical fixes.
-    For details on how your data is handled, please read our Privacy Policy.
+  <h4 class="font-semibold text-slate-200 mt-4">7. Moderation, Enforcement, and Reporting</h4>
+  <p>To protect users and the platform, we may take actions such as:</p>
+  <ul class="list-disc pl-5 space-y-1 mt-2">
+    <li>Removing, limiting, or restricting access to content.</li>
+    <li>Issuing warnings, muting, suspending, or permanently banning accounts.</li>
+    <li>Restricting features that are being abused.</li>
+    <li>Investigating reports and enforcing our rules.</li>
+    <li>Reporting illegal activity to law enforcement when required or appropriate.</li>
+  </ul>
+
+  <p class="mt-2">
+    <strong>How to report:</strong> Use the report button (⚠️) where available, or email <strong>chatrahelpcenter@gmail.com</strong>.
+    Abusing the reporting system (spam/false reports to harass others) may result in action against your account.
   </p>
 
-  <h4 class="font-semibold text-slate-200 mt-4">9. Moderation</h4>
+  <p class="mt-2">
+    <strong>Device Identification (ban evasion prevention):</strong> For security enforcement (like preventing repeated ban evasion),
+    we may use a <strong>hashed device identifier</strong> created from technical device characteristics (example: screen info, timezone, language, hardware signals).
+    This is used to protect the Service and is not intended to identify your real-world identity.
+  </p>
+
+  <p class="mt-2">
+    <strong>Zero Tolerance:</strong> Credible threats of violence, child sexual exploitation material, and terrorism-related activity can result in
+    immediate permanent removal and may be referred to law enforcement.
+  </p>
+
+  <h4 class="font-semibold text-slate-200 mt-4">8. Copyright / DMCA Policy</h4>
   <p>
-    We reserve the right to:
-    - Remove or edit messages, usernames, or other content,  
-    - Temporarily or permanently ban users,  
-    - Limit or disable features that are being abused.
-    These actions may be taken without prior notice to protect users and maintain a safe environment.
+    We respect copyright law, including the DMCA. If you believe content on Chatra infringes your copyright, email
+    <strong>chatrahelpcenter@gmail.com</strong> with:
+  </p>
+  <ul class="list-disc pl-5 space-y-1 mt-2">
+    <li>Your name and electronic/physical signature (typed name is okay).</li>
+    <li>Identification of the copyrighted work.</li>
+    <li>The exact location (link or clear description) of the allegedly infringing material.</li>
+    <li>Your contact information (email and/or address).</li>
+    <li>A statement that you have a good-faith belief the use is not authorized.</li>
+    <li>A statement that the information is accurate under penalty of perjury.</li>
+  </ul>
+  <p class="mt-2">
+    We may remove content and may restrict repeat infringers when appropriate.
+  </p>
+
+  <h4 class="font-semibold text-slate-200 mt-4">9. Third-Party Services</h4>
+  <p>
+    Chatra may rely on third-party providers for hosting, databases, content delivery, analytics, or media processing/storage.
+    Your use of those features may involve those providers processing limited data on our behalf under contractual protections.
+    We do not control third-party services, but we aim to choose reputable providers.
   </p>
 
   <h4 class="font-semibold text-slate-200 mt-4">10. Service Availability</h4>
   <p>
-    Chatra is provided “as is.”  
-    While we try to keep the Service running smoothly, we cannot guarantee:
-    - The Service will always be online or error-free,  
-    - That all messages or data will always send or save correctly,  
-    - That downtime or bugs will never happen.  
-    We are not responsible for losses or issues caused by outages, errors, or misuse.
+    We try to keep Chatra working, but we do not guarantee uninterrupted or error-free operation.
+    The Service may experience downtime, delays, bugs, maintenance, or changes at any time.
   </p>
 
-  <h4 class="font-semibold text-slate-200 mt-4">11. DMCA / Copyright Policy</h4>
-  <p>
-    Chatra respects copyright laws, including the Digital Millennium Copyright Act (DMCA).  
-    If you believe something on Chatra uses your copyrighted work without permission, you may send a DMCA takedown request. We will review the request and remove the content if required.
-  </p>
-  <p>
-    A valid DMCA request must include:
-    - Your name and contact information,  
-    - A description of the copyrighted work,  
-    - A link or description of where the content appears on Chatra,  
-    - A statement explaining you believe the use is not authorized,  
-    - A statement that the information in your request is true,  
-    - Your signature (typed name is okay).
-  </p>
-  <p>
-    Send DMCA requests to:  
-    📧 **chatrahelpcenter@gmail.com**
-  </p>
-  <p>
-    If your content is removed and you believe this was a mistake, you may send a counter-notice explaining why the content is permitted.  
-    We may disable accounts that repeatedly violate copyright laws.
+  <h4 class="font-semibold text-slate-200 mt-4">11. Disclaimer of Warranties</h4>
+  <p class="uppercase text-xs">
+    THE SERVICE IS PROVIDED “AS IS” AND “AS AVAILABLE” WITHOUT WARRANTIES OF ANY KIND, EXPRESS OR IMPLIED,
+    INCLUDING IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT.
+    YOUR USE OF CHATRA IS AT YOUR OWN RISK.
   </p>
 
-  <h4 class="font-semibold text-slate-200 mt-4">12. Changes to These Terms</h4>
-  <p>
-    We may update these Terms from time to time to improve clarity or follow new laws.  
-    When we do, we will update the “Last updated” date above.  
-    If you continue using Chatra after updates, that means you accept the new Terms.
+  <h4 class="font-semibold text-slate-200 mt-4">12. Limitation of Liability</h4>
+  <p class="uppercase text-xs">
+    TO THE MAXIMUM EXTENT PERMITTED BY LAW, CHATRA AND ITS OPERATORS WILL NOT BE LIABLE FOR INDIRECT,
+    INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, OR ANY LOSS OF DATA, PROFITS, OR GOODWILL.
+    OUR TOTAL LIABILITY SHALL NOT EXCEED $100 USD OR THE AMOUNTS YOU PAID US IN THE PRIOR 12 MONTHS (IF ANY),
+    WHICHEVER IS GREATER.
   </p>
 
-  <h4 class="font-semibold text-slate-200 mt-4">13. User Responsibility and Liability</h4>
+  <h4 class="font-semibold text-slate-200 mt-4">13. Indemnification</h4>
   <p>
-    <strong>YOU ARE SOLELY RESPONSIBLE FOR ALL CONTENT YOU POST ON CHATRA.</strong>  
-    This includes messages, images, videos, links, profile information, and any other user-generated content.
-  </p>
-  <p>
-    By using Chatra, you acknowledge and agree that:
-  </p>
-  <ul class="list-disc pl-5 space-y-1">
-    <li><strong>You own your content:</strong> You are fully responsible for everything you post, share, or upload.</li>
-    <li><strong>We are not liable:</strong> Chatra, its owners, operators, administrators, and affiliates are NOT responsible or liable for any user-generated content.</li>
-    <li><strong>No monitoring obligation:</strong> We do not pre-screen, approve, or endorse user content. We are not responsible for monitoring all activity on the platform.</li>
-    <li><strong>Third-party content:</strong> We are not responsible for content posted by other users, including harmful, offensive, or illegal content.</li>
-    <li><strong>Your legal responsibility:</strong> You may be held legally accountable for content you post that violates laws or harms others.</li>
-  </ul>
-  <p>
-    <strong>Under California law (47 U.S.C. § 230):</strong> Chatra is a platform provider, not a publisher of user content.  
-    We are not liable for defamation, harm, or illegal content posted by users.
+    You agree to defend, indemnify, and hold harmless Chatra and its operators from claims, damages, losses, liabilities,
+    and expenses (including reasonable legal fees) arising from: (a) your use of the Service, (b) your User Content,
+    (c) your violation of these Terms, or (d) your violation of any third-party rights or law.
   </p>
 
-  <h4 class="font-semibold text-slate-200 mt-4">14. Prohibited Content and Behavior</h4>
+  <h4 class="font-semibold text-slate-200 mt-4">14. Platform Provider Status (User Content)</h4>
   <p>
-    The following activities are <strong>strictly prohibited</strong> and may result in immediate account suspension or permanent ban:
+    Chatra is an interactive computer service provider. Users create and post content. We do not endorse User Content and are not the publisher of it.
+    In the United States, certain protections may apply under <strong>47 U.S.C. § 230</strong>.
   </p>
 
-  <h5 class="font-semibold text-slate-200 mt-3">Threats and Violence</h5>
-  <ul class="list-disc pl-5 space-y-1">
-    <li><strong>Death threats:</strong> Threatening to kill, harm, or cause physical violence to any person.</li>
-    <li><strong>Serious threats:</strong> Threatening violence, assault, kidnapping, or other serious harm.</li>
-    <li><strong>Encouragement of violence:</strong> Encouraging, glorifying, or promoting violence, self-harm, suicide, or dangerous acts.</li>
-    <li><strong>Doxxing:</strong> Sharing private information (addresses, phone numbers, personal details) to threaten or harass someone.</li>
-  </ul>
-
-  <h5 class="font-semibold text-slate-200 mt-3">Harassment and Abuse</h5>
-  <ul class="list-disc pl-5 space-y-1">
-    <li><strong>Targeted harassment:</strong> Repeatedly attacking, insulting, or harassing a specific person.</li>
-    <li><strong>Bullying:</strong> Sustained campaigns to intimidate, humiliate, or isolate users.</li>
-    <li><strong>Sexual harassment:</strong> Unwanted sexual advances, explicit messages, or inappropriate requests.</li>
-    <li><strong>Hate speech:</strong> Attacking people based on race, ethnicity, religion, gender, sexual orientation, disability, or national origin.</li>
-  </ul>
-
-  <h5 class="font-semibold text-slate-200 mt-3">Dangerous and Illegal Content</h5>
-  <ul class="list-disc pl-5 space-y-1">
-    <li><strong>Illegal activity:</strong> Promoting, facilitating, or engaging in illegal activities.</li>
-    <li><strong>Child exploitation:</strong> Any content involving minors in sexual, exploitative, or harmful contexts (zero tolerance).</li>
-    <li><strong>Terrorism:</strong> Promoting or supporting terrorist organizations or activities.</li>
-    <li><strong>Dangerous instructions:</strong> Sharing methods to create weapons, explosives, or harmful substances.</li>
-  </ul>
-
+  <h4 class="font-semibold text-slate-200 mt-4">15. Governing Law and Jurisdiction</h4>
   <p>
-    <strong>Zero Tolerance Policy:</strong> Death threats, child exploitation, and credible threats of violence will result in <strong>immediate permanent ban</strong> and may be reported to law enforcement.
+    These Terms are governed by the laws of the <strong>State of California</strong>, USA, without regard to conflict-of-law rules.
+    Any dispute related to the Service will be brought in the state or federal courts located in California, and you consent to that jurisdiction.
+  </p>
+  <p class="text-xs text-slate-400 italic">
+    Some jurisdictions do not allow certain limitations. In those places, parts of these Terms may not apply to you.
   </p>
 
-  <h4 class="font-semibold text-slate-200 mt-4">15. Content Reporting and Enforcement</h4>
+  <h4 class="font-semibold text-slate-200 mt-4">16. Termination</h4>
   <p>
-    Chatra provides tools for users to report harmful, abusive, or rule-breaking content.
+    You may stop using Chatra at any time. We may suspend or terminate access to the Service at any time if we believe you violated these Terms,
+    if required by law, or to protect the platform and users.
   </p>
 
-  <h5 class="font-semibold text-slate-200 mt-3">How to Report Content</h5>
+  <h4 class="font-semibold text-slate-200 mt-4">17. General Provisions</h4>
   <p>
-    If you see content that violates these Terms, you can:
-  </p>
-  <ul class="list-disc pl-5 space-y-1">
-    <li><strong>Report a message:</strong> Click the "Report" button (⚠️) next to any message in the chat.</li>
-    <li><strong>Report a user:</strong> View their profile and use the report option (if available).</li>
-    <li><strong>Contact us directly:</strong> Email serious concerns to <strong>chatrahelpcenter@gmail.com</strong>.</li>
-  </ul>
-
-  <h5 class="font-semibold text-slate-200 mt-3">What We Do With Reports</h5>
-  <p>
-    When we receive a report, we will:
-  </p>
-  <ul class="list-disc pl-5 space-y-1">
-    <li>Review the reported content and context.</li>
-    <li>Take action if the content violates our Terms (removal, warning, mute, or ban).</li>
-    <li>In severe cases (threats, illegal content), we may involve law enforcement.</li>
-  </ul>
-  <p>
-    <strong>We reserve the right to remove any content or ban any user</strong> at our sole discretion to protect the safety and integrity of the platform.
+    <strong>Severability:</strong> If any provision is unenforceable, the remaining provisions remain in effect.
+    <strong>Entire Agreement:</strong> These Terms and the Privacy Policy form the full agreement between you and Chatra regarding the Service.
+    <strong>No Waiver:</strong> Failure to enforce a provision is not a waiver of our right to do so later.
   </p>
 
-  <h5 class="font-semibold text-slate-200 mt-3">False Reports</h5>
+  <h4 class="font-semibold text-slate-200 mt-4">18. Contact</h4>
   <p>
-    Abusing the report system (e.g., mass false reports, harassment through reporting) may result in action against your account.
+    Questions, reports, or legal notices: 📧 <strong>chatrahelpcenter@gmail.com</strong>
   </p>
-
-  <h4 class="font-semibold text-slate-200 mt-4">16. Indemnification</h4>
-  <p>
-    You agree to indemnify, defend, and hold harmless Chatra, its owners, operators, employees, and affiliates from any claims, damages, losses, liabilities, and expenses (including legal fees) arising from:
-  </p>
-  <ul class="list-disc pl-5 space-y-1">
-    <li>Your use of the Service.</li>
-    <li>Your violation of these Terms.</li>
-    <li>Content you post or share on Chatra.</li>
-    <li>Your violation of any laws or third-party rights.</li>
-  </ul>
-
-  <h4 class="font-semibold text-slate-200 mt-4">17. Disclaimer of Warranties</h4>
-  <p>
-    CHATRA IS PROVIDED "AS IS" AND "AS AVAILABLE" WITHOUT ANY WARRANTIES OF ANY KIND, EXPRESS OR IMPLIED.  
-    We do not guarantee that the Service will be uninterrupted, secure, or error-free.  
-    YOU USE CHATRA AT YOUR OWN RISK.
-  </p>
-
-  <h4 class="font-semibold text-slate-200 mt-4">18. Limitation of Liability</h4>
-  <p>
-    TO THE MAXIMUM EXTENT PERMITTED BY LAW, CHATRA, ITS OWNERS, AND AFFILIATES SHALL NOT BE LIABLE FOR:
-  </p>
-  <ul class="list-disc pl-5 space-y-1">
-    <li>Indirect, incidental, special, consequential, or punitive damages.</li>
-    <li>Loss of profits, data, or goodwill.</li>
-    <li>User-generated content or actions of other users.</li>
-    <li>Service interruptions, security breaches, or data loss.</li>
-  </ul>
-  <p>
-    <strong>IN NO EVENT SHALL OUR TOTAL LIABILITY EXCEED $100 USD OR THE AMOUNT YOU PAID US (IF ANY) IN THE PAST 12 MONTHS.</strong>
-  </p>
-
-  <h4 class="font-semibold text-slate-200 mt-4">19. Governing Law and Jurisdiction</h4>
-  <p>
-    These Terms are governed by the laws of the <strong>State of California</strong>, United States, without regard to conflict of law principles.  
-    Any disputes arising from these Terms or your use of Chatra shall be resolved in the state or federal courts located in California.  
-    You agree to submit to the personal jurisdiction of these courts.
-  </p>
-
-  <h4 class="font-semibold text-slate-200 mt-4">20. Changes to These Terms</h4>
-  <p>
-    We may update these Terms from time to time to improve clarity or follow new laws.  
-    When we do, we will update the "Last updated" date above.  
-    If you continue using Chatra after updates, that means you accept the new Terms.
-  </p>
-
-  <h4 class="font-semibold text-slate-200 mt-4">21. Contact Us</h4>
-  <p>
-    If you have questions, need help, or want to report a problem, contact us at:  
-    📧 **chatrahelpcenter@gmail.com**
-  </p>
-
 </div>
-
 
         <button
           id="termsCloseBtn2"
@@ -659,7 +619,7 @@
       </div>
     </div>
 
-    <!-- Privacy Policy Modal (global) -->
+    
     <div
       id="privacyModal"
       class="modal-overlay fixed inset-0 z-50 modal-closed items-center justify-center px-4"
@@ -676,80 +636,134 @@
           </button>
         </div>
 
-        <!-- Privacy content - updated for clarity -->
-        <div id="privacyContent" class="text-sm text-slate-300 space-y-3 leading-relaxed">
-          <p>
-            <strong>Last Updated:</strong> December 23, 2025
-          </p>
+        
+<div id="privacyContent" class="text-sm text-slate-300 space-y-3 leading-relaxed">
+  <p><strong>Last Updated:</strong> January 3, 2026</p>
 
-          <h4 class="font-semibold text-slate-200 mt-4">1. What We Collect</h4>
-          <p>
-            We collect information you provide (username, account settings) and information about your
-            activity (messages, timestamps, and basic device/browser data). We do not require your
-            real name or phone number to use Chatra.
-          </p>
+  <p class="text-xs text-slate-400 italic">
+    This Privacy Policy explains what Chatra collects, how we use it, and the choices you have.
+    By using Chatra, you agree to this Privacy Policy.
+  </p>
 
-          <h4 class="font-semibold text-slate-200 mt-4">2. How We Use Data</h4>
-          <p>
-            We use data to operate the Service, provide messaging features, maintain security, prevent
-            abuse, and fix bugs. We do not sell your personal data or use it for third-party targeted
-            advertising.
-          </p>
+  
 
-          <h4 class="font-semibold text-slate-200 mt-4">3. Message Storage & Access</h4>
-          <p>
-            Messages are stored on our servers to deliver chat functionality. Messages are not end-to-end
-            encrypted; authorized administrators may access stored content only when necessary (for
-            moderation, safety, legal requests, or debugging).
-          </p>
+  <h4 class="font-semibold text-slate-200 mt-4">1. Information We Collect</h4>
 
-          <h4 class="font-semibold text-slate-200 mt-4">4. Sharing and Third Parties</h4>
-          <p>
-            We do not sell or trade your personal information. We may use trusted service providers (for
-            hosting, analytics, or database storage) who operate under contractual data-protection terms.
-          </p>
+  <h5 class="font-semibold text-slate-200 mt-3">A. Information You Provide</h5>
+  <ul class="list-disc pl-5 space-y-1 mt-2">
+    <li><strong>Account information:</strong> username, profile settings, and other details you choose to add.</li>
+    <li><strong>User Content:</strong> messages, DMs, posts, images/videos/files you upload, and links you share.</li>
+    <li><strong>Support requests:</strong> information you send us when you contact support (like email content and screenshots).</li>
+  </ul>
 
-          <h4 class="font-semibold text-slate-200 mt-4">5. Your Choices</h4>
-          <p>
-            You can change account settings, request deletion of your account, or request removal of
-            specific messages. Note: some logs may be retained temporarily for safety or legal reasons.
-          </p>
+  <h5 class="font-semibold text-slate-200 mt-3">B. Information Collected Automatically</h5>
+  <ul class="list-disc pl-5 space-y-1 mt-2">
+    <li><strong>Usage data:</strong> timestamps, feature usage, and basic event logs (e.g., sending a message, joining a chat).</li>
+    <li><strong>Device & browser data:</strong> limited technical signals used for reliability and security.</li>
+    <li><strong>Network data:</strong> IP address and related log data may be processed for security, abuse prevention, and rate limiting.</li>
+    <li><strong>Diagnostics:</strong> error logs and performance metrics to fix bugs and improve stability.</li>
+  </ul>
 
-          <h4 class="font-semibold text-slate-200 mt-4">6. Children</h4>
-          <p>
-            Chatra is intended for users 13+. We do not knowingly collect information from children under
-            13 and will remove accounts discovered to belong to underage users.
-          </p>
+  <h5 class="font-semibold text-slate-200 mt-3">C. Security Device Identifier (Ban Evasion Prevention)</h5>
+  <p>
+    To protect Chatra and prevent repeated abuse (like ban evasion), we may generate a <strong>hashed device identifier</strong> based on technical device characteristics
+    (for example: screen info, timezone, language, hardware signals). This identifier is used for <strong>security enforcement</strong> and is not intended to identify your real-world identity.
+  </p>
 
-          <h4 class="font-semibold text-slate-200 mt-4">7. Contact</h4>
-          <p>
-            Questions about privacy or data requests: 📧 <strong>chatrahelpcenter@gmail.com</strong>
-          </p>
-        </div>
+  <h4 class="font-semibold text-slate-200 mt-4">2. How We Use Information</h4>
+  <p>We use information we collect to:</p>
+  <ul class="list-disc pl-5 space-y-1 mt-2">
+    <li><strong>Provide the Service:</strong> create accounts, deliver messages, show chat history, and enable features.</li>
+    <li><strong>Maintain safety and security:</strong> detect spam, fraud, threats, ban evasion, and attacks against the Service.</li>
+    <li><strong>Moderate content:</strong> investigate reports and enforce our rules and Terms of Service.</li>
+    <li><strong>Improve reliability:</strong> debug issues, measure performance, and fix broken features.</li>
+    <li><strong>Legal compliance:</strong> respond to lawful requests and enforce our Terms when necessary.</li>
+  </ul>
 
-        <!-- Community Guidelines modal: shown on first message typing -->
-        <div id="guidelinesModal" class="modal-overlay fixed inset-0 z-55 modal-closed items-center justify-center px-4">
-          <div class="glass-card max-w-xl w-full rounded-2xl p-6 sm:p-8 max-h-[80vh] overflow-y-auto" role="dialog" aria-labelledby="guidelinesTitle">
-            <div class="flex justify-between items-center mb-4">
-              <h3 id="guidelinesTitle" class="text-2xl font-semibold text-slate-100">Community Guidelines</h3>
-              <button id="guidelinesCloseBtn" class="p-1 hover:bg-slate-700 rounded-lg transition-colors">✕</button>
-            </div>
+  <p class="mt-2">
+    <strong>We do not sell your personal data</strong> and we do not use your data for third-party targeted advertising.
+  </p>
 
-            <div class="text-sm text-slate-300 space-y-3 leading-relaxed">
-              <p class="font-medium">Please follow these basic rules while using Chatra:</p>
-              <ul class="list-disc pl-5 space-y-1">
-                <li>Be respectful — no harassment, hate speech, or threats.</li>
-                <li>Do not share private personal information (doxxing).</li>
-                <li>No sexual exploitation or content involving minors.</li>
-                <li>Avoid spam, scams, and malicious links.</li>
-                <li>Report problems using the report button (⚠️) or email support.</li>
-              </ul>
-              <p class="text-xs text-slate-400">By continuing to use Chatra you agree to follow these guidelines. Violations may result in moderation actions.</p>
-            </div>
+  <h4 class="font-semibold text-slate-200 mt-4">3. Message Storage, Visibility, and Admin Access</h4>
+  <p>
+    Chatra stores messages and uploads so chats work and history loads. Chatra messages are <strong>not end-to-end encrypted</strong>.
+    That means messages are stored in a way that can be accessed on the server side.
+  </p>
+  <p class="mt-2">
+    <strong>Who can see what:</strong> Messages in DMs and private chats are meant to be visible only to participants.
+    However, authorized administrators may access stored content when necessary for:
+    <strong>moderation, safety checks, legal requests, abuse investigations, or technical debugging</strong>.
+  </p>
 
-            <button id="guidelinesAgreeBtn" class="w-full mt-6 px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-700 transition-colors font-medium text-slate-100">I Understand</button>
-          </div>
-        </div>
+  <h4 class="font-semibold text-slate-200 mt-4">4. When We Share Information</h4>
+  <p>We share information only in limited situations:</p>
+
+  <h5 class="font-semibold text-slate-200 mt-3">A. Service Providers</h5>
+  <p>
+    We may use trusted providers for hosting, databases, analytics, media storage/processing, and security protection.
+    They may process data only to provide services to us and under contractual protections.
+  </p>
+
+  <h5 class="font-semibold text-slate-200 mt-3">B. Legal and Safety</h5>
+  <p>
+    We may disclose information if we believe it is reasonably necessary to:
+    (a) comply with law, regulation, legal process, or lawful request,
+    (b) enforce our Terms,
+    (c) detect or prevent fraud/security issues,
+    or (d) protect the rights, property, or safety of users, the public, or Chatra.
+  </p>
+
+  <h5 class="font-semibold text-slate-200 mt-3">C. Business Changes</h5>
+  <p>
+    If Chatra is involved in a merger, acquisition, reorganization, or sale of assets, information may be transferred as part of that transaction.
+    If that happens, we will take reasonable steps to protect your information.
+  </p>
+
+  <h4 class="font-semibold text-slate-200 mt-4">5. Data Retention</h4>
+  <p>
+    We keep information as long as needed to provide Chatra and for legitimate purposes like safety, security, and legal compliance.
+  </p>
+  <ul class="list-disc pl-5 space-y-1 mt-2">
+    <li><strong>Messages/uploads:</strong> may remain stored until you delete them (if the feature exists) or until your account is deleted, subject to backups and safety/legal retention.</li>
+    <li><strong>Security logs/device identifiers:</strong> may be retained for a reasonable time to prevent abuse and enforce bans.</li>
+    <li><strong>Backups:</strong> deleted data may remain in backups for a limited period before being removed through normal backup rotation.</li>
+  </ul>
+
+  <h4 class="font-semibold text-slate-200 mt-4">6. Your Choices and Rights</h4>
+  <p>Depending on your location and available features, you may be able to:</p>
+  <ul class="list-disc pl-5 space-y-1 mt-2">
+    <li>Update your profile and account settings.</li>
+    <li>Request deletion of your account.</li>
+    <li>Request removal of specific content (with limits for safety, moderation, and legal reasons).</li>
+    <li>Ask questions about what data we have and how it’s used.</li>
+  </ul>
+  <p class="mt-2">
+    To make a privacy request, contact: 📧 <strong>chatrahelpcenter@gmail.com</strong>
+  </p>
+
+  <h4 class="font-semibold text-slate-200 mt-4">7. Security</h4>
+  <p>
+    We take reasonable steps to protect data, including access controls and security measures.
+    However, no online service is 100% secure, so you use the Service at your own risk.
+  </p>
+
+  <h4 class="font-semibold text-slate-200 mt-4">8. Children (13+ Only)</h4>
+  <p>
+    Chatra is intended for users aged 13 and older. We do not knowingly collect personal information from children under 13.
+    If we learn an account belongs to someone under 13, we may remove it and delete associated data when appropriate.
+  </p>
+
+  <h4 class="font-semibold text-slate-200 mt-4">9. Changes to This Policy</h4>
+  <p>
+    We may update this Privacy Policy from time to time. If we make changes, we will update the “Last Updated” date above.
+    Continued use of Chatra after changes means you accept the updated Policy.
+  </p>
+
+  <h4 class="font-semibold text-slate-200 mt-4">10. Contact</h4>
+  <p>
+    Privacy questions or requests: 📧 <strong>chatrahelpcenter@gmail.com</strong>
+  </p>
+</div>
 
 
         <button
@@ -762,7 +776,102 @@
       </div>
     </div>
 
-    <!-- Patch Notes / Update Log Modal (global full-page overlay) -->
+    
+    <div id="guidelinesModal" class="modal-overlay fixed inset-0 z-[100] modal-closed items-center justify-center px-4">
+      <div class="glass-card max-w-2xl w-full rounded-2xl p-6 sm:p-8 max-h-[90vh] overflow-y-auto" role="dialog" aria-labelledby="guidelinesTitle">
+        <div class="flex justify-between items-center mb-4">
+          <h3 id="guidelinesTitle" class="text-2xl font-semibold text-slate-100">Community Guidelines</h3>
+        </div>
+
+        <div id="guidelinesContent" class="text-sm text-slate-300 space-y-3 leading-relaxed">
+          <p><strong>Effective Date:</strong> January 3, 2026</p>
+
+          <p class="text-slate-400 italic text-xs">
+            You must accept these guidelines to use Chatra. This is a one-time acknowledgment saved to your account.
+          </p>
+
+          <h4 class="font-semibold text-slate-200 mt-4">1. Respect Everyone</h4>
+          <ul class="list-disc pl-5 space-y-1">
+            <li>Treat all users with basic respect and dignity.</li>
+            <li>Disagreements are fine — personal attacks are not.</li>
+            <li>No discrimination based on race, gender, religion, sexuality, disability, or nationality.</li>
+          </ul>
+
+          <h4 class="font-semibold text-slate-200 mt-4">2. No Harassment or Bullying</h4>
+          <ul class="list-disc pl-5 space-y-1">
+            <li>Do not repeatedly target, insult, or humiliate anyone.</li>
+            <li>No stalking, intimidation, or coordinated attacks on users.</li>
+            <li>Unwanted sexual advances or explicit messages are prohibited.</li>
+          </ul>
+
+          <h4 class="font-semibold text-slate-200 mt-4">3. No Threats or Violence</h4>
+          <ul class="list-disc pl-5 space-y-1">
+            <li>Death threats or threats of physical harm are strictly forbidden.</li>
+            <li>Do not encourage violence, self-harm, or dangerous activities.</li>
+            <li>Credible threats will be reported to law enforcement.</li>
+          </ul>
+
+          <h4 class="font-semibold text-slate-200 mt-4">4. Protect Privacy (No Doxxing)</h4>
+          <ul class="list-disc pl-5 space-y-1">
+            <li>Never share someone's private information without consent (address, phone, school, workplace, photos, etc.).</li>
+            <li>Threatening to expose private info is also prohibited.</li>
+          </ul>
+
+          <h4 class="font-semibold text-slate-200 mt-4">5. No Inappropriate Sexual Content</h4>
+          <ul class="list-disc pl-5 space-y-1">
+            <li>No pornography or explicit sexual content in public spaces.</li>
+            <li><strong>ZERO TOLERANCE:</strong> Any sexual content involving minors results in immediate permanent ban and law enforcement referral.</li>
+          </ul>
+
+          <h4 class="font-semibold text-slate-200 mt-4">6. No Spam, Scams, or Malware</h4>
+          <ul class="list-disc pl-5 space-y-1">
+            <li>No spamming messages, links, or invites.</li>
+            <li>No phishing, scams, impersonation, or attempts to steal accounts.</li>
+            <li>Do not share malicious links or files.</li>
+          </ul>
+
+          <h4 class="font-semibold text-slate-200 mt-4">7. No Illegal Activity</h4>
+          <ul class="list-disc pl-5 space-y-1">
+            <li>Do not use Chatra to plan, promote, or engage in illegal activities.</li>
+            <li>No sharing of pirated content, drugs, weapons instructions, or terrorism-related material.</li>
+          </ul>
+
+          <h4 class="font-semibold text-slate-200 mt-4">8. Reporting & Enforcement</h4>
+          <ul class="list-disc pl-5 space-y-1">
+            <li>Use the report button to report rule violations.</li>
+            <li>Email <strong>chatrahelpcenter@gmail.com</strong> for serious issues.</li>
+            <li>False or abusive reports may result in action against your account.</li>
+          </ul>
+
+          <h4 class="font-semibold text-slate-200 mt-4">9. Consequences</h4>
+          <p>Violations may result in:</p>
+          <ul class="list-disc pl-5 space-y-1">
+            <li>Warning</li>
+            <li>Temporary mute or suspension</li>
+            <li>Permanent ban (account and/or device)</li>
+            <li>Law enforcement referral for serious violations</li>
+          </ul>
+
+          <div class="rounded-xl border border-rose-500/40 bg-rose-900/20 p-4 mt-4">
+            <p class="font-semibold text-rose-300">Zero Tolerance</p>
+            <p class="text-slate-300 text-sm">Death threats, child exploitation, and terrorism result in <strong>immediate permanent ban</strong> and may be reported to authorities.</p>
+          </div>
+        </div>
+
+        <div class="mt-6 flex items-start gap-3">
+          <input type="checkbox" id="guidelinesCheckbox" class="shrink-0 mt-0.5 w-5 h-5 accent-sky-500 cursor-pointer">
+          <label for="guidelinesCheckbox" class="text-sm text-slate-300 cursor-pointer select-none">
+            I have read and agree to follow Chatra's Community Guidelines. I understand that violations may result in account suspension or permanent ban.
+          </label>
+        </div>
+
+        <button id="guidelinesAgreeBtn" disabled class="w-full mt-4 px-4 py-3 rounded-lg bg-slate-700 text-slate-500 font-medium cursor-not-allowed transition-all disabled:opacity-60">
+          Check the box above to continue
+        </button>
+      </div>
+    </div>
+
+    
     <div
       id="patchNotesModal"
       class="modal-overlay fixed inset-0 z-60 modal-closed items-center justify-center px-4"
@@ -781,12 +890,39 @@
         </div>
 
         <div id="patchNotesContent" class="text-sm text-slate-300 space-y-4 leading-relaxed">
+          <h4 class="font-semibold text-slate-200">Version 7.1 — January 2026</h4>
+          <p class="text-xs text-slate-400">Released: January 3, 2026</p>
+          
+          <h5 class="font-medium text-sky-400 mt-4 mb-2">🆕 New Features</h5>
+          <ul class="list-disc pl-5 space-y-1">
+            <li><strong>Unban All Button</strong> — Owner-only button to clear all bans, mutes, and hardware bans at once.</li>
+            <li><strong>Hardware Ban System</strong> — Admins can now hardware ban users to prevent ban evasion.</li>
+            <li><strong>Mod Panel Improvements</strong> — View banned/muted users with usernames, extend bans, and manage hardware bans.</li>
+          </ul>
+          
+          <h5 class="font-medium text-emerald-400 mt-4 mb-2">✨ Improvements</h5>
+          <ul class="list-disc pl-5 space-y-1">
+            <li><strong>Toast Notifications</strong> — All browser alerts replaced with styled in-app toasts.</li>
+            <li><strong>DM Buttons</strong> — Delete, edit, and report buttons in DMs now match Global Chat style.</li>
+            <li><strong>Expired Bans Auto-Remove</strong> — Expired bans/mutes automatically removed from mod panel.</li>
+            <li><strong>Instant Unban</strong> — Unbanning removes users from the list immediately.</li>
+          </ul>
+          
+          <h5 class="font-medium text-rose-400 mt-4 mb-2">🐛 Bug Fixes</h5>
+          <ul class="list-disc pl-5 space-y-1">
+            <li>Fixed corrupted emoji characters throughout the app.</li>
+            <li>Fixed bannedEmails permission denied error on login.</li>
+            <li>Fixed mod panel not showing usernames for banned users.</li>
+          </ul>
+          
+          <hr class="border-slate-700 my-4" />
+          
           <h4 class="font-semibold text-slate-200">Version 7.0 — January 2026</h4>
           <p class="text-xs text-slate-400">Released: January 1, 2026</p>
           
           <h5 class="font-medium text-sky-400 mt-4 mb-2">🆕 New Features</h5>
           <ul class="list-disc pl-5 space-y-1">
-            <li><strong>Toast Notifications</strong> — Replaced all browser alerts with styled in-app toasts.</li>
+            <li><strong>Group Chat</strong> — Create and join group chats with friends.</li>
             <li><strong>Group Chat Replies</strong> — Reply to specific messages in group chats.</li>
             <li><strong>Group Search</strong> — Search groups in real-time as you type.</li>
             <li><strong>Inline Group Creation</strong> — Create groups with a styled modal instead of browser prompts.</li>
@@ -795,7 +931,7 @@
             <li><strong>Online Counter</strong> — See how many users are currently online in real-time.</li>
             <li><strong>Online Status</strong> — Friends list shows who's online with green/gray dots. Filter by online only.</li>
             <li><strong>Profile Online Indicator</strong> — User profiles show online/offline status.</li>
-            <li><strong>@AI Mentions</strong> — Mention the AI with <span class="text-sky-400">@AI</span> anywhere in your message (in addition to /ai).</li>
+            <li><strong>@AI Mentions</strong> — Mention the AI with <span class="text-sky-400">@AI</span> anywhere in your message.</li>
           </ul>
           
           <h5 class="font-medium text-emerald-400 mt-4 mb-2">✨ Improvements</h5>
@@ -845,16 +981,82 @@
       </div>
     </div>
 
-    <!-- Staff Applications Popup -->
+    
+    <div
+      id="canvasConsentModal"
+      class="modal-overlay fixed inset-0 z-[10001] modal-closed items-center justify-center px-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="canvasConsentTitle"
+      aria-describedby="canvasConsentDesc"
+    >
+      <div class="glass-card max-w-md w-full rounded-2xl p-5 sm:p-6 relative overflow-hidden">
+        
+        <div class="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-sky-500 via-blue-400 to-sky-500"></div>
+
+        <div class="text-left">
+          <div class="flex items-center gap-3 mb-4">
+            <div class="w-12 h-12 rounded-full bg-sky-700 flex items-center justify-center flex-shrink-0">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-slate-300">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                <circle cx="8.5" cy="8.5" r="1.5"/>
+                <polyline points="21 15 16 10 5 21"/>
+              </svg>
+            </div>
+            <h3 id="canvasConsentTitle" class="text-lg font-semibold text-slate-100">
+              Device Identification for Account Enforcement
+            </h3>
+          </div>
+
+          <div id="canvasConsentDesc" class="space-y-3 text-sm text-slate-300">
+            <p>
+              <strong>What this does:</strong> If enabled, Chatra will use canvas fingerprinting to generate a unique device identifier. This identifier helps enforce bans and prevent abuse.
+            </p>
+            <p>
+              <strong>What is collected:</strong> A hashed identifier derived from your device's graphics rendering. This is not your name, email, or browsing history, but it is a persistent identifier linked to your account.
+            </p>
+            <p>
+              <strong>Retention:</strong> The identifier is stored as long as your account exists. You can revoke consent and request deletion via Settings → Privacy.
+            </p>
+            <p>
+              <strong>This is optional.</strong> Declining does not affect your ability to use Chatra. However, if your account is banned, we may have limited ability to prevent evasion.
+            </p>
+            <p class="text-slate-400 text-xs">
+              Under GDPR/CCPA, you have the right to access, correct, or delete this data. See our <a href="#" id="canvasConsentPrivacyLink" class="text-sky-400 hover:underline">Privacy Policy</a> for details.
+            </p>
+          </div>
+
+          <div class="flex flex-col gap-2 mt-5">
+            <button
+              id="canvasConsentEnableBtn"
+              class="w-full py-2.5 px-4 bg-sky-600 hover:bg-sky-500 text-white font-medium rounded-lg transition-all text-sm border border-sky-500"
+            >
+              Enable Device Identification
+            </button>
+            <button
+              id="canvasConsentSkipBtn"
+              class="w-full py-2.5 px-4 text-slate-300 hover:text-white hover:bg-slate-700/50 rounded-lg transition-colors text-sm"
+            >
+              No Thanks
+            </button>
+          </div>
+          <p class="text-xs text-slate-500 mt-3 text-center">
+            You can change this anytime in <a href="#" id="canvasConsentSettingsLink" class="text-sky-400 hover:underline">Settings → Privacy</a>.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    
     <div
       id="modAppPopup"
       class="modal-overlay fixed inset-0 z-60 modal-closed items-center justify-center px-4"
     >
       <div class="glass-card max-w-sm w-full rounded-2xl p-5 sm:p-6 relative overflow-hidden">
-        <!-- Decorative gradient (dark blue -> royal -> light blue) -->
+        
         <div class="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-900 via-indigo-700 to-sky-500"></div>
 
-        <!-- Subtle blue sparkles -->
+        
         <div class="absolute top-4 right-4 text-sky-300 opacity-90 animate-pulse">✦</div>
         <div class="absolute top-8 right-12 text-sky-200 opacity-80 animate-pulse delay-100">✦</div>
 
@@ -896,7 +1098,7 @@
       </div>
     </div>
 
-    <!-- Suggestions & Help Modal (full-page overlay) -->
+    
     <div
       id="helpModal"
       class="modal-overlay fixed inset-0 z-60 modal-closed items-center justify-center px-4"
@@ -914,7 +1116,7 @@
           </button>
         </div>
 
-        <!-- Category Tabs -->
+        
         <div class="flex gap-2 mb-6 flex-wrap">
           <button class="help-tab active px-3 py-1.5 rounded-lg text-sm font-medium bg-indigo-600 text-white" data-tab="suggestion">💡 Suggestion</button>
           <button class="help-tab px-3 py-1.5 rounded-lg text-sm font-medium bg-slate-700 text-slate-300 hover:bg-slate-600" data-tab="bug">🐛 Bug Report</button>
@@ -922,11 +1124,11 @@
           <button class="help-tab px-3 py-1.5 rounded-lg text-sm font-medium bg-slate-700 text-slate-300 hover:bg-slate-600" data-tab="appeal">⚖️ Ban Appeal</button>
         </div>
 
-        <!-- Form Content -->
+        
         <form id="helpForm" class="space-y-4">
           <input type="hidden" id="helpType" value="suggestion">
           
-          <!-- Dynamic Title based on type -->
+          
           <div>
             <label id="helpTitleLabel" class="block text-sm font-medium text-slate-300 mb-1">Suggestion Title</label>
             <input
@@ -939,7 +1141,7 @@
             >
           </div>
 
-          <!-- Description -->
+          
           <div>
             <label id="helpDescLabel" class="block text-sm font-medium text-slate-300 mb-1">Description</label>
             <textarea
@@ -952,7 +1154,7 @@
             ></textarea>
           </div>
 
-          <!-- Ban Appeal Extra Fields (hidden by default) -->
+          
           <div id="appealFields" class="hidden space-y-4">
             <div>
               <label class="block text-sm font-medium text-slate-300 mb-1">Why should your ban be lifted?</label>
@@ -966,7 +1168,7 @@
             </div>
           </div>
 
-          <!-- Username field (required for all types) -->
+          
           <div id="helpUsernameWrapper">
             <label class="block text-sm font-medium text-slate-300 mb-1">Your Username <span class="text-red-400">*</span></label>
             <input
@@ -979,7 +1181,7 @@
             >
           </div>
 
-          <!-- Contact Email (only shown for appeals, optional) -->
+          
           <div id="helpEmailWrapper" class="hidden">
             <label class="block text-sm font-medium text-slate-300 mb-1">Contact Email <span class="text-slate-500">(optional)</span></label>
             <input
@@ -990,7 +1192,7 @@
             >
           </div>
 
-          <!-- Submit Button -->
+          
           <button
             type="submit"
             id="helpSubmitBtn"
@@ -999,27 +1201,27 @@
             Submit Suggestion
           </button>
 
-          <!-- Status Message -->
+          
           <p id="helpStatus" class="text-center text-sm hidden" aria-live="polite"></p>
         </form>
       </div>
     </div>
 
-    <!-- Chat Interface (hidden by default) -->
+    
 <div
   id="chatInterface"
   class="hidden flex-1 min-h-0 flex flex-col"
 >
-  <!-- FULLSCREEN chat container -->
+  
   <div
     class="glass-card flex-1 min-h-0 flex flex-col w-full rounded-none overflow-hidden"
   >
-    <!-- Chat header with menu + logout -->
+    
     <div
       class="relative flex items-center justify-between px-4 sm:px-5 py-3 bg-slate-900/70 border-b border-slate-800/50"
     >
       <div class="flex items-center gap-3">
-        <!-- Hamburger Menu Button -->
+        
         <button
           id="menuToggle"
           class="p-1.5 hover:bg-slate-700 rounded-lg transition-colors"
@@ -1038,11 +1240,11 @@
       </div>
 // temp change
 
-      <!-- Page Navigation Tabs -->
+      
       <div id="navTabsContainer" class="absolute left-1/2 transform -translate-x-1/2 flex items-center gap-1 bg-slate-800/60 rounded-lg p-1">
-        <!-- Sliding indicator (animated when fast mode is off) -->
+        
         <div id="navSlider" class="absolute top-1 bottom-1 bg-sky-600/80 rounded-md pointer-events-none z-0" style="left: 4px; width: 0; transition: none;"></div>
-        <!-- Global Chat Tab -->
+        
         <button
           id="navGlobalChat"
           class="nav-tab active flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all relative z-10"
@@ -1054,7 +1256,7 @@
           </svg>
           <span class="hidden sm:inline">Global Chat</span>
         </button>
-        <!-- DMs Tab -->
+        
         <button
           id="navDMs"
           class="nav-tab flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all relative z-10"
@@ -1066,7 +1268,7 @@
           <span class="hidden sm:inline">DMs</span>
           <span id="navDMBadge" class="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center hidden">0</span>
         </button>
-        <!-- Groups Tab -->
+        
         <button
           id="navGroups"
           class="nav-tab flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all relative z-10"
@@ -1081,7 +1283,18 @@
       </div>
 
       <div class="flex items-center gap-3">
-        <!-- Staff Applications -->
+        
+        <button
+          id="adminModPanelBtn"
+          class="hidden items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white transition-all bg-gradient-to-r from-red-600 to-orange-500 hover:from-red-500 hover:to-orange-400 shadow-md"
+          title="Moderation Panel"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          </svg>
+          <span class="hidden sm:inline">Mod Panel</span>
+        </button>
+        
         <a
           id="headerStaffApp"
           href="https://forms.gle/NZHq8S977xicHhNP9"
@@ -1107,7 +1320,7 @@
     </div>
 
 
-        <!-- Settings Modal -->
+        
         <div
           id="settingsModal"
           class="modal-overlay fixed inset-0 z-50 modal-closed items-center justify-center px-4"
@@ -1123,7 +1336,7 @@
               </button>
             </div>
 
-            <!-- Message Size Control -->
+            
             <div class="mb-5 pb-5 border-b border-slate-700">
               <label class="text-sm font-medium text-slate-200 block mb-2">Message Size</label>
               <div class="flex gap-2">
@@ -1148,7 +1361,7 @@
               </div>
             </div>
 
-            <!-- Recovery Email -->
+            
             <div class="mb-5 pb-5 border-b border-slate-700">
               <label class="text-sm font-medium text-slate-200 block mb-2">Recovery Email</label>
               <p class="text-xs text-slate-400 mb-2">Set or update your recovery email (used for account verification/reset).</p>
@@ -1160,7 +1373,7 @@
               <p id="settingsRecoveryMsg" class="text-xs mt-2 min-h-[1rem]"></p>
             </div>
 
-            <!-- Account deletion -->
+            
             <div class="mb-5 pb-2">
               <label class="text-sm font-medium text-slate-200 block mb-2">Delete account</label>
               <p class="text-xs text-slate-400 mb-2">Permanently delete your account. Optionally remove your messages.</p>
@@ -1175,7 +1388,7 @@
               <p id="deleteAccountMsg" class="text-xs mt-2 min-h-[1rem]"></p>
             </div>
 
-            <!-- Theme Control -->
+            
             <div class="mb-5 pb-5 border-b border-slate-700">
               <label class="text-sm font-medium text-slate-200 block mb-2">Theme</label>
               <div class="flex gap-2">
@@ -1196,7 +1409,7 @@
               </div>
             </div>
 
-            <!-- Fast Mode Toggle -->
+            
             <div class="mb-5 pb-5 border-b border-slate-700 flex items-center justify-between">
               <div>
                 <label id="fastModeLabel" class="text-sm font-medium text-slate-200 block mb-1">Fast Mode</label>
@@ -1215,7 +1428,7 @@
           </div>
         </div>
 
-        <!-- User Profile Modal -->
+        
         <div
           id="profileModal"
           class="modal-overlay fixed inset-0 z-50 modal-closed items-center justify-center px-4"
@@ -1231,7 +1444,7 @@
               </button>
             </div>
 
-            <!-- Profile Banner -->
+            
             <div class="mb-5 w-full">
               <div
                 id="profileBannerPreview"
@@ -1252,7 +1465,7 @@
               />
             </div>
 
-            <!-- Profile Picture -->
+            
             <div class="mb-5 flex flex-col items-center">
               <div
                 id="profilePicPreview"
@@ -1274,7 +1487,7 @@
               </button>
             </div>
 
-            <!-- Username Input (Editable) -->
+            
             <div class="mb-4">
               <label class="text-xs font-medium text-slate-300 block mb-1">Username</label>
               <input
@@ -1285,7 +1498,7 @@
               />
             </div>
 
-            <!-- Bio -->
+            
             <div class="mb-4">
               <label class="text-xs font-medium text-slate-300 block mb-1">Bio (max 150 chars)</label>
               <textarea
@@ -1297,7 +1510,7 @@
               ></textarea>
             </div>
 
-            <!-- Save Button -->
+            
             <button
               id="saveProfileBtn"
               class="w-full px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-700 transition-colors font-medium text-sm text-white"
@@ -1307,13 +1520,13 @@
           </div>
         </div>
 
-        <!-- View User Profile Modal (Read-Only) -->
+        
         <div
           id="viewProfileModal"
           class="modal-overlay fixed inset-0 z-50 modal-closed items-center justify-center px-4"
         >
           <div class="glass-card max-w-sm w-full rounded-3xl p-8 max-h-[90vh] overflow-y-auto text-center">
-            <!-- Close Button -->
+            
             <button
               id="viewProfileCloseBtn"
               class="absolute top-4 right-4 p-1 hover:bg-slate-700 rounded-lg transition-colors"
@@ -1321,16 +1534,16 @@
               ✕
             </button>
 
-            <!-- Profile Banner + Picture Container -->
+            
             <div class="relative mb-8">
-              <!-- Profile Banner (behind picture) -->
+              
               <div
                 id="viewProfileBanner"
                 class="w-full h-32 rounded-xl bg-gradient-to-r from-blue-500 to-purple-600 overflow-hidden"
                 style="background-size: cover; background-position: center;"
               ></div>
               
-              <!-- Large Profile Picture (overlapping banner) -->
+              
               <div class="absolute -bottom-12 left-1/2 transform -translate-x-1/2">
                 <div
                   id="viewProfilePic"
@@ -1341,7 +1554,7 @@
               </div>
             </div>
 
-            <!-- Username with online status -->
+            
             <div class="flex items-center justify-center gap-2 mt-16 mb-2">
               <span id="viewProfileOnlineStatus" class="h-3 w-3 rounded-full bg-slate-500" title="Offline"></span>
               <h2 id="viewProfileName" class="text-2xl font-bold text-slate-100">
@@ -1349,12 +1562,12 @@
               </h2>
             </div>
 
-            <!-- Bio -->
+            
             <p id="viewProfileBio" class="text-sm text-slate-300 mb-6 leading-relaxed">
               No bio yet
             </p>
 
-            <!-- Friend Request Button -->
+            
             <button
               id="sendFriendRequestBtn"
               class="w-full px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-700 transition-colors font-medium text-sm text-white mb-2"
@@ -1362,7 +1575,7 @@
               Add Friend
             </button>
 
-            <!-- Block Button -->
+            
             <button
               id="blockUserBtn"
               class="w-full px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 transition-colors font-medium text-sm text-white mb-2 flex items-center justify-center gap-2"
@@ -1380,7 +1593,7 @@
               role="status"
             ></div>
 
-            <!-- Admin Actions (visible only to admins) -->
+            
             <div
               id="profileAdminActions"
               class="hidden flex gap-2 mb-3"
@@ -1403,10 +1616,10 @@
               >
                 Warn
               </button>
-              <!-- Clear HW Ban removed -->
+              
             </div>
 
-            <!-- Close Button (Bottom) -->
+            
             <button
               id="viewProfileCloseBtn2"
               class="w-full px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 transition-colors font-medium text-sm text-slate-100"
@@ -1416,13 +1629,13 @@
           </div>
         </div>
 
-        <!-- Chat Messages -->
+        
         <div
           id="messages"
           class="flex-1 min-h-0 overflow-y-auto px-2 sm:px-3 py-2 sm:py-3 space-y-1 bg-slate-900"
         ></div>
 
-        <!-- Combined status bar (typing + warnings) -->
+        
         <div
           class="px-4 py-1.5 text-xs bg-slate-800 border-t border-slate-700 flex items-center gap-2 text-slate-300"
         >
@@ -1434,14 +1647,14 @@
             class="flex-1 min-h-[0.5rem]"
             style="padding: 0; margin: 0;"
           ></p>
-          <!-- Old warning element kept but visually empty (text controlled in JS) -->
+          
           <p
             id="sendWarning"
             class="hidden text-sm text-red-400 min-h-[0.5rem]"
           ></p>
         </div>
 
-        <!-- Media Preview -->
+        
         <div id="mediaPreview" class="hidden p-3 bg-slate-800 border-t border-slate-700">
           <div class="flex items-start gap-3">
             <div id="mediaPreviewContent" class="flex-1"></div>
@@ -1459,7 +1672,7 @@
           </div>
         </div>
 
-        <!-- Message Input (wrapped in a form so Enter submits on any device) -->
+        
         <form
           id="messageForm"
           class="p-2 sm:p-3 bg-slate-900 border-t border-slate-800 w-full"
@@ -1506,7 +1719,7 @@
       </div>
     </div>
 
-    <!-- Warn Reason Modal -->
+    
     <div
       id="warnReasonModal"
       class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center hidden"
@@ -1548,7 +1761,7 @@
       </div>
     </div>
 
-    <!-- Mute Reason Modal -->
+    
     <div
       id="muteReasonModal"
       class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center hidden"
@@ -1600,7 +1813,7 @@
       </div>
     </div>
 
-    <!-- Ban Reason Modal -->
+    
     <div
       id="banReasonModal"
       class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center hidden"
@@ -1648,6 +1861,13 @@
               background: #334155;
             }
           </style>
+          
+          
+          <label class="flex items-center gap-2 mt-3 cursor-pointer select-none">
+            <input type="checkbox" id="banHardwareBan" class="w-4 h-4 accent-red-500 rounded" />
+            <span class="text-sm text-slate-300">🖥️ Hardware ban (block device)</span>
+          </label>
+          <p class="text-xs text-slate-500 mt-1 ml-6">Prevents this device from creating new accounts</p>
         </div>
 
         <div class="flex gap-2">
@@ -1667,7 +1887,57 @@
       </div>
     </div>
 
-    <!-- Warning Popup -->
+    
+    <div
+      id="modPanelModal"
+      class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center hidden"
+    >
+      <div class="bg-slate-900 border border-slate-700 p-6 rounded-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden shadow-2xl flex flex-col">
+        <div class="flex justify-between items-center mb-4">
+          <h2 class="text-xl font-bold text-slate-100 flex items-center gap-2">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-red-400">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            </svg>
+            Moderation Panel
+          </h2>
+          <button id="modPanelCloseBtn" class="p-2 hover:bg-slate-700 rounded-lg transition-colors text-slate-400 hover:text-slate-100">✕</button>
+        </div>
+        
+        
+        <div class="flex gap-2 mb-4 border-b border-slate-700 pb-2">
+          <button id="modPanelTabBanned" class="px-4 py-2 rounded-t-lg bg-red-600 text-white font-medium text-sm transition-colors">
+            🚫 Banned Users
+          </button>
+          <button id="modPanelTabMuted" class="px-4 py-2 rounded-t-lg bg-slate-700 hover:bg-slate-600 text-slate-300 font-medium text-sm transition-colors">
+            🔇 Muted Users
+          </button>
+          <button id="modPanelTabHardware" class="px-4 py-2 rounded-t-lg bg-slate-700 hover:bg-slate-600 text-slate-300 font-medium text-sm transition-colors">
+            🖥️ Hardware Bans
+          </button>
+        </div>
+        
+        
+        <div id="modPanelContent" class="flex-1 overflow-y-auto space-y-2 pr-1" style="max-height: calc(85vh - 180px);">
+          <div class="text-center py-8 text-slate-500">Loading...</div>
+        </div>
+        
+        
+        <div class="mt-4 pt-3 border-t border-slate-700 flex gap-2">
+          <button id="modPanelRefreshBtn" class="flex-1 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-slate-300 text-sm font-medium transition-colors flex items-center justify-center gap-2">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M23 4v6h-6M1 20v-6h6"/>
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+            </svg>
+            Refresh
+          </button>
+          <button id="modPanelUnbanAllBtn" class="hidden px-4 py-2 bg-red-700 hover:bg-red-600 rounded-lg text-white text-sm font-bold transition-colors flex items-center justify-center gap-2">
+            ⚠️ Unban All
+          </button>
+        </div>
+      </div>
+    </div>
+
+    
     <div
       id="warningPopup"
       class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center hidden"
@@ -1691,7 +1961,7 @@
       </div>
     </div>
 
-    <!-- Mute Popup -->
+    
     <div
       id="mutePopup"
       class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center hidden"
@@ -1703,7 +1973,7 @@
       </div>
     </div>
 
-    <!-- Ban Popup -->
+    
     <div
       id="banPopup"
       class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center hidden"
@@ -1715,7 +1985,7 @@
       </div>
     </div>
 
-    <!-- Rating Prompt Modal -->
+    
     <div
       id="ratingModal"
       class="modal-overlay fixed inset-0 z-50 modal-closed items-center justify-center px-4"
@@ -1779,7 +2049,7 @@
       </div>
     </div>
 
-    <!-- Friend Requests Modal -->
+    
     <div
       id="friendRequestsModal"
       class="modal-overlay fixed inset-0 z-50 modal-closed items-center justify-center px-4"
@@ -1796,7 +2066,7 @@
         </div>
 
         <div id="friendRequestsList" class="space-y-2">
-          <!-- Friend requests will be rendered here -->
+          
         </div>
 
         <p id="noFriendRequestsMsg" class="text-center text-slate-400 text-sm mt-4">
@@ -1805,7 +2075,7 @@
       </div>
     </div>
 
-    <!-- Friends List Modal -->
+    
     <div
       id="friendsListModal"
       class="modal-overlay fixed inset-0 z-50 modal-closed items-center justify-center px-4"
@@ -1821,7 +2091,7 @@
           </button>
         </div>
 
-        <!-- Search Users -->
+        
         <div class="mb-4">
           <input
             id="searchUsersInput"
@@ -1830,11 +2100,11 @@
             class="w-full px-4 py-2 bg-slate-700 text-slate-100 rounded-lg placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-600"
           />
           <div id="searchResults" class="mt-2 space-y-2 max-h-60 overflow-y-auto">
-            <!-- Search results will appear here -->
+            
           </div>
         </div>
 
-        <!-- Friends List -->
+        
         <div class="border-t border-slate-700 pt-4">
           <div class="flex items-center justify-between mb-2">
             <h4 class="text-sm font-semibold text-slate-400 uppercase tracking-wider">Your Friends</h4>
@@ -1844,7 +2114,7 @@
             </div>
           </div>
           <div id="friendsList" class="space-y-2">
-            <!-- Friends will be rendered here -->
+            
           </div>
 
           <p id="noFriendsMsg" class="text-center text-slate-400 text-sm mt-4">
@@ -1854,7 +2124,7 @@
       </div>
     </div>
 
-    <!-- Blocked Users Modal -->
+    
     <div
       id="blockedUsersModal"
       class="modal-overlay fixed inset-0 z-50 modal-closed items-center justify-center px-4"
@@ -1871,7 +2141,7 @@
         </div>
 
         <div id="blockedUsersList" class="space-y-2">
-          <!-- Blocked users will be rendered here -->
+          
         </div>
 
         <p id="noBlockedUsersMsg" class="text-center text-slate-400 text-sm mt-4">
@@ -1880,7 +2150,7 @@
       </div>
     </div>
 
-    <!-- Image Viewer Modal -->
+    
     <div
       id="imageViewerModal"
       class="fixed inset-0 z-50 hidden items-center justify-center bg-black/90 backdrop-blur-sm"
@@ -1905,13 +2175,13 @@
       />
     </div>
 
-    <!-- Side Panel -->
+    
     <div
       id="sidePanel"
       class="fixed top-0 left-0 h-full w-72 glass-card z-50 flex flex-col transition-transform duration-300"
       style="transform: translateX(-100%);"
     >
-      <!-- Side Panel Header -->
+      
       <div class="flex justify-between items-center p-4 border-b border-slate-700/50">
         <div>
           <h3 class="text-lg font-semibold text-slate-100">Menu</h3>
@@ -1930,9 +2200,9 @@
         </button>
       </div>
 
-      <!-- Side Panel Content -->
+      
       <div class="flex-1 overflow-y-auto p-4 space-y-6">
-        <!-- Profile Section -->
+        
         <div>
           <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Profile</h4>
           <div class="space-y-1">
@@ -1968,7 +2238,7 @@
           </div>
         </div>
 
-        <!-- Social Section -->
+        
         <div>
           <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Social</h4>
           <div class="space-y-1">
@@ -1994,7 +2264,7 @@
               </svg>
               Friends
             </button>
-            <!-- Update Log removed; Patch Notes contains release text -->
+            
             <button
               id="sidePanelPatchNotes"
               class="w-full px-4 py-2.5 text-left text-sm text-slate-100 hover:bg-slate-700/50 rounded-lg transition-colors flex items-center gap-3"
@@ -2002,7 +2272,7 @@
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-slate-300"><path d="M3 7h18M3 12h18M3 17h18"/></svg>
               Patch Notes
             </button>
-            <!-- Update Log menu removed -->
+            
             <button
               id="sidePanelDMs"
               class="w-full px-4 py-2.5 text-left text-sm text-slate-100 hover:bg-slate-700/50 rounded-lg transition-colors flex items-center gap-3"
@@ -2058,13 +2328,13 @@
       </div>
     </div>
 
-    <!-- Direct Messages Page (full page, hidden by default) -->
+    
     <div
       id="dmPage"
       class="hidden flex-1 min-h-0 flex flex-col"
     >
       <div class="glass-card flex-1 min-h-0 flex flex-col w-full rounded-none overflow-hidden">
-        <!-- DM Page Header -->
+        
         <div class="relative flex items-center justify-between px-4 sm:px-5 py-3 bg-slate-900/70 border-b border-slate-800/50">
           <div class="flex items-center gap-3">
             <button
@@ -2081,7 +2351,7 @@
             <span id="dmPageUserLabel" class="text-sm text-slate-200 font-medium"></span>
           </div>
 
-          <!-- Page Navigation Tabs (same as global chat) -->
+          
           <div class="absolute left-1/2 transform -translate-x-1/2 flex items-center gap-1 bg-slate-800/60 rounded-lg p-1">
             <button
               id="navGlobalChat2"
@@ -2126,11 +2396,11 @@
           </button>
         </div>
 
-        <!-- DM Content Area -->
+        
     
-    <!-- Update Log removed -->
+    
         <div class="flex flex-1 min-h-0">
-          <!-- Conversations Sidebar -->
+          
           <div class="w-72 sm:w-80 bg-slate-900/70 border-r border-slate-800 flex flex-col">
             <div class="p-3 border-b border-slate-800">
               <div class="flex items-center gap-2">
@@ -2157,9 +2427,9 @@
             </div>
           </div>
 
-          <!-- Message Area -->
+          
           <div class="flex-1 flex flex-col min-h-0 bg-slate-900">
-            <!-- Active User Header -->
+            
             <div class="px-4 py-3 border-b border-slate-800 flex items-center justify-between bg-slate-900/70">
               <div>
                 <p class="text-xs text-slate-400">Chatting with</p>
@@ -2173,10 +2443,10 @@
               </button>
             </div>
 
-            <!-- Messages -->
+            
             <div id="dmPageMessages" class="flex-1 overflow-y-auto px-4 py-3 space-y-2"></div>
 
-            <!-- DM Media Preview -->
+            
             <div id="dmMediaPreview" class="hidden p-3 bg-slate-800 border-t border-slate-700">
               <div class="flex items-start gap-3">
                 <div id="dmMediaPreviewContent" class="flex-1"></div>
@@ -2194,7 +2464,7 @@
               </div>
             </div>
 
-            <!-- Input -->
+            
             <form id="dmPageForm" class="p-3 border-t border-slate-800 flex items-center gap-2 bg-slate-900/70">
               <button id="dmPageMediaUploadBtn" type="button" title="Upload image" class="p-2 rounded-lg bg-slate-800 border border-slate-700 hover:bg-slate-700 transition-colors">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-slate-400">
@@ -2225,13 +2495,13 @@
       </div>
     </div>
 
-    <!-- Side Panel Overlay -->
+    
     <div
       id="sidePanelOverlay"
       class="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 hidden"
     ></div>
 
-    <!-- Direct Messages Modal -->
+    
     <div
       id="dmModal"
       class="modal-overlay fixed inset-0 z-50 modal-closed items-center justify-center px-4"
@@ -2248,7 +2518,7 @@
         </div>
 
         <div class="flex flex-col sm:flex-row gap-4 min-h-[60vh]">
-          <!-- Conversations list -->
+          
           <div class="sm:w-1/3 bg-slate-900/70 border border-slate-800 rounded-xl p-3 flex flex-col gap-3">
             <div class="flex items-center gap-2">
               <input
@@ -2266,11 +2536,11 @@
             </div>
 
             <div class="flex-1 overflow-y-auto space-y-2" id="dmConversationList">
-              <!-- Conversations injected here -->
+              
             </div>
           </div>
 
-          <!-- Message view -->
+          
           <div class="sm:flex-1 bg-slate-900/70 border border-slate-800 rounded-xl flex flex-col min-h-[50vh]">
             <div class="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
               <div>
@@ -2313,13 +2583,13 @@
       </div>
     </div>
 
-      <!-- Groups Page (full page, hidden by default) -->
+      
       <div
         id="groupsPage"
         class="hidden flex-1 min-h-0 flex flex-col"
       >
         <div class="glass-card flex-1 min-h-0 flex flex-col w-full rounded-none overflow-hidden">
-          <!-- Groups Page Header -->
+          
           <div class="relative flex items-center justify-between px-4 sm:px-5 py-3 bg-slate-900/70 border-b border-slate-800/50">
             <div class="flex items-center gap-3">
               <button id="groupsPageMenuToggle" class="p-1.5 hover:bg-slate-700 rounded-lg transition-colors" title="Menu">
@@ -2342,12 +2612,25 @@
           </div>
 
           <div class="flex flex-1 min-h-0">
-            <!-- Conversations Sidebar -->
+            
             <div class="w-72 sm:w-80 bg-slate-900/70 border-r border-slate-800 flex flex-col">
-              <div class="p-3 border-b border-slate-800">
+              <div class="p-3 border-b border-slate-800 space-y-2">
+                
+                <div class="flex rounded-lg bg-slate-800 p-1" role="tablist" aria-label="Group categories">
+                  <button id="groupTabYours" class="flex-1 px-3 py-1.5 text-xs font-medium rounded-md bg-sky-600 text-white transition-colors" role="tab" aria-selected="true" aria-controls="groupsPageConversationList">Your Groups</button>
+                  <button id="groupTabDiscover" class="flex-1 px-3 py-1.5 text-xs font-medium rounded-md text-slate-400 hover:text-slate-200 transition-colors" role="tab" aria-selected="false" aria-controls="groupsPageConversationList">Discover</button>
+                </div>
                 <div class="flex items-center gap-2">
                   <input id="groupsPageInputSearch" type="text" placeholder="Search groups..." class="flex-1 px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/50 outline-none text-sm" />
                   <button id="groupsPageStartBtn" class="px-3 py-2 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-sm">Create</button>
+                </div>
+                
+                <div class="space-y-1">
+                  <div class="flex items-center gap-2">
+                    <input id="groupInviteCodeInput" type="text" placeholder="Enter invite code..." class="flex-1 px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/50 outline-none text-sm" maxlength="20" />
+                    <button id="groupJoinByCodeBtn" class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm">Join</button>
+                  </div>
+                  <p id="inviteCodeError" class="text-xs text-red-400 min-h-[1rem] hidden"></p>
                 </div>
               </div>
               <div class="flex-1 overflow-y-auto p-2 space-y-1" id="groupsPageConversationList">
@@ -2355,9 +2638,9 @@
               </div>
             </div>
 
-            <!-- Message Area -->
+            
             <div class="flex-1 flex flex-col min-h-0 bg-slate-900">
-              <!-- Clickable Group Header -->
+              
               <button id="groupsPageHeaderBtn" class="w-full px-4 py-3 border-b border-slate-800 flex items-center gap-3 bg-slate-900/70 hover:bg-slate-800/70 transition-colors text-left">
                 <div id="groupHeaderAvatar" class="w-10 h-10 rounded-full bg-gradient-to-br from-sky-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm overflow-hidden flex-shrink-0">
                   <span id="groupHeaderInitial">G</span>
@@ -2373,7 +2656,7 @@
 
               <div id="groupsPageMessages" class="flex-1 overflow-y-auto px-4 py-3 space-y-2"></div>
 
-              <!-- Reply Preview for Groups -->
+              
               <div id="groupReplyPreview" class="hidden px-3 py-2 border-t border-slate-800 bg-slate-900/70">
                 <div class="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-slate-800/50 border-l-2 border-sky-500">
                   <div class="flex-1 min-w-0">
@@ -2396,16 +2679,16 @@
         </div>
       </div>
 
-      <!-- Group Settings Modal -->
+      
       <div id="groupSettingsModal" class="modal-overlay fixed inset-0 z-50 modal-closed items-center justify-center px-4">
-        <div class="glass-card w-full max-w-lg rounded-2xl p-5 max-h-[85vh] overflow-hidden flex flex-col gap-4">
-          <!-- Header -->
+        <div class="glass-card w-full max-w-lg rounded-2xl p-5 max-h-[85vh] overflow-y-auto flex flex-col gap-4">
+          
           <div class="flex items-center justify-between">
             <h3 class="text-lg font-semibold text-slate-100">Group Settings</h3>
             <button id="groupSettingsCloseBtn" class="p-1.5 hover:bg-slate-700 rounded-lg transition-colors text-slate-400 hover:text-slate-200">✕</button>
           </div>
 
-          <!-- Group Photo & Name -->
+          
           <div class="flex flex-col items-center gap-4 py-4 border-b border-slate-700/50">
             <div class="relative group">
               <div id="groupSettingsAvatar" class="w-24 h-24 rounded-full bg-gradient-to-br from-sky-500 to-purple-600 flex items-center justify-center text-white font-bold text-3xl overflow-hidden shadow-lg">
@@ -2422,7 +2705,7 @@
             <p id="groupPhotoHint" class="text-xs text-slate-400">Click photo to change</p>
           </div>
 
-          <!-- Group Name Edit -->
+          
           <div class="space-y-2">
             <label class="text-sm text-slate-300 font-medium">Group Name</label>
             <div class="flex gap-2">
@@ -2431,36 +2714,96 @@
             </div>
           </div>
 
-          <!-- Members Section -->
-          <div class="space-y-2 flex-1 min-h-0 flex flex-col">
+          
+          <div class="space-y-2">
+            <label class="text-sm text-slate-300 font-medium">Description <span class="text-slate-500 font-normal">(shown in Discover)</span></label>
+            <div class="flex gap-2">
+              <input id="groupSettingsDescInput" type="text" maxlength="100" class="flex-1 px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/50 outline-none text-sm text-slate-100" placeholder="Short description..." />
+              <button id="groupSettingsSaveDescBtn" class="px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-sm font-medium">Save</button>
+            </div>
+          </div>
+
+          
+          <div class="space-y-2">
             <div class="flex items-center justify-between">
               <label class="text-sm text-slate-300 font-medium">Members</label>
+              <span id="groupMemberLimitDisplay" class="text-xs text-slate-400"></span>
             </div>
-            <!-- Inline Add Member Search -->
+            
             <div class="relative">
               <input id="groupAddMemberInput" type="text" class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/50 outline-none text-sm text-slate-100" placeholder="Search username to add..." />
               <div id="groupAddMemberResults" class="hidden absolute top-full left-0 right-0 mt-1 bg-slate-800 border border-slate-700 rounded-lg max-h-40 overflow-y-auto z-10 shadow-lg">
-                <!-- Search results will appear here -->
+                
               </div>
             </div>
-            <div id="groupSettingsMemberList" class="flex-1 overflow-y-auto space-y-1 max-h-48 bg-slate-800/50 rounded-lg p-2">
+            <div id="groupSettingsMemberList" class="overflow-y-auto space-y-1 max-h-36 bg-slate-800/50 rounded-lg p-2">
               <p class="text-xs text-slate-500 text-center py-2">No members</p>
             </div>
           </div>
 
-          <!-- Group Info -->
+          
+          <div id="groupMaxMembersContainer" class="hidden space-y-2 pt-2 border-t border-slate-700/50">
+            <label class="text-sm text-slate-300 font-medium">Max Members (Owner Only)</label>
+            <div class="flex items-center gap-2">
+              <input id="groupMaxMembersInput" type="number" min="2" max="500" class="flex-1 px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/50 outline-none text-sm text-slate-100" placeholder="No limit" />
+              <button id="groupMaxMembersSaveBtn" class="px-3 py-2 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-sm">Save</button>
+            </div>
+            <p class="text-xs text-slate-500">Leave empty for unlimited members</p>
+          </div>
+
+          
+          <div id="groupInviteCodesContainer" class="hidden space-y-3 pt-3 border-t border-slate-700/50">
+            <div class="flex items-center justify-between">
+              <label class="text-sm text-slate-300 font-medium">Invite Codes</label>
+              <button id="groupCreateInviteBtn" class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium">+ Create Code</button>
+            </div>
+            <div id="groupInviteCodesList" class="space-y-2 max-h-32 overflow-y-auto">
+              <p class="text-xs text-slate-500 text-center py-2">No invite codes</p>
+            </div>
+          </div>
+
+          
+          <div id="groupCreateInviteForm" class="hidden space-y-3 pt-3 border-t border-slate-700/50 bg-slate-800/50 rounded-lg p-3">
+            <p class="text-sm text-slate-200 font-medium">Create Invite Code</p>
+            <div class="space-y-2">
+              <label class="text-xs text-slate-400">Max Uses (0 = unlimited)</label>
+              <input id="inviteCodeMaxUses" type="number" min="0" max="1000" value="0" class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 focus:border-sky-500 outline-none text-sm text-slate-100" />
+            </div>
+            <div class="flex gap-2">
+              <button id="inviteCodeCancelBtn" class="flex-1 px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 text-sm">Cancel</button>
+              <button id="inviteCodeConfirmBtn" class="flex-1 px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm">Create</button>
+            </div>
+          </div>
+
+          
           <div class="text-xs text-slate-500 space-y-1 pt-2 border-t border-slate-700/50">
             <p>Owner: <span id="groupSettingsOwner" class="text-slate-300">-</span></p>
             <p>Created: <span id="groupSettingsCreated" class="text-slate-300">-</span></p>
             <p id="groupSettingsPublicStatus" class="text-slate-300">Public Group</p>
           </div>
 
-          <!-- Actions -->
+          
+          <div id="groupVisibilityContainer" class="hidden flex items-center justify-between py-3 border-t border-slate-700/50">
+            <div>
+              <p class="text-sm font-medium text-slate-100">Group Visibility</p>
+              <p class="text-xs text-slate-400">Only the owner can change this</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <span id="groupVisibilityLabel" class="text-sm text-slate-300">Private</span>
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" id="groupVisibilityToggle" class="sr-only peer">
+                <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-600"></div>
+              </label>
+            </div>
+          </div>
+
+          
           <div id="groupActionButtons" class="flex gap-2 pt-2">
             <button id="groupSettingsLeaveBtn" class="flex-1 px-4 py-2.5 rounded-lg bg-red-600/20 hover:bg-red-600/40 text-red-400 text-sm font-medium transition-colors">Leave Group</button>
             <button id="groupSettingsDeleteBtn" class="hidden flex-1 px-4 py-2.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium transition-colors">Delete Group</button>
+            <button id="groupTransferOwnershipBtn" class="hidden flex-1 px-4 py-2.5 rounded-lg bg-amber-600/20 hover:bg-amber-600/40 text-amber-400 text-sm font-medium transition-colors">Transfer Ownership</button>
           </div>
-          <!-- Inline Leave Confirmation -->
+          
           <div id="groupLeaveConfirm" class="hidden flex flex-col gap-2 pt-2 border-t border-slate-700/50">
             <p class="text-sm text-slate-300 text-center">Leave this group?</p>
             <div class="flex gap-2">
@@ -2468,7 +2811,7 @@
               <button id="groupLeaveConfirmBtn" class="flex-1 px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium transition-colors">Leave</button>
             </div>
           </div>
-          <!-- Inline Delete Confirmation -->
+          
           <div id="groupDeleteConfirm" class="hidden flex flex-col gap-2 pt-2 border-t border-slate-700/50">
             <p class="text-sm text-red-400 text-center">Delete this group permanently?<br><span class="text-xs text-slate-500">All messages will be lost.</span></p>
             <div class="flex gap-2">
@@ -2476,10 +2819,21 @@
               <button id="groupDeleteConfirmBtn" class="flex-1 px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium transition-colors">Delete</button>
             </div>
           </div>
+          
+          <div id="groupTransferConfirm" class="hidden flex flex-col gap-2 pt-2 border-t border-slate-700/50">
+            <p class="text-sm text-amber-400 text-center">Transfer ownership to a member</p>
+            <select id="groupTransferSelect" class="w-full px-3 py-2 rounded-lg bg-slate-700/50 border border-slate-600 text-slate-200 text-sm">
+              <option value="">Select a member...</option>
+            </select>
+            <div class="flex gap-2">
+              <button id="groupTransferCancelBtn" class="flex-1 px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 text-sm font-medium transition-colors">Cancel</button>
+              <button id="groupTransferConfirmBtn" class="flex-1 px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-sm font-medium transition-colors">Transfer</button>
+            </div>
+          </div>
         </div>
       </div>
 
-      <!-- Create Group Modal -->
+      
       <div id="createGroupModal" class="modal-overlay fixed inset-0 z-50 modal-closed items-center justify-center px-4">
         <div class="glass-card w-full max-w-md rounded-2xl p-5 flex flex-col gap-4">
           <div class="flex items-center justify-between">
@@ -2518,7 +2872,7 @@
         </div>
       </div>
 
-      <!-- Notifications Modal -->
+      
     <div
       id="notifModal"
       class="modal-overlay fixed inset-0 z-50 modal-closed items-center justify-center px-4"
@@ -2547,7 +2901,7 @@
       </div>
     </div>
 
-    <!-- Privacy Settings Modal -->
+    
     <div
       id="privacySettingsModal"
       class="fixed inset-0 z-50 modal-closed flex items-center justify-center px-4 bg-black/50 backdrop-blur-sm"
@@ -2609,6 +2963,23 @@
               <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-600"></div>
             </label>
           </div>
+          
+          
+          <div class="pt-3 border-t border-slate-700/50">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-sm font-medium text-slate-100">Device Identification</p>
+                <p class="text-xs text-slate-400">Canvas fingerprinting for ban enforcement</p>
+              </div>
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" id="canvasConsentToggle" class="sr-only peer">
+                <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-600"></div>
+              </label>
+            </div>
+            <p class="text-xs text-slate-500 mt-1">
+              When enabled, a device identifier is stored to help enforce bans. Disabling will delete your stored identifier. <a href="#" id="canvasConsentLearnMore" class="text-sky-400 hover:underline">Learn more</a>
+            </p>
+          </div>
         </div>
 
         <button
@@ -2620,7 +2991,7 @@
       </div>
     </div>
 
-    <!-- Delete Message Confirmation Modal -->
+    
     <div
       id="deleteMessageModal"
       class="modal-overlay fixed inset-0 z-50 modal-closed items-center justify-center px-4"
@@ -2661,27 +3032,27 @@
       </div>
     </div>
 
-    <!-- Onboarding Walkthrough Overlay -->
+    
     <div
       id="walkthroughOverlay"
       class="fixed inset-0 z-[9999] hidden"
     >
-      <!-- Dark backdrop with hole for highlighted element -->
+      
       <div id="walkthroughBackdrop" class="absolute inset-0 bg-black/70 transition-all duration-300"></div>
       
-      <!-- Highlight ring around current element -->
+      
       <div
         id="walkthroughHighlight"
         class="absolute border-4 border-sky-400 rounded-xl pointer-events-none transition-all duration-300 z-[10000]"
         style="box-shadow: 0 0 20px 5px rgba(56, 189, 248, 0.5); background: transparent;"
       ></div>
 
-      <!-- Tooltip / Info Card -->
+      
       <div
         id="walkthroughTooltip"
         class="absolute z-[10001] w-80 sm:w-96 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl p-5 transition-all duration-300"
       >
-        <!-- Step indicator -->
+        
         <div class="flex items-center justify-between mb-3">
           <span id="walkthroughStepBadge" class="text-xs font-semibold text-sky-400 bg-sky-400/10 px-2 py-1 rounded-full">
             Step 1 of 7
@@ -2694,17 +3065,17 @@
           </button>
         </div>
 
-        <!-- Title -->
+        
         <h3 id="walkthroughTitle" class="text-lg font-bold text-slate-100 mb-2">
           Welcome to Chatra! 👋
         </h3>
 
-        <!-- Description -->
+        
         <p id="walkthroughDesc" class="text-sm text-slate-300 mb-4 leading-relaxed">
           Let's take a quick tour to help you get started.
         </p>
 
-        <!-- Progress bar -->
+        
         <div class="w-full h-1.5 bg-slate-700 rounded-full mb-4 overflow-hidden">
           <div
             id="walkthroughProgress"
@@ -2713,7 +3084,7 @@
           ></div>
         </div>
 
-        <!-- Navigation buttons -->
+        
         <div class="flex gap-2">
           <button
             id="walkthroughPrevBtn"
@@ -2736,7 +3107,7 @@
     <script>
       try { emailjs.init('MVep4XSrJyu-CZHcn'); } catch(e) {}
     </script>
-    <!-- Hidden form for EmailJS sendForm (fields must match template variables) -->
+    
     <form id="recoveryForm" style="display:none;">
       <input type="hidden" name="to_email" />
       <input type="hidden" name="verify_link" />

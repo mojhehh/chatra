@@ -15,6 +15,73 @@
         console.error("[unhandled rejection]", event.reason);
       });
 
+      // --- iPad/Safari Compatibility Fixes ---
+      (function() {
+        // Detect iPad Safari
+        const isIPad = /iPad/.test(navigator.userAgent) || 
+                       (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+                      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        
+        if (isIOS || (isIPad && isSafari)) {
+          document.documentElement.classList.add('ios-device');
+          console.log('[safari] iOS/iPad detected, applying fixes');
+          
+          // Fix 100vh issue - set CSS variable with actual viewport height
+          function setViewportHeight() {
+            const vh = window.innerHeight * 0.01;
+            document.documentElement.style.setProperty('--vh', `${vh}px`);
+            document.documentElement.style.setProperty('--app-height', `${window.innerHeight}px`);
+          }
+          setViewportHeight();
+          window.addEventListener('resize', setViewportHeight);
+          window.addEventListener('orientationchange', () => {
+            setTimeout(setViewportHeight, 100);
+          });
+          
+          // Handle visual viewport changes (keyboard open/close)
+          if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', () => {
+              const vh = window.visualViewport.height * 0.01;
+              document.documentElement.style.setProperty('--vh', `${vh}px`);
+              document.documentElement.style.setProperty('--keyboard-height', 
+                `${window.innerHeight - window.visualViewport.height}px`);
+              // Toggle keyboard-open class for CSS position:fixed rule
+              const keyboardOpen = window.visualViewport.height < window.innerHeight * 0.75;
+              document.body.classList.toggle('keyboard-open', keyboardOpen);
+            });
+          }
+          
+          // Fix iOS keyboard scroll issue
+          document.addEventListener('focusin', (e) => {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+              // Small delay to let keyboard appear
+              setTimeout(() => {
+                e.target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              }, 300);
+            }
+          });
+          
+          // Prevent iOS bounce/overscroll on body
+          document.body.addEventListener('touchmove', (e) => {
+            if (e.target === document.body || e.target === document.documentElement) {
+              e.preventDefault();
+            }
+          }, { passive: false });
+          
+          // Fix double-tap zoom on buttons
+          let lastTouchEnd = 0;
+          document.addEventListener('touchend', (e) => {
+            const now = Date.now();
+            if (now - lastTouchEnd <= 300) {
+              e.preventDefault();
+            }
+            lastTouchEnd = now;
+          }, { passive: false });
+        }
+      })();
+
       // Helper function for detailed error logging
       function logDetailedError(context, error, additionalInfo = {}) {
         const errorObj = {
@@ -33,12 +100,12 @@
       function generateAiReply(query) {
         try {
           const q = (query || '').toLowerCase();
-          if (!q) return "I'm here — ask me anything!";
+          if (!q) return "I'm here â€” ask me anything!";
           if (q.includes('hello') || q.includes('hi')) return 'Hello! How can I help you today?';
-          if (q.includes('help')) return 'Sure — what do you need help with?';
+          if (q.includes('help')) return 'Sure â€” what do you need help with?';
           if (q.includes('rules')) return 'You can find the community rules in the header or ask a moderator.';
-          if (q.includes('joke')) return 'Why did the developer go broke? Because he used up all his cache. 😄';
-          if (q.length < 30) return `You asked: "${query}" — I think that sounds interesting. Tell me more.`;
+          if (q.includes('joke')) return 'Why did the developer go broke? Because he used up all his cache. ðŸ˜„';
+          if (q.length < 30) return `You asked: "${query}" â€” I think that sounds interesting. Tell me more.`;
           return `AI summary: ${query.slice(0, 140)}${query.length > 140 ? '...' : ''}`;
         } catch (e) {
           return "Sorry, I couldn't process that.";
@@ -91,6 +158,380 @@
       }
       const auth = firebase.auth();
       const db = firebase.database();
+
+      // === Browser Fingerprint System (for hardware bans) ===
+      // Device fingerprinting is used to prevent ban evasion.
+      // This is disclosed in the Terms of Service and Privacy Policy.
+      // By using Chatra, users agree to this security measure.
+      
+      // Feature toggle - can be disabled via config
+      const FINGERPRINT_ENABLED = true; // Set to false to disable entire feature
+      
+      // Fail-closed mode: if true, server errors result in treating device as banned
+      // If false (default), server errors allow access (fail-open)
+      const FINGERPRINT_FAIL_CLOSED = false;
+      
+      let cachedFingerprint = null;
+      
+      // Canvas fingerprint is opt-in (more regulated under CCPA)
+      // Consent stored in Firebase so it persists across devices/browsers
+      let canvasConsentCache = null; // Cache to avoid repeated Firebase reads
+      
+      async function checkCanvasConsentFromFirebase(uid) {
+        if (!uid) return false;
+        try {
+          // First check canvasConsentRecord (newer format with version tracking)
+          const recordSnap = await db.ref('users/' + uid + '/canvasConsentRecord').once('value');
+          const record = recordSnap.val();
+          
+          if (record && typeof record === 'object') {
+            // If declined at current version, don't prompt again
+            if (record.granted === false && (record.version || 0) >= CANVAS_CONSENT_VERSION) {
+              return 'declined'; // Special value to indicate user declined
+            }
+            // If granted at current version, return true
+            if (record.granted === true && (record.version || 0) >= CANVAS_CONSENT_VERSION) {
+              return true;
+            }
+            // Version mismatch - re-prompt (return false to show modal)
+          }
+          
+          // Fallback to legacy canvasConsent boolean
+          const snap = await db.ref('users/' + uid + '/canvasConsent').once('value');
+          return snap.val() === true;
+        } catch (e) {
+          return false;
+        }
+      }
+      
+      function hasCanvasConsent() {
+        return canvasConsentCache === true;
+      }
+      
+      // Consent version for tracking - increment when consent terms change
+      const CANVAS_CONSENT_VERSION = 1;
+      
+      async function grantCanvasConsent(uid) {
+        canvasConsentCache = true;
+        cachedFingerprint = null; // Clear cache to regenerate with canvas
+        if (uid) {
+          try {
+            // Record consent with timestamp, version, and user id for compliance
+            await db.ref('users/' + uid + '/canvasConsent').set(true);
+            await db.ref('users/' + uid + '/canvasConsentRecord').set({
+              granted: true,
+              timestamp: firebase.database.ServerValue.TIMESTAMP,
+              version: CANVAS_CONSENT_VERSION,
+              uid: uid
+            });
+          } catch (e) {
+            console.warn('[fingerprint] failed to save consent to Firebase:', e);
+          }
+        }
+      }
+      
+      async function revokeCanvasConsent(uid) {
+        canvasConsentCache = false;
+        cachedFingerprint = null;
+        if (uid) {
+          try {
+            await db.ref('users/' + uid + '/canvasConsent').set(false);
+            await db.ref('users/' + uid + '/canvasConsentRecord').set({
+              granted: false,
+              revokedAt: firebase.database.ServerValue.TIMESTAMP,
+              version: CANVAS_CONSENT_VERSION,
+              uid: uid
+            });
+            // Also remove stored fingerprint
+            await db.ref('users/' + uid + '/fingerprint').remove();
+            showToast('Device identification disabled and data deleted', 'success');
+          } catch (e) {
+            console.warn('[fingerprint] failed to revoke consent:', e);
+          }
+        }
+      }
+      
+      // Show/hide canvas consent modal (called from auth)
+      function showCanvasConsentModal() {
+        const modal = document.getElementById("canvasConsentModal");
+        if (modal) {
+          modal.classList.remove("modal-closed");
+          modal.classList.add("modal-open");
+        }
+      }
+      
+      function hideCanvasConsentModal() {
+        const modal = document.getElementById("canvasConsentModal");
+        if (modal) {
+          modal.classList.remove("modal-open");
+          modal.classList.add("modal-closed");
+        }
+      }
+      
+      // Core fingerprint computation
+      async function computeFingerprintHash() {
+        const components = [];
+        
+        // === MANDATORY signals (always collected, disclosed in ToS/Privacy) ===
+        
+        // Screen properties
+        components.push('scr:' + screen.width + 'x' + screen.height + 'x' + screen.colorDepth);
+        components.push('avail:' + screen.availWidth + 'x' + screen.availHeight);
+        
+        // Timezone
+        components.push('tz:' + Intl.DateTimeFormat().resolvedOptions().timeZone);
+        components.push('tzo:' + new Date().getTimezoneOffset());
+        
+        // Language
+        components.push('lang:' + navigator.language);
+        components.push('langs:' + (navigator.languages || []).join(','));
+        
+        // Platform
+        components.push('plat:' + navigator.platform);
+        
+        // Hardware concurrency (CPU cores)
+        components.push('cores:' + (navigator.hardwareConcurrency || 'unknown'));
+        
+        // Device memory (if available)
+        components.push('mem:' + (navigator.deviceMemory || 'unknown'));
+        
+        // Touch support
+        components.push('touch:' + ('ontouchstart' in window ? 'yes' : 'no'));
+        components.push('maxt:' + (navigator.maxTouchPoints || 0));
+        
+        // WebGL fingerprint (vendor/renderer info - not as regulated as canvas)
+        try {
+          const canvas = document.createElement('canvas');
+          const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+          if (gl) {
+            const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+            if (debugInfo) {
+              components.push('glv:' + gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL));
+              components.push('glr:' + gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL));
+            }
+          }
+        } catch (e) {
+          components.push('webgl:error');
+        }
+        
+        // === OPTIONAL signal (requires consent under CCPA) ===
+        
+        // Canvas fingerprint (unique to GPU/driver) - only if user consented
+        if (hasCanvasConsent()) {
+          try {
+            const canvas = document.createElement('canvas');
+            canvas.width = 200;
+            canvas.height = 50;
+            const ctx = canvas.getContext('2d');
+            ctx.textBaseline = 'top';
+            ctx.font = '14px Arial';
+            ctx.fillStyle = '#f60';
+            ctx.fillRect(125, 1, 62, 20);
+            ctx.fillStyle = '#069';
+            ctx.fillText('Chatra FP', 2, 15);
+            ctx.fillStyle = 'rgba(102, 204, 0, 0.7)';
+            ctx.fillText('Browser', 4, 17);
+            components.push('canvas:' + canvas.toDataURL().slice(-50));
+          } catch (e) {
+            components.push('canvas:error');
+          }
+        } else {
+          components.push('canvas:not_consented');
+        }
+        
+        // Create hash from components
+        const fpString = components.join('|');
+        return await hashString(fpString);
+      }
+      
+      // Generate and cache fingerprint
+      async function generateBrowserFingerprint() {
+        if (!FINGERPRINT_ENABLED) return null;
+        if (cachedFingerprint) return cachedFingerprint;
+        
+        try {
+          const hash = await computeFingerprintHash();
+          cachedFingerprint = hash;
+          console.log('[fingerprint] generated browser fingerprint');
+          return hash;
+        } catch (e) {
+          console.warn('[fingerprint] generation failed:', e);
+          return null;
+        }
+      }
+      
+      async function hashString(str) {
+        const encoder = new TextEncoder();
+        const data = encoder.encode(str);
+        const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+      }
+      
+      // Server-side fingerprint ban check (calls Cloud Function to avoid exposing ban list)
+      // failClosed param overrides global FINGERPRINT_FAIL_CLOSED setting
+      async function checkFingerprintBanViaServer(fp, failClosed = null) {
+        const useFailClosed = failClosed !== null ? failClosed : FINGERPRINT_FAIL_CLOSED;
+        
+        try {
+          // Call server endpoint that only returns boolean, not ban details
+          const workerUrl = 'https://recovery-modmojheh.modmojheh.workers.dev';
+          const res = await fetch(workerUrl + '/check-fingerprint-ban', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fingerprint: fp })
+          });
+          
+          if (res.ok) {
+            try {
+              const data = await res.json();
+              console.log('[fingerprint] server check success, banned:', data.banned);
+              return { banned: data.banned === true, reason: data.banned ? 'Device restricted' : null };
+            } catch (parseErr) {
+              // JSON parse error - server returned OK but invalid JSON
+              console.error('[fingerprint] server response parse error:', parseErr);
+              if (useFailClosed) {
+                return { banned: true, reason: 'Device verification failed' };
+              }
+              return { banned: false };
+            }
+          } else {
+            // Server returned error status (4xx/5xx)
+            console.error('[fingerprint] server error status:', res.status);
+            if (useFailClosed) {
+              return { banned: true, reason: 'Device verification unavailable' };
+            }
+            return { banned: false };
+          }
+        } catch (networkErr) {
+          // Network-level error (no connection, timeout, etc.)
+          console.warn('[fingerprint] network error:', networkErr.message || networkErr);
+          // Network errors are typically fail-open even in fail-closed mode
+          // to avoid blocking users due to temporary connectivity issues
+          if (useFailClosed) {
+            return { banned: true, reason: 'Device verification failed - check connection' };
+          }
+          return { banned: false };
+        }
+      }
+      
+      async function checkFingerprintBan() {
+        if (!FINGERPRINT_ENABLED) {
+          return { banned: false };
+        }
+        
+        try {
+          const fp = await generateBrowserFingerprint();
+          if (!fp) {
+            console.warn('[fingerprint] could not generate fingerprint');
+            if (FINGERPRINT_FAIL_CLOSED) {
+              return { banned: true, reason: 'Device verification failed' };
+            }
+            return { banned: false };
+          }
+          
+          return await checkFingerprintBanViaServer(fp);
+        } catch (e) {
+          console.warn('[fingerprint] check failed:', e);
+          if (FINGERPRINT_FAIL_CLOSED) {
+            return { banned: true, reason: 'Device verification error' };
+          }
+          return { banned: false };
+        }
+      }
+      
+      async function banFingerprint(reason = 'Ban evasion') {
+        if (!isAdmin) {
+          console.error('[fingerprint] only admins can ban fingerprints');
+          return false;
+        }
+        if (!FINGERPRINT_ENABLED) {
+          console.error('[fingerprint] feature disabled');
+          return false;
+        }
+        try {
+          const fp = await generateBrowserFingerprint();
+          if (!fp) {
+            console.error('[fingerprint] cannot ban - no fingerprint available');
+            return false;
+          }
+          await db.ref('bannedFingerprints/' + fp).set({
+            reason: reason,
+            timestamp: Date.now(),
+            bannedBy: currentUserId
+          });
+          // Audit log
+          await db.ref('auditLog/fingerprintBans').push({
+            action: 'ban',
+            fpHash: fp.slice(0, 16) + '...',
+            reason: reason,
+            adminUid: currentUserId,
+            timestamp: Date.now()
+          });
+          console.log('[fingerprint] banned fingerprint:', fp.slice(0, 16) + '...');
+          return true;
+        } catch (e) {
+          console.error('[fingerprint] failed to ban:', e);
+          return false;
+        }
+      }
+      
+      async function banTargetFingerprint(targetFp, reason = 'Admin ban') {
+        if (!isAdmin) {
+          console.error('[fingerprint] only admins can ban fingerprints');
+          return false;
+        }
+        if (!FINGERPRINT_ENABLED) {
+          console.error('[fingerprint] feature disabled');
+          return false;
+        }
+        if (!targetFp || targetFp.length < 32) {
+          console.error('[fingerprint] invalid fingerprint hash');
+          return false;
+        }
+        try {
+          await db.ref('bannedFingerprints/' + targetFp).set({
+            reason: reason,
+            timestamp: Date.now(),
+            bannedBy: currentUserId
+          });
+          // Audit log
+          await db.ref('auditLog/fingerprintBans').push({
+            action: 'ban',
+            fpHash: targetFp.slice(0, 16) + '...',
+            reason: reason,
+            adminUid: currentUserId,
+            timestamp: Date.now()
+          });
+          console.log('[fingerprint] banned target fingerprint:', targetFp.slice(0, 16) + '...');
+          return true;
+        } catch (e) {
+          console.error('[fingerprint] failed to ban target:', e);
+          return false;
+        }
+      }
+      
+      async function unbanFingerprint(fpHash) {
+        if (!isAdmin) {
+          console.error('[fingerprint] only admins can unban fingerprints');
+          return false;
+        }
+        try {
+          await db.ref('bannedFingerprints/' + fpHash).remove();
+          // Audit log
+          await db.ref('auditLog/fingerprintBans').push({
+            action: 'unban',
+            fpHash: fpHash.slice(0, 16) + '...',
+            adminUid: currentUserId,
+            timestamp: Date.now()
+          });
+          console.log('[fingerprint] unbanned fingerprint:', fpHash.slice(0, 16) + '...');
+          return true;
+        } catch (e) {
+          console.error('[fingerprint] failed to unban:', e);
+          return false;
+        }
+      }
 
       // === Online Presence System ===
       let presenceRef = null;
@@ -173,24 +614,31 @@
       
       // AI short-term memory per user (max 1000 chars per user)
       const AI_MEMORY_LIMIT = 1000;
-      const aiConversationMemory = new Map(); // userId -> [{role: 'user'|'assistant', content: string}]
+      const aiConversationMemory = new Map(); // userId -> { username: string, history: [{role: 'user'|'assistant', content: string}] }
       
-      function addToAiMemory(userId, role, content) {
+      function addToAiMemory(userId, role, content, username = null) {
         if (!aiConversationMemory.has(userId)) {
-          aiConversationMemory.set(userId, []);
+          aiConversationMemory.set(userId, { username: username || 'User', history: [] });
         }
-        const history = aiConversationMemory.get(userId);
-        history.push({ role, content });
+        const memEntry = aiConversationMemory.get(userId);
+        if (username) memEntry.username = username;
+        memEntry.history.push({ role, content });
         // Trim to keep under 1000 chars total
-        let totalChars = history.reduce((sum, m) => sum + m.content.length, 0);
-        while (totalChars > AI_MEMORY_LIMIT && history.length > 1) {
-          const removed = history.shift();
+        let totalChars = memEntry.history.reduce((sum, m) => sum + m.content.length, 0);
+        while (totalChars > AI_MEMORY_LIMIT && memEntry.history.length > 1) {
+          const removed = memEntry.history.shift();
           totalChars -= removed.content.length;
         }
       }
       
       function getAiMemory(userId) {
-        return aiConversationMemory.get(userId) || [];
+        const memEntry = aiConversationMemory.get(userId);
+        return memEntry ? memEntry.history : [];
+      }
+      
+      function getAiUsername(userId) {
+        const memEntry = aiConversationMemory.get(userId);
+        return memEntry ? memEntry.username : 'User';
       }
       
       function clearAiMemory(userId) {
@@ -232,21 +680,21 @@
               const newName = prompt('AI display name:', aiProfile.name || 'AI Assistant');
               if (newName === null) return;
               await aiProfileRef.child('name').set(newName.trim() || 'AI Assistant');
-              alert('AI name updated.');
+              showToast('AI name updated', 'success');
               return;
             }
             if (a === 'bio') {
               const newBio = prompt('AI bio/description (optional):', aiProfile.bio || '');
               if (newBio === null) return;
               await aiProfileRef.child('bio').set(newBio.trim() || '');
-              alert('AI bio updated.');
+              showToast('AI bio updated', 'success');
               return;
             }
             if (a === 'url') {
               const newAvatar = prompt('AI avatar image URL (optional):', aiProfile.avatar || '');
               if (newAvatar === null) return;
               await aiProfileRef.child('avatar').set(newAvatar.trim() || null);
-              alert('AI avatar URL updated.');
+              showToast('AI avatar URL updated', 'success');
               return;
             }
 
@@ -254,7 +702,7 @@
               // Upload an image via the Cloudflare Worker upload endpoint
               const uploadWorkerUrl = 'https://chatra.modmojheh.workers.dev';
               if (!uploadWorkerUrl || uploadWorkerUrl.includes('your-worker-subdomain')) {
-                alert('Upload worker not configured. Update the uploadWorkerUrl in code.');
+                showToast('Upload worker not configured', 'error');
                 return;
               }
 
@@ -276,18 +724,18 @@
                 try { data = await res.json(); } catch (e) { const txt = await res.text(); throw new Error('Upload failed: ' + txt); }
                 if (!res.ok || !data?.url) throw new Error(data?.error || 'Upload failed');
                 await aiProfileRef.child('avatar').set(data.url);
-                alert('AI avatar uploaded and profile updated.');
+                showToast('AI avatar uploaded', 'success');
               } catch (upErr) {
                 console.error('[AI] upload error', upErr);
-                alert('AI avatar upload failed: ' + upErr.message);
+                showToast('AI avatar upload failed: ' + upErr.message, 'error');
               }
               return;
             }
 
-            alert('Unknown action. Valid: name, url, upload, bio');
+            showToast('Unknown action. Valid: name, url, upload, bio', 'error');
           } catch (e) {
             console.error('[AI] error updating profile', e);
-            alert('Failed to update AI profile. See console for details.');
+            showToast('Failed to update AI profile', 'error');
           }
         });
 
@@ -312,10 +760,13 @@
       }
 
       // Analytics helper: sends to gtag and firebase.analytics (if available)
+      // Skip entirely on localhost to avoid Tracking Prevention console spam
       function sendAnalyticsEvent(name, params = {}) {
+        // Skip analytics on localhost
+        if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') return;
         try {
           if (window.gtag) {
-            try { window.gtag('event', name, params); } catch (e) { console.warn('[analytics] gtag event failed', e); }
+            try { window.gtag('event', name, params); } catch (e) { /* ignore */ }
           }
         } catch (e) {}
         try {
@@ -332,6 +783,11 @@
       const registerForm = document.getElementById("registerForm");
       const chatInterface = document.getElementById("chatInterface");
       const loadingScreen = document.getElementById("loadingScreen");
+
+      // Ensure loading screen is visible immediately while we check auth state
+      if (loadingScreen) {
+        loadingScreen.classList.remove('hidden');
+      }
 
       const loginUsernameInput = document.getElementById("loginUsername");
       const loginPasswordInput = document.getElementById("loginPassword");
@@ -376,51 +832,95 @@
       const logoutBtn = document.getElementById("logoutBtn");
       const chatUserLabel = document.getElementById("chatUserLabel");
 
-      // Community Guidelines modal elements (shown when user types their first message)
+      // Community Guidelines modal elements (shown once per account, saved to Firebase)
       const guidelinesModal = document.getElementById("guidelinesModal");
       const guidelinesAgreeBtn = document.getElementById("guidelinesAgreeBtn");
-      const guidelinesCloseBtn = document.getElementById("guidelinesCloseBtn");
+      const guidelinesCheckbox = document.getElementById("guidelinesCheckbox");
 
-      // Show guidelines modal on first typed character (per-device/local only)
-      function attachGuidelinesOnFirstType(inputEl) {
-        if (!inputEl) return;
-        try {
-          const ack = localStorage.getItem('chatra_guidelines_ack');
-          if (ack === '1') return;
-        } catch (e) {}
-
-        const onFirstInput = (e) => {
-          const val = (e.target && e.target.value) ? e.target.value.trim() : '';
-          if (!val) {
-            // If still empty, listen again for the first non-empty input
-            inputEl.addEventListener('input', onFirstInput, { once: true });
-            return;
-          }
-          if (guidelinesModal) {
-            guidelinesModal.classList.remove('modal-closed');
-            guidelinesModal.classList.add('modal-open');
-          }
-        };
-
-        inputEl.addEventListener('input', onFirstInput, { once: true });
-      }
-
-      if (msgInput) attachGuidelinesOnFirstType(msgInput);
-
-      if (guidelinesAgreeBtn) {
-        guidelinesAgreeBtn.addEventListener('click', () => {
-          try { localStorage.setItem('chatra_guidelines_ack', '1'); } catch (e) {}
-          if (guidelinesModal) {
-            guidelinesModal.classList.add('modal-closed');
-            guidelinesModal.classList.remove('modal-open');
+      // Enable/disable agree button based on checkbox
+      if (guidelinesCheckbox && guidelinesAgreeBtn) {
+        guidelinesCheckbox.addEventListener('change', () => {
+          if (guidelinesCheckbox.checked) {
+            guidelinesAgreeBtn.disabled = false;
+            guidelinesAgreeBtn.classList.remove('bg-slate-700', 'text-slate-500', 'cursor-not-allowed');
+            guidelinesAgreeBtn.classList.add('bg-sky-600', 'hover:bg-sky-700', 'text-slate-100', 'cursor-pointer');
+            guidelinesAgreeBtn.textContent = 'I Agree - Continue to Chatra';
+          } else {
+            guidelinesAgreeBtn.disabled = true;
+            guidelinesAgreeBtn.classList.add('bg-slate-700', 'text-slate-500', 'cursor-not-allowed');
+            guidelinesAgreeBtn.classList.remove('bg-sky-600', 'hover:bg-sky-700', 'text-slate-100', 'cursor-pointer');
+            guidelinesAgreeBtn.textContent = 'Check the box above to continue';
           }
         });
       }
-      if (guidelinesCloseBtn) {
-        guidelinesCloseBtn.addEventListener('click', () => {
-          if (guidelinesModal) {
+
+      // Helper to reset guidelines modal to initial state
+      function resetGuidelinesModal() {
+        if (guidelinesCheckbox) {
+          guidelinesCheckbox.checked = false;
+        }
+        if (guidelinesAgreeBtn) {
+          guidelinesAgreeBtn.disabled = true;
+          guidelinesAgreeBtn.classList.remove('bg-sky-600', 'hover:bg-sky-700', 'text-slate-100', 'cursor-pointer');
+          guidelinesAgreeBtn.classList.add('bg-slate-700', 'text-slate-500', 'cursor-not-allowed');
+          guidelinesAgreeBtn.textContent = 'Check the box above to continue';
+        }
+      }
+
+      // Show guidelines modal if user hasn't accepted (check Firebase)
+      // Returns a Promise that resolves when guidelines are accepted (or immediately if already accepted)
+      let guidelinesAcceptedResolver = null;
+      async function checkAndShowGuidelines(uid) {
+        if (!uid || !guidelinesModal) return Promise.resolve();
+        try {
+          const snap = await firebase.database().ref(`users/${uid}/guidelinesAccepted`).once('value');
+          if (!snap.exists() || snap.val() !== true) {
+            // Reset modal state before showing
+            resetGuidelinesModal();
+            // Show modal - user hasn't accepted yet
+            guidelinesModal.classList.remove('modal-closed');
+            guidelinesModal.classList.add('modal-open');
+            // Return a promise that resolves when user accepts
+            return new Promise(resolve => {
+              guidelinesAcceptedResolver = resolve;
+            });
+          }
+        } catch (e) {
+          console.error('Error checking guidelines acceptance:', e);
+        }
+        return Promise.resolve();
+      }
+
+      // Save guidelines acceptance to Firebase
+      if (guidelinesAgreeBtn) {
+        guidelinesAgreeBtn.addEventListener('click', async () => {
+          if (guidelinesAgreeBtn.disabled) return;
+          const user = firebase.auth().currentUser;
+          if (!user) return;
+          
+          try {
+            // Save to Firebase
+            await firebase.database().ref(`users/${user.uid}/guidelinesAccepted`).set(true);
+            await firebase.database().ref(`users/${user.uid}/guidelinesAcceptedAt`).set(firebase.database.ServerValue.TIMESTAMP);
+            
+            // Also save to localStorage as backup
+            try { localStorage.setItem('chatra_guidelines_ack', '1'); } catch (e) {}
+            
+            // Close modal
             guidelinesModal.classList.add('modal-closed');
             guidelinesModal.classList.remove('modal-open');
+            
+            // Reset modal state for next time
+            resetGuidelinesModal();
+            
+            // Resolve the waiting promise so walkthrough can start
+            if (guidelinesAcceptedResolver) {
+              guidelinesAcceptedResolver();
+              guidelinesAcceptedResolver = null;
+            }
+          } catch (e) {
+            console.error('Error saving guidelines acceptance:', e);
+            showToast('Error saving. Please try again.', 'error');
           }
         });
       }
@@ -751,33 +1251,69 @@
         renderGroupsList(cachedGroups, q);
       }
       
+      // Track which tab is active: 'yours' or 'discover'
+      let activeGroupTab = 'yours';
+      
       function renderGroupsList(groups, filterQuery = '') {
         const listEl = document.getElementById('groupsPageConversationList');
         if (!listEl) return;
         
         listEl.innerHTML = '';
-        let count = 0;
+        
+        // Separate groups into "yours" and "discover"
+        const yourGroups = [];
+        const publicGroups = [];
         
         Object.entries(groups).forEach(([groupId, info]) => {
-          // Filter by visibility
-          const isPublic = info && info.isPublic === true;
-          const isMember = info && info.members && info.members[currentUserId];
-          if (!isPublic && !isMember && !isAdmin) return;
+          if (!info) return;
+          const isMember = info.members && info.members[currentUserId];
+          const isPublic = info.isPublic === true;
+          
+          // Compute memberCount once and cache it
+          const memberCount = info.members ? Object.keys(info.members).filter(k => info.members[k]).length : 0;
           
           // Filter by search query
-          const name = (info && info.name) ? info.name : ('Group ' + groupId);
+          const name = info.name || ('Group ' + groupId);
           if (filterQuery && !name.toLowerCase().includes(filterQuery) && !groupId.toLowerCase().includes(filterQuery)) {
             return;
           }
           
-          count++;
-          const row = document.createElement('button');
+          // Your Groups: ALL groups you're a member of (public AND private)
+          if (isMember) {
+            yourGroups.push({ groupId, info, memberCount });
+          }
+          // Discover: all PUBLIC groups (including ones you're in, shown with 'Joined' badge)
+          if (isPublic || isAdmin) {
+            publicGroups.push({ groupId, info, memberCount });
+          }
+        });
+        
+        // Sort public groups by member count (most popular first) - use cached count
+        publicGroups.sort((a, b) => b.memberCount - a.memberCount);
+        
+        const groupsToShow = activeGroupTab === 'yours' ? yourGroups : publicGroups;
+        
+        if (groupsToShow.length === 0) {
+          listEl.innerHTML = activeGroupTab === 'yours'
+            ? '<p class="text-xs text-slate-500 text-center py-4">You haven\'t joined any groups yet</p>'
+            : '<p class="text-xs text-slate-500 text-center py-4">No public groups available</p>';
+          return;
+        }
+        
+        groupsToShow.forEach(({ groupId, info, memberCount }) => {
+          const name = info.name || ('Group ' + groupId);
+          const maxMembers = info.maxMembers || 0;
+          const isFull = maxMembers > 0 && memberCount >= maxMembers;
+          const isMember = info.members && info.members[currentUserId];
+          const isPrivate = info.isPublic !== true;
+          
+          const row = document.createElement('div');
           row.className = 'w-full px-3 py-2.5 text-left text-sm text-slate-100 hover:bg-slate-700/50 rounded-lg transition-colors flex items-center gap-3';
           
           // Group avatar
           const avatar = document.createElement('div');
           avatar.className = 'w-10 h-10 rounded-full bg-gradient-to-br from-sky-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm overflow-hidden flex-shrink-0';
-          if (info && info.photo) {
+          if (info.photo) {
             avatar.innerHTML = `<img src="${info.photo}" class="w-full h-full object-cover" alt="" />`;
           } else {
             avatar.textContent = name.charAt(0).toUpperCase();
@@ -785,28 +1321,190 @@
           
           // Group info
           const infoDiv = document.createElement('div');
-          infoDiv.className = 'flex-1 min-w-0';
+          infoDiv.className = 'flex-1 min-w-0 cursor-pointer';
+          
+          // Name with privacy indicator for Your Groups
           const nameP = document.createElement('p');
-          nameP.className = 'font-medium truncate';
+          nameP.className = 'font-medium truncate flex items-center gap-1.5';
           nameP.textContent = name;
-          const memberCount = info && info.members ? Object.keys(info.members).filter(k => info.members[k]).length : 0;
-          const countP = document.createElement('p');
-          countP.className = 'text-xs text-slate-400';
-          countP.textContent = memberCount === 1 ? '1 member' : memberCount + ' members';
+          if (activeGroupTab === 'yours' && isPrivate) {
+            const lockIcon = document.createElement('span');
+            lockIcon.className = 'text-slate-500 text-xs';
+            lockIcon.textContent = '🔒';
+            lockIcon.title = 'Private group';
+            nameP.appendChild(lockIcon);
+          }
+          
+          // Description or member count
+          const descP = document.createElement('p');
+          descP.className = 'text-xs text-slate-400 truncate';
+          
+          // In Discover tab, show description if available, otherwise member count
+          if (activeGroupTab === 'discover' && info.description) {
+            descP.textContent = info.description.substring(0, 60) + (info.description.length > 60 ? '...' : '');
+          } else {
+            descP.textContent = maxMembers > 0 
+              ? `${memberCount}/${maxMembers} members` 
+              : (memberCount === 1 ? '1 member' : memberCount + ' members');
+          }
+          
           infoDiv.appendChild(nameP);
-          infoDiv.appendChild(countP);
+          infoDiv.appendChild(descP);
           
           row.appendChild(avatar);
           row.appendChild(infoDiv);
-          row.addEventListener('click', () => openGroupsPageThread(groupId, info));
+          
+          // For discover tab, show join button or joined badge
+          if (activeGroupTab === 'discover') {
+            if (isMember) {
+              const joinedBadge = document.createElement('span');
+              joinedBadge.className = 'px-3 py-1.5 rounded-lg bg-slate-600 text-slate-300 text-xs font-medium';
+              joinedBadge.textContent = 'Joined';
+              row.appendChild(joinedBadge);
+            } else {
+              const joinBtn = document.createElement('button');
+              joinBtn.className = isFull 
+                ? 'px-3 py-1.5 rounded-lg bg-slate-600 text-slate-400 text-xs font-medium cursor-not-allowed'
+                : 'px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium';
+              joinBtn.textContent = isFull ? 'Full' : 'Join';
+              joinBtn.disabled = isFull;
+              if (!isFull) {
+                joinBtn.addEventListener('click', async (e) => {
+                  e.stopPropagation();
+                  await joinPublicGroup(groupId, info);
+                });
+              }
+              row.appendChild(joinBtn);
+            }
+          }
+          
+          // Click on row to open group (if member or in your groups tab)
+          if (isMember || activeGroupTab === 'yours') {
+            infoDiv.addEventListener('click', () => openGroupsPageThread(groupId, info));
+            avatar.style.cursor = 'pointer';
+            avatar.addEventListener('click', () => openGroupsPageThread(groupId, info));
+          }
+          
           listEl.appendChild(row);
         });
+      }
+      
+      // Centralized capacity check - returns true if user can join, false if full
+      // Owners and site admins bypass the limit
+      function canJoinGroup(groupInfo, joiningUserId) {
+        if (!groupInfo) return false;
+        const maxMembers = groupInfo.maxMembers || 0;
+        if (maxMembers <= 0) return true; // No limit
         
-        if (count === 0) {
-          listEl.innerHTML = filterQuery 
-            ? '<p class="text-xs text-slate-500 text-center py-4">No groups match your search</p>'
-            : '<p class="text-xs text-slate-500 text-center py-4">No groups available</p>';
+        // Owners and site admins bypass
+        if (groupInfo.owner === joiningUserId || isAdmin) return true;
+        
+        const memberCount = groupInfo.memberCount || (groupInfo.members ? Object.keys(groupInfo.members).filter(k => groupInfo.members[k]).length : 0);
+        return memberCount < maxMembers;
+      }
+      
+      // Atomic join with memberCount transaction - returns true if joined, false if full/failed
+      async function atomicJoinGroup(groupId, uid) {
+        const memberRef = db.ref('groups/' + groupId + '/members/' + uid);
+        const countRef = db.ref('groups/' + groupId + '/memberCount');
+        
+        // First set membership
+        await memberRef.set(true);
+        
+        // Then atomically increment memberCount (rules enforce capacity)
+        try {
+          await countRef.transaction((count) => (count || 0) + 1);
+          return true;
+        } catch (e) {
+          // If transaction fails due to capacity, remove membership
+          console.error('memberCount transaction failed:', e);
+          await memberRef.remove();
+          return false;
         }
+      }
+      
+      // Atomic leave - decrement memberCount
+      async function atomicLeaveGroup(groupId, uid) {
+        const memberRef = db.ref('groups/' + groupId + '/members/' + uid);
+        const countRef = db.ref('groups/' + groupId + '/memberCount');
+        
+        await memberRef.remove();
+        
+        try {
+          await countRef.transaction((count) => Math.max(0, (count || 1) - 1));
+        } catch (e) {
+          console.warn('memberCount decrement failed:', e);
+        }
+      }
+      
+      async function joinPublicGroup(groupId, info) {
+        if (!currentUserId || !groupId) return;
+        
+        // Check if already a member
+        if (info.members && info.members[currentUserId]) {
+          showToast('You\'re already in this group!', 'info');
+          activeGroupTab = 'yours';
+          updateGroupTabs();
+          openGroupsPageThread(groupId, info);
+          return;
+        }
+        
+        // Check capacity (pre-check, atomic enforcement via memberCount)
+        if (!canJoinGroup(info, currentUserId)) {
+          showToast('This group is full', 'error');
+          return;
+        }
+        
+        try {
+          // Atomic join with memberCount transaction (rules enforce capacity)
+          const joined = await atomicJoinGroup(groupId, currentUserId);
+          if (!joined) {
+            showToast('This group is full', 'error');
+            return;
+          }
+          
+          // Add system message
+          await db.ref('groups/' + groupId + '/messages').push({
+            fromUid: 'system',
+            fromUsername: 'System',
+            text: `${currentUsername} joined the group`,
+            time: Date.now(),
+            isSystem: true
+          });
+          
+          showToast('Joined group!', 'success');
+          await loadGroupsPageConversations();
+          
+          // Switch to your groups tab and open with fresh data
+          activeGroupTab = 'yours';
+          updateGroupTabs();
+          openGroupsPageThread(groupId, cachedGroups[groupId] || info);
+        } catch (e) {
+          console.error('Join group error:', e);
+          showToast('Failed to join: ' + e.message, 'error');
+        }
+      }
+      
+      function updateGroupTabs() {
+        const yoursBtn = document.getElementById('groupTabYours');
+        const discoverBtn = document.getElementById('groupTabDiscover');
+        if (yoursBtn && discoverBtn) {
+          if (activeGroupTab === 'yours') {
+            yoursBtn.className = 'flex-1 px-3 py-1.5 text-xs font-medium rounded-md bg-sky-600 text-white transition-colors';
+            yoursBtn.setAttribute('aria-selected', 'true');
+            discoverBtn.className = 'flex-1 px-3 py-1.5 text-xs font-medium rounded-md text-slate-400 hover:text-slate-200 transition-colors';
+            discoverBtn.setAttribute('aria-selected', 'false');
+          } else {
+            yoursBtn.className = 'flex-1 px-3 py-1.5 text-xs font-medium rounded-md text-slate-400 hover:text-slate-200 transition-colors';
+            yoursBtn.setAttribute('aria-selected', 'false');
+            discoverBtn.className = 'flex-1 px-3 py-1.5 text-xs font-medium rounded-md bg-sky-600 text-white transition-colors';
+            discoverBtn.setAttribute('aria-selected', 'true');
+          }
+        }
+        // Re-render list with current tab
+        const searchInput = document.getElementById('groupsPageInputSearch');
+        const query = searchInput ? searchInput.value.toLowerCase().trim() : '';
+        renderGroupsList(cachedGroups, query);
       }
 
       async function loadGroupsPageConversations() {
@@ -830,7 +1528,7 @@
           if (msg.indexOf('permission_denied') !== -1 || msg.indexOf('permission-denied') !== -1) {
             const attempts = parseInt(listEl.dataset.groupLoadAttempts || '0', 10) || 0;
             listEl.dataset.groupLoadAttempts = attempts + 1;
-            listEl.innerHTML = '<p class="text-xs text-yellow-300 text-center py-4">Unable to load groups yet — retrying...</p>';
+            listEl.innerHTML = '<p class="text-xs text-yellow-300 text-center py-4">Unable to load groups yet â€” retrying...</p>';
             if (attempts < 3) {
               // retry after a short delay (may be due to auth/rules timing)
               setTimeout(() => loadGroupsPageConversations(), 800 + attempts * 400);
@@ -872,6 +1570,17 @@
             const msg = snap.val();
             const messagesEl = document.getElementById('groupsPageMessages');
             if (!messagesEl) return;
+            
+            // Handle system messages (join/leave) as small inline notifications
+            if (msg.isSystem) {
+              const systemRow = document.createElement('div');
+              systemRow.className = 'w-full flex justify-center my-2';
+              systemRow.innerHTML = `<span class="text-[10px] text-slate-500 bg-slate-800/50 px-3 py-1 rounded-full">${escapeHtml(msg.text)}</span>`;
+              messagesEl.appendChild(systemRow);
+              messagesEl.scrollTop = messagesEl.scrollHeight;
+              return;
+            }
+            
             // Map group message shape to the global message shape
             const mapped = {
               user: msg.fromUsername || msg.fromUid || 'Unknown',
@@ -903,13 +1612,22 @@
           payload.replyTo = replyTo;
         }
 
-        // Ensure the current user is a member before sending. Rules allow users to set
-        // their own membership, so try to join silently if not already a member.
+        // Ensure the current user is a member before sending. Check capacity first.
         try {
           const memSnap = await db.ref('groups/' + groupId + '/members/' + currentUserId).once('value');
           if (!memSnap.exists()) {
+            // Check capacity before auto-joining
+            const groupSnap = await db.ref('groups/' + groupId).once('value');
+            const groupInfo = groupSnap.val();
+            if (!canJoinGroup(groupInfo, currentUserId)) {
+              throw new Error('This group is full. You cannot send messages.');
+            }
             try {
-              await db.ref('groups/' + groupId + '/members/' + currentUserId).set(true);
+              // Atomic join with memberCount transaction
+              const joined = await atomicJoinGroup(groupId, currentUserId);
+              if (!joined) {
+                throw new Error('This group is full. You cannot send messages.');
+              }
             } catch (joinErr) {
               console.warn('[groups] auto-join failed', joinErr);
               throw new Error('You are not a member of this group and could not join automatically. Request to join or ask the group owner to add you.');
@@ -955,8 +1673,9 @@
             // Fetch AI response
             (async () => {
               let botReply = null;
-              addToAiMemory(currentUserId, 'user', aiQuery);
+              addToAiMemory(currentUserId, 'user', aiQuery, currentUsername);
               const conversationHistory = getAiMemory(currentUserId);
+              const talkingToUsername = getAiUsername(currentUserId) || currentUsername || 'User';
               
               try {
                 const aiWorkerUrl = 'https://recovery-modmojheh.modmojheh.workers.dev';
@@ -964,7 +1683,7 @@
                   const r = await fetch(aiWorkerUrl + '/ai', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ prompt: aiQuery, history: conversationHistory })
+                    body: JSON.stringify({ prompt: aiQuery, history: conversationHistory, username: talkingToUsername })
                   });
                   if (r.ok) {
                     const jr = await r.json();
@@ -979,9 +1698,9 @@
               
               // Sanitize response
               botReply = botReply.replace(/\n{3,}/g, '\n\n').trim();
-              botReply = botReply.replace(/@everyone/gi, '@​everyone');
+              botReply = botReply.replace(/@everyone/gi, '@â€‹everyone');
               
-              addToAiMemory(currentUserId, 'assistant', botReply);
+              addToAiMemory(currentUserId, 'assistant', botReply, currentUsername);
               
               // Post AI response in group
               try {
@@ -1005,28 +1724,44 @@
         const groupRef = db.ref('groups/' + key);
         const snap = await groupRef.once('value');
         if (!snap.exists()) {
-          // Creating new group - no join message needed (creator is automatically in)
-          await groupRef.set({ name: name, owner: currentUserId, isPublic: true, members: { [currentUserId]: true }, createdAt: Date.now() });
+          // Creating new group - set memberCount to 1 for owner
+          await groupRef.set({ name: name, owner: currentUserId, isPublic: true, members: { [currentUserId]: true }, memberCount: 1, createdAt: Date.now() });
         } else {
-          // Joining existing group - check if already a member
-          const memberSnap = await groupRef.child('members').child(currentUserId).once('value');
-          const wasAlreadyMember = memberSnap.exists();
-          await groupRef.child('members').child(currentUserId).set(true);
+          // Joining existing group - check capacity
+          const groupInfo = snap.val();
           
-          // Post join message if not already a member
-          if (!wasAlreadyMember) {
-            await db.ref('groups/' + key + '/messages').push({
-              fromUid: 'system',
-              fromUsername: 'System',
-              text: `${currentUsername || 'Someone'} has joined the group`,
-              time: Date.now(),
-              isSystem: true
-            });
+          // Check if already a member
+          if (groupInfo.members && groupInfo.members[currentUserId]) {
+            // Already a member, just open
+            await loadGroupsPageConversations();
+            openGroupsPageThread(key, cachedGroups[key] || { name });
+            return;
           }
+          
+          if (!canJoinGroup(groupInfo, currentUserId)) {
+            showToast('This group is full', 'error');
+            return;
+          }
+          
+          // Atomic join with memberCount transaction
+          const joined = await atomicJoinGroup(key, currentUserId);
+          if (!joined) {
+            showToast('This group is full', 'error');
+            return;
+          }
+          
+          // Post join message
+          await db.ref('groups/' + key + '/messages').push({
+            fromUid: 'system',
+            fromUsername: 'System',
+            text: `${currentUsername || 'Someone'} has joined the group`,
+            time: Date.now(),
+            isSystem: true
+          });
         }
         // refresh list and open
         await loadGroupsPageConversations();
-        openGroupsPageThread(key, { name });
+        openGroupsPageThread(key, cachedGroups[key] || { name });
       }
 
       // Add a username to a group's members. If username is current user, allow self-join.
@@ -1051,39 +1786,61 @@
           username = userSnap.val() || 'Someone';
         } catch (e) {}
         
-        // If targeting self, allow setting your own membership
+        // Fetch group info for capacity check
+        const groupSnap = await db.ref('groups/' + groupId).once('value');
+        const groupInfo = groupSnap.val();
+        if (!groupInfo) throw new Error('Group not found');
+        
+        // If targeting self, allow setting your own membership with capacity check
         if (uid === currentUserId) {
-          const wasAlreadyMember = (await db.ref('groups/' + groupId + '/members/' + currentUserId).once('value')).exists();
-          await db.ref('groups/' + groupId + '/members/' + currentUserId).set(true);
-          
-          // Post join message if not already a member
-          if (!wasAlreadyMember && showJoinMessage) {
-            await db.ref('groups/' + groupId + '/messages').push({
-              fromUid: 'system',
-              fromUsername: 'System',
-              text: `${currentUsername || username} has joined the group`,
-              time: Date.now(),
-              isSystem: true
-            });
+          if (!canJoinGroup(groupInfo, currentUserId)) {
+            throw new Error('This group is full');
+          }
+          const wasAlreadyMember = groupInfo.members && groupInfo.members[currentUserId];
+          if (!wasAlreadyMember) {
+            // Atomic join with memberCount transaction
+            const joined = await atomicJoinGroup(groupId, currentUserId);
+            if (!joined) {
+              throw new Error('This group is full');
+            }
+            
+            // Post join message
+            if (showJoinMessage) {
+              await db.ref('groups/' + groupId + '/messages').push({
+                fromUid: 'system',
+                fromUsername: 'System',
+                text: `${currentUsername || username} has joined the group`,
+                time: Date.now(),
+                isSystem: true
+              });
+            }
           }
           return;
         }
         // Otherwise, only group owner or admins may add others
-        const groupSnap = await db.ref('groups/' + groupId + '/owner').once('value');
-        const ownerUid = groupSnap.val();
+        const ownerUid = groupInfo.owner;
         if (ownerUid === currentUserId || isAdmin) {
-          const wasAlreadyMember = (await db.ref('groups/' + groupId + '/members/' + uid).once('value')).exists();
-          await db.ref('groups/' + groupId + '/members/' + uid).set(true);
-          
-          // Post join message if not already a member
-          if (!wasAlreadyMember && showJoinMessage) {
-            await db.ref('groups/' + groupId + '/messages').push({
-              fromUid: 'system',
-              fromUsername: 'System',
-              text: `${username} has joined the group`,
-              time: Date.now(),
-              isSystem: true
-            });
+          // Owners/admins bypass capacity when adding others but still track memberCount
+          const wasAlreadyMember = groupInfo.members && groupInfo.members[uid];
+          if (!wasAlreadyMember) {
+            await db.ref('groups/' + groupId + '/members/' + uid).set(true);
+            // Increment memberCount (owners bypass capacity check in rules)
+            try {
+              await db.ref('groups/' + groupId + '/memberCount').transaction((count) => (count || 0) + 1);
+            } catch (e) {
+              console.warn('memberCount increment failed:', e);
+            }
+            
+            // Post join message
+            if (showJoinMessage) {
+              await db.ref('groups/' + groupId + '/messages').push({
+                fromUid: 'system',
+                fromUsername: 'System',
+                text: `${username} has joined the group`,
+                time: Date.now(),
+                isSystem: true
+              });
+            }
           }
           return;
         }
@@ -1131,16 +1888,21 @@
         
         const info = currentGroupInfo;
         const nameInput = document.getElementById('groupSettingsNameInput');
+        const descInput = document.getElementById('groupSettingsDescInput');
         const avatar = document.getElementById('groupSettingsAvatar');
         const initial = document.getElementById('groupSettingsInitial');
         const ownerEl = document.getElementById('groupSettingsOwner');
         const createdEl = document.getElementById('groupSettingsCreated');
         const publicStatus = document.getElementById('groupSettingsPublicStatus');
         const deleteBtn = document.getElementById('groupSettingsDeleteBtn');
+        const transferBtn = document.getElementById('groupTransferOwnershipBtn');
         const photoLabel = document.getElementById('groupPhotoUploadLabel');
         
         // Set name
         if (nameInput) nameInput.value = info.name || '';
+        
+        // Set description
+        if (descInput) descInput.value = info.description || '';
         
         // Set avatar
         if (avatar && initial) {
@@ -1172,12 +1934,34 @@
           createdEl.textContent = new Date(info.createdAt).toLocaleDateString();
         }
         
-        // Public status
+        // Visibility toggle - owner only
+        const visibilityToggle = document.getElementById('groupVisibilityToggle');
+        const visibilityLabel = document.getElementById('groupVisibilityLabel');
+        if (visibilityToggle && visibilityLabel) {
+          visibilityToggle.checked = info.isPublic === true;
+          visibilityLabel.textContent = info.isPublic ? 'Public' : 'Private';
+          
+          // Only owner can change visibility
+          const visibilityContainer = document.getElementById('groupVisibilityContainer');
+          if (visibilityContainer) {
+            if (info.owner === currentUserId || isAdmin) {
+              visibilityContainer.classList.remove('hidden');
+            } else {
+              visibilityContainer.classList.add('hidden');
+            }
+          }
+        }
+        
+        // Public status display
         if (publicStatus) {
           publicStatus.textContent = info.isPublic ? 'Public Group' : 'Private Group';
         }
         
-        // Show delete button only for owner or admin
+        // Check if current user can edit (owner, site admin, or group admin)
+        const groupAdmins = info.groupAdmins || {};
+        const canEdit = info.owner === currentUserId || isAdmin || groupAdmins[currentUserId] === true;
+        
+        // Show delete button only for owner or site admin
         if (deleteBtn) {
           if (info.owner === currentUserId || isAdmin) {
             deleteBtn.classList.remove('hidden');
@@ -1186,17 +1970,279 @@
           }
         }
         
-        // Show/hide photo upload based on permissions
-        if (photoLabel) {
+        // Show transfer button only for owner or site admin
+        if (transferBtn) {
           if (info.owner === currentUserId || isAdmin) {
+            transferBtn.classList.remove('hidden');
+          } else {
+            transferBtn.classList.add('hidden');
+          }
+        }
+        
+        // Show/hide photo upload and name edit based on permissions
+        if (photoLabel) {
+          if (canEdit) {
             photoLabel.classList.remove('pointer-events-none', 'hidden');
           } else {
             photoLabel.classList.add('pointer-events-none');
           }
         }
         
+        // Show/hide name save button based on permissions
+        const saveNameBtn = document.getElementById('groupSettingsSaveNameBtn');
+        if (saveNameBtn) {
+          if (canEdit) {
+            saveNameBtn.classList.remove('hidden');
+          } else {
+            saveNameBtn.classList.add('hidden');
+          }
+        }
+        
+        // Make name input readonly if no edit permission
+        if (nameInput) {
+          nameInput.readOnly = !canEdit;
+        }
+        
+        // Member limit display
+        const memberLimitDisplay = document.getElementById('groupMemberLimitDisplay');
+        const members = info.members || {};
+        const memberCount = Object.keys(members).filter(k => members[k]).length;
+        const maxMembers = info.maxMembers || 0;
+        if (memberLimitDisplay) {
+          memberLimitDisplay.textContent = maxMembers > 0 
+            ? `${memberCount}/${maxMembers}` 
+            : `${memberCount} total`;
+        }
+        
+        // Max members setting (owner only)
+        const maxMembersContainer = document.getElementById('groupMaxMembersContainer');
+        const maxMembersInput = document.getElementById('groupMaxMembersInput');
+        if (maxMembersContainer && maxMembersInput) {
+          if (info.owner === currentUserId || isAdmin) {
+            maxMembersContainer.classList.remove('hidden');
+            maxMembersInput.value = info.maxMembers || '';
+          } else {
+            maxMembersContainer.classList.add('hidden');
+          }
+        }
+        
+        // Invite codes section (owner only)
+        const inviteCodesContainer = document.getElementById('groupInviteCodesContainer');
+        if (inviteCodesContainer) {
+          if (info.owner === currentUserId || isAdmin) {
+            inviteCodesContainer.classList.remove('hidden');
+            await loadGroupInviteCodes();
+          } else {
+            inviteCodesContainer.classList.add('hidden');
+          }
+        }
+        
         // Load members
         await loadGroupMembers();
+      }
+      
+      // === Invite Code Functions ===
+      async function loadGroupInviteCodes() {
+        const listEl = document.getElementById('groupInviteCodesList');
+        if (!listEl || !activeGroupId) return;
+        
+        try {
+          const snap = await db.ref('groupInviteCodes').orderByChild('groupId').equalTo(activeGroupId).once('value');
+          const codes = snap.val() || {};
+          
+          if (Object.keys(codes).length === 0) {
+            listEl.innerHTML = '<p class="text-xs text-slate-500 text-center py-2">No invite codes</p>';
+            return;
+          }
+          
+          listEl.innerHTML = '';
+          Object.entries(codes).forEach(([code, data]) => {
+            const row = document.createElement('div');
+            row.className = 'flex items-center gap-2 px-2 py-1.5 rounded-lg bg-slate-800/50';
+            
+            const usesText = data.maxUses > 0 && data.maxUses < 999999
+              ? `${data.uses || 0}/${data.maxUses} uses` 
+              : `${data.uses || 0} uses (∞)`;
+            
+            row.innerHTML = `
+              <code class="flex-1 text-xs text-emerald-400 font-mono">${code}</code>
+              <span class="text-xs text-slate-400">${usesText}</span>
+              <button class="copy-code-btn p-1 hover:bg-slate-700 rounded text-slate-400 hover:text-slate-200" data-code="${code}" title="Copy">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4">
+                  <path d="M7 3.5A1.5 1.5 0 0 1 8.5 2h3.879a1.5 1.5 0 0 1 1.06.44l3.122 3.12a1.5 1.5 0 0 1 .439 1.061V11.5A1.5 1.5 0 0 1 15.5 13H8.5A1.5 1.5 0 0 1 7 11.5v-8Z" />
+                  <path d="M4.5 6A1.5 1.5 0 0 0 3 7.5v9A1.5 1.5 0 0 0 4.5 18h7a1.5 1.5 0 0 0 1.5-1.5v-2a.5.5 0 0 0-1 0v2a.5.5 0 0 1-.5.5h-7a.5.5 0 0 1-.5-.5v-9a.5.5 0 0 1 .5-.5h2a.5.5 0 0 0 0-1h-2Z" />
+                </svg>
+              </button>
+              <button class="delete-code-btn p-1 hover:bg-red-600/30 rounded text-red-400" data-code="${code}" title="Delete">✕</button>
+            `;
+            listEl.appendChild(row);
+          });
+          
+          // Add copy handlers
+          listEl.querySelectorAll('.copy-code-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+              const code = btn.dataset.code;
+              navigator.clipboard.writeText(code).then(() => {
+                showToast('Code copied!', 'success');
+              }).catch(() => {
+                showToast('Failed to copy', 'error');
+              });
+            });
+          });
+          
+          // Add delete handlers
+          listEl.querySelectorAll('.delete-code-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+              const code = btn.dataset.code;
+              
+              // Create inline popup confirmation
+              const popup = document.createElement('div');
+              popup.className = 'absolute z-50 bg-slate-800 border border-slate-600 rounded-lg p-3 shadow-xl';
+              popup.style.cssText = 'right: 0; top: 100%; margin-top: 4px; min-width: 160px;';
+              popup.innerHTML = `
+                <p class="text-xs text-slate-300 mb-2">Delete this code?</p>
+                <div class="flex gap-2">
+                  <button class="confirm-delete flex-1 px-2 py-1 text-xs bg-red-600 hover:bg-red-700 text-white rounded">Delete</button>
+                  <button class="cancel-delete flex-1 px-2 py-1 text-xs bg-slate-600 hover:bg-slate-500 text-white rounded">Cancel</button>
+                </div>
+              `;
+              
+              // Position relative to button
+              btn.parentElement.style.position = 'relative';
+              btn.parentElement.appendChild(popup);
+              
+              popup.querySelector('.cancel-delete').addEventListener('click', () => popup.remove());
+              popup.querySelector('.confirm-delete').addEventListener('click', async () => {
+                popup.remove();
+                try {
+                  await db.ref('groupInviteCodes/' + code).remove();
+                  await loadGroupInviteCodes();
+                  showToast('Code deleted', 'success');
+                } catch (e) {
+                  showToast('Failed to delete: ' + e.message, 'error');
+                }
+              });
+              
+              // Auto-close after 5 seconds
+              setTimeout(() => popup.remove(), 5000);
+            });
+          });
+        } catch (e) {
+          console.error('Load invite codes error:', e);
+          listEl.innerHTML = '<p class="text-xs text-red-400 text-center py-2">Failed to load codes</p>';
+        }
+      }
+      
+      function generateInviteCode() {
+        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+        let code = '';
+        for (let i = 0; i < 8; i++) {
+          code += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        return code;
+      }
+      
+      async function createGroupInviteCode(maxUses = 999999) {
+        if (!activeGroupId || !currentGroupInfo) return;
+        
+        // Only owner can create codes
+        if (currentGroupInfo.owner !== currentUserId && !isAdmin) {
+          showToast('Only the group owner can create invite codes', 'error');
+          return;
+        }
+        
+        // Prevent invalid codes (must be at least 1)
+        if (maxUses < 1) {
+          showToast('Max uses must be at least 1 (or leave empty for unlimited)', 'error');
+          return;
+        }
+        
+        const code = generateInviteCode();
+        
+        try {
+          await db.ref('groupInviteCodes/' + code).set({
+            groupId: activeGroupId,
+            createdBy: currentUserId,
+            createdAt: Date.now(),
+            maxUses: maxUses,
+            uses: 0
+          });
+          
+          showToast('Invite code created: ' + code, 'success');
+          await loadGroupInviteCodes();
+        } catch (e) {
+          showToast('Failed to create code: ' + e.message, 'error');
+        }
+      }
+      
+      async function joinGroupByInviteCode(code) {
+        if (!currentUserId || !code) throw new Error('Please sign in first');
+        
+        // Look up the invite code
+        const codeSnap = await db.ref('groupInviteCodes/' + code).once('value');
+        const codeData = codeSnap.val();
+        
+        if (!codeData) {
+          throw new Error('Invalid invite code');
+        }
+        
+        const groupId = codeData.groupId;
+        
+        // Check if code has reached max uses (0 is invalid, high numbers like 999999 = unlimited)
+        if (codeData.maxUses === 0) {
+          throw new Error('This invite code is invalid');
+        }
+        if (codeData.maxUses > 0 && codeData.maxUses < 999999 && (codeData.uses || 0) >= codeData.maxUses) {
+          throw new Error('This invite code has expired');
+        }
+        
+        // Get group info
+        const groupSnap = await db.ref('groups/' + groupId).once('value');
+        const groupInfo = groupSnap.val();
+        
+        if (!groupInfo) {
+          throw new Error('Group no longer exists');
+        }
+        
+        // Check if already a member
+        if (groupInfo.members && groupInfo.members[currentUserId]) {
+          showToast('You\'re already in this group!', 'info');
+          activeGroupTab = 'yours';
+          updateGroupTabs();
+          openGroupsPageThread(groupId, groupInfo);
+          return;
+        }
+        
+        // Check capacity using centralized function
+        if (!canJoinGroup(groupInfo, currentUserId)) {
+          throw new Error('This group is full');
+        }
+        
+        // Atomic join with memberCount transaction (rules enforce capacity)
+        const joined = await atomicJoinGroup(groupId, currentUserId);
+        if (!joined) {
+          throw new Error('This group is full');
+        }
+        
+        // Increment invite code uses atomically
+        await db.ref('groupInviteCodes/' + code + '/uses').transaction((uses) => (uses || 0) + 1);
+        
+        // Add system message
+        await db.ref('groups/' + groupId + '/messages').push({
+          fromUid: 'system',
+          fromUsername: 'System',
+          text: `${currentUsername} joined via invite code`,
+          time: Date.now(),
+          isSystem: true
+        });
+        
+        showToast('Joined ' + (groupInfo.name || 'group') + '!', 'success');
+        await loadGroupsPageConversations();
+        
+        // Switch to your groups and open with fresh data
+        activeGroupTab = 'yours';
+        updateGroupTabs();
+        openGroupsPageThread(groupId, cachedGroups[groupId] || groupInfo);
       }
       
       async function loadGroupMembers() {
@@ -1213,6 +2259,8 @@
         }
         
         listEl.innerHTML = '';
+        const groupAdmins = info.groupAdmins || {};
+        const isCurrentUserOwner = info.owner === currentUserId;
         
         for (const uid of memberUids) {
           const row = document.createElement('div');
@@ -1229,18 +2277,55 @@
           } catch (e) {}
           
           const isOwner = info.owner === uid;
+          const isGroupAdmin = groupAdmins[uid] === true;
+          
+          // Build badges HTML
+          let badgesHtml = '';
+          if (isOwner) {
+            badgesHtml = '<span class="text-xs px-2 py-0.5 rounded bg-sky-600/30 text-sky-300">Owner</span>';
+          } else if (isGroupAdmin) {
+            badgesHtml = '<span class="text-xs px-2 py-0.5 rounded bg-purple-600/30 text-purple-300">Admin</span>';
+          }
+          
+          // Build actions HTML - owner can toggle admin status, owner/admin can remove members
+          let actionsHtml = '';
+          if (!isOwner && (isCurrentUserOwner || isAdmin)) {
+            actionsHtml += `<button class="toggle-admin-btn text-xs px-2 py-0.5 rounded ${isGroupAdmin ? 'bg-yellow-600/20 text-yellow-400 hover:bg-yellow-600/40' : 'bg-purple-600/20 text-purple-400 hover:bg-purple-600/40'}" data-uid="${uid}">${isGroupAdmin ? 'Remove Admin' : 'Make Admin'}</button>`;
+            actionsHtml += `<button class="remove-member-btn text-xs px-2 py-0.5 rounded bg-red-600/20 text-red-400 hover:bg-red-600/40" data-uid="${uid}">Remove</button>`;
+          }
           
           row.innerHTML = `
             <div class="w-8 h-8 rounded-full bg-slate-600 flex items-center justify-center overflow-hidden flex-shrink-0">
               ${profilePic ? `<img src="${profilePic}" class="w-full h-full object-cover" />` : `<span class="text-xs text-slate-300">${username.charAt(0).toUpperCase()}</span>`}
             </div>
             <span class="flex-1 text-sm text-slate-200 truncate">${escapeHtml(username)}</span>
-            ${isOwner ? '<span class="text-xs px-2 py-0.5 rounded bg-sky-600/30 text-sky-300">Owner</span>' : ''}
-            ${!isOwner && (info.owner === currentUserId || isAdmin) ? `<button class="remove-member-btn text-xs px-2 py-0.5 rounded bg-red-600/20 text-red-400 hover:bg-red-600/40" data-uid="${uid}">Remove</button>` : ''}
+            ${badgesHtml}
+            ${actionsHtml}
           `;
           
           listEl.appendChild(row);
         }
+        
+        // Add toggle admin handlers
+        listEl.querySelectorAll('.toggle-admin-btn').forEach(btn => {
+          btn.addEventListener('click', async (e) => {
+            const uid = e.target.dataset.uid;
+            if (!uid || !activeGroupId) return;
+            const currentlyAdmin = (currentGroupInfo?.groupAdmins || {})[uid] === true;
+            try {
+              if (currentlyAdmin) {
+                await db.ref('groups/' + activeGroupId + '/groupAdmins/' + uid).remove();
+                showToast('Removed admin privileges', 'success');
+              } else {
+                await db.ref('groups/' + activeGroupId + '/groupAdmins/' + uid).set(true);
+                showToast('Made user a group admin', 'success');
+              }
+              await updateGroupSettingsModal();
+            } catch (err) {
+              showToast('Failed to update admin status: ' + err.message, 'error');
+            }
+          });
+        });
         
         // Add remove member handlers
         listEl.querySelectorAll('.remove-member-btn').forEach(btn => {
@@ -1249,7 +2334,10 @@
             if (!uid || !activeGroupId) return;
             if (!confirm('Remove this member from the group?')) return;
             try {
-              await db.ref('groups/' + activeGroupId + '/members/' + uid).remove();
+              // Use atomic leave to decrement memberCount
+              await atomicLeaveGroup(activeGroupId, uid);
+              // Also remove from groupAdmins if they were one
+              await db.ref('groups/' + activeGroupId + '/groupAdmins/' + uid).remove();
               await loadGroupMembers();
               updateGroupHeaderMemberCount();
             } catch (err) {
@@ -1263,8 +2351,10 @@
         if (!activeGroupId || !newName.trim()) return;
         
         const info = currentGroupInfo || {};
-        if (info.owner !== currentUserId && !isAdmin) {
-          showToast('Only the group owner can change the name', 'error');
+        const groupAdmins = info.groupAdmins || {};
+        const canEdit = info.owner === currentUserId || isAdmin || groupAdmins[currentUserId] === true;
+        if (!canEdit) {
+          showToast('Only the group owner or admins can change the name', 'error');
           return;
         }
         
@@ -1292,8 +2382,10 @@
         if (!activeGroupId || !file) return;
         
         const info = currentGroupInfo || {};
-        if (info.owner !== currentUserId && !isAdmin) {
-          showToast('Only the group owner can change the photo', 'error');
+        const groupAdmins = info.groupAdmins || {};
+        const canEdit = info.owner === currentUserId || isAdmin || groupAdmins[currentUserId] === true;
+        if (!canEdit) {
+          showToast('Only the group owner or admins can change the photo', 'error');
           return;
         }
         
@@ -1388,7 +2480,8 @@
         if (!activeGroupId || !currentUserId) return;
         
         try {
-          await db.ref('groups/' + activeGroupId + '/members/' + currentUserId).remove();
+          // Use atomic leave to decrement memberCount
+          await atomicLeaveGroup(activeGroupId, currentUserId);
           hideLeaveConfirm();
           closeGroupSettingsModal();
           activeGroupId = null;
@@ -1460,6 +2553,55 @@
         }
       }
       
+      // Transfer ownership functions
+      function showTransferConfirm() {
+        const el = document.getElementById('groupTransferConfirm');
+        if (el) el.classList.remove('hidden');
+        
+        // Populate member dropdown
+        const select = document.getElementById('groupTransferSelect');
+        if (select && currentGroupInfo) {
+          select.innerHTML = '<option value="">Select a member...</option>';
+          const members = currentGroupInfo.members || {};
+          Object.keys(members).filter(uid => members[uid] && uid !== currentUserId).forEach(async (uid) => {
+            try {
+              const snap = await db.ref('users/' + uid + '/username').once('value');
+              const username = snap.val() || uid;
+              const option = document.createElement('option');
+              option.value = uid;
+              option.textContent = username;
+              select.appendChild(option);
+            } catch (e) {}
+          });
+        }
+      }
+      
+      function hideTransferConfirm() {
+        const el = document.getElementById('groupTransferConfirm');
+        if (el) el.classList.add('hidden');
+      }
+      
+      async function confirmTransferOwnership() {
+        if (!activeGroupId || !currentGroupInfo) return;
+        
+        const select = document.getElementById('groupTransferSelect');
+        const newOwnerId = select ? select.value : '';
+        
+        if (!newOwnerId) {
+          showToast('Please select a member', 'error');
+          return;
+        }
+        
+        try {
+          await db.ref('groups/' + activeGroupId + '/owner').set(newOwnerId);
+          hideTransferConfirm();
+          showToast('Ownership transferred!', 'success');
+          await updateGroupSettingsModal();
+        } catch (e) {
+          showToast('Failed to transfer: ' + e.message, 'error');
+        }
+      }
+      
       // Initialize group settings event listeners
       function initGroupSettingsListeners() {
         // Header click opens settings
@@ -1482,6 +2624,41 @@
           });
         }
         
+        // Visibility toggle (owner only)
+        const visibilityToggle = document.getElementById('groupVisibilityToggle');
+        if (visibilityToggle) {
+          visibilityToggle.addEventListener('change', async () => {
+            if (!activeGroupId || !currentGroupInfo) return;
+            
+            // Double-check owner permission
+            if (currentGroupInfo.owner !== currentUserId && !isAdmin) {
+              showToast('Only the group owner can change visibility', 'error');
+              visibilityToggle.checked = currentGroupInfo.isPublic === true;
+              return;
+            }
+            
+            const newValue = visibilityToggle.checked;
+            try {
+              await db.ref('groups/' + activeGroupId + '/isPublic').set(newValue);
+              currentGroupInfo.isPublic = newValue;
+              
+              // Update label
+              const label = document.getElementById('groupVisibilityLabel');
+              if (label) label.textContent = newValue ? 'Public' : 'Private';
+              
+              // Update status text
+              const status = document.getElementById('groupSettingsPublicStatus');
+              if (status) status.textContent = newValue ? 'Public Group' : 'Private Group';
+              
+              showToast(newValue ? 'Group is now public' : 'Group is now private', 'success');
+              await loadGroupsPageConversations();
+            } catch (e) {
+              showToast('Failed to update visibility: ' + e.message, 'error');
+              visibilityToggle.checked = currentGroupInfo.isPublic === true;
+            }
+          });
+        }
+        
         // Save name
         const saveNameBtn = document.getElementById('groupSettingsSaveNameBtn');
         if (saveNameBtn) {
@@ -1490,6 +2667,33 @@
             if (input) {
               await updateGroupName(input.value);
               showToast('Group name saved', 'success');
+            }
+          });
+        }
+        
+        // Save description
+        const saveDescBtn = document.getElementById('groupSettingsSaveDescBtn');
+        if (saveDescBtn) {
+          saveDescBtn.addEventListener('click', async () => {
+            if (!activeGroupId || !currentGroupInfo) return;
+            if (currentGroupInfo.owner !== currentUserId && !isAdmin && !currentGroupInfo.groupAdmins?.[currentUserId]) {
+              showToast('Only owner/admins can change description', 'error');
+              return;
+            }
+            const input = document.getElementById('groupSettingsDescInput');
+            if (input) {
+              const desc = input.value.trim();
+              try {
+                if (desc) {
+                  await db.ref('groups/' + activeGroupId + '/description').set(desc);
+                } else {
+                  await db.ref('groups/' + activeGroupId + '/description').remove();
+                }
+                currentGroupInfo.description = desc || null;
+                showToast('Description saved', 'success');
+              } catch (e) {
+                showToast('Failed to save: ' + e.message, 'error');
+              }
             }
           });
         }
@@ -1610,10 +2814,117 @@
         const deleteConfirmBtn = document.getElementById('groupDeleteConfirmBtn');
         if (deleteConfirmBtn) deleteConfirmBtn.addEventListener('click', confirmDeleteGroup);
         
+        // Transfer ownership
+        const transferBtn = document.getElementById('groupTransferOwnershipBtn');
+        if (transferBtn) transferBtn.addEventListener('click', showTransferConfirm);
+        const transferCancelBtn = document.getElementById('groupTransferCancelBtn');
+        if (transferCancelBtn) transferCancelBtn.addEventListener('click', hideTransferConfirm);
+        const transferConfirmBtn = document.getElementById('groupTransferConfirmBtn');
+        if (transferConfirmBtn) transferConfirmBtn.addEventListener('click', confirmTransferOwnership);
+        
         // Group reply cancel button
         const groupReplyCancelBtn = document.getElementById('groupReplyCancelBtn');
         if (groupReplyCancelBtn) {
           groupReplyCancelBtn.addEventListener('click', clearGroupReply);
+        }
+        
+        // Max members save button
+        const maxMembersSaveBtn = document.getElementById('groupMaxMembersSaveBtn');
+        if (maxMembersSaveBtn) {
+          maxMembersSaveBtn.addEventListener('click', async () => {
+            if (!activeGroupId || !currentGroupInfo) return;
+            if (currentGroupInfo.owner !== currentUserId && !isAdmin) {
+              showToast('Only the owner can change max members', 'error');
+              return;
+            }
+            
+            const input = document.getElementById('groupMaxMembersInput');
+            const rawValue = input ? input.value.trim() : '';
+            
+            // Handle empty input = remove limit
+            if (rawValue === '' || rawValue === '0') {
+              try {
+                await db.ref('groups/' + activeGroupId + '/maxMembers').remove();
+                currentGroupInfo.maxMembers = null;
+                showToast('Member limit removed', 'success');
+                await updateGroupSettingsModal();
+              } catch (e) {
+                showToast('Failed to save: ' + e.message, 'error');
+              }
+              return;
+            }
+            
+            // Validate input
+            const value = parseInt(rawValue, 10);
+            if (isNaN(value) || value < 0) {
+              showToast('Please enter a valid number (0 or empty for no limit)', 'error');
+              return;
+            }
+            
+            // Clamp to reasonable range (1-10000)
+            const maxVal = Math.min(Math.max(value, 1), 10000);
+            if (maxVal !== value) {
+              showToast(`Value clamped to ${maxVal} (range: 1-10000)`, 'info');
+            }
+            
+            try {
+              await db.ref('groups/' + activeGroupId + '/maxMembers').set(maxVal);
+              currentGroupInfo.maxMembers = maxVal;
+              showToast(`Max members set to ${maxVal}`, 'success');
+              await updateGroupSettingsModal();
+            } catch (e) {
+              showToast('Failed to save: ' + e.message, 'error');
+            }
+          });
+        }
+        
+        // Invite code buttons
+        const createInviteBtn = document.getElementById('groupCreateInviteBtn');
+        const createInviteForm = document.getElementById('groupCreateInviteForm');
+        const inviteCodeCancelBtn = document.getElementById('inviteCodeCancelBtn');
+        const inviteCodeConfirmBtn = document.getElementById('inviteCodeConfirmBtn');
+        
+        if (createInviteBtn && createInviteForm) {
+          createInviteBtn.addEventListener('click', () => {
+            createInviteForm.classList.remove('hidden');
+          });
+        }
+        if (inviteCodeCancelBtn && createInviteForm) {
+          inviteCodeCancelBtn.addEventListener('click', () => {
+            createInviteForm.classList.add('hidden');
+          });
+        }
+        if (inviteCodeConfirmBtn) {
+          inviteCodeConfirmBtn.addEventListener('click', async () => {
+            const maxUsesInput = document.getElementById('inviteCodeMaxUses');
+            const rawValue = maxUsesInput ? maxUsesInput.value.trim() : '';
+            
+            // Validate maxUses input - empty or 0 = unlimited (999999)
+            let maxUses = 999999; // Default to unlimited
+            if (rawValue !== '' && rawValue !== '0') {
+              const parsed = parseInt(rawValue, 10);
+              if (isNaN(parsed) || parsed < 1) {
+                showToast('Please enter at least 1 use (leave empty for unlimited)', 'error');
+                return;
+              }
+              maxUses = Math.min(parsed, 10000); // Clamp to reasonable max
+            }
+            
+            // Disable button while processing
+            inviteCodeConfirmBtn.disabled = true;
+            inviteCodeConfirmBtn.textContent = 'Creating...';
+            
+            try {
+              await createGroupInviteCode(maxUses);
+              if (createInviteForm) createInviteForm.classList.add('hidden');
+              if (maxUsesInput) maxUsesInput.value = '0';
+            } catch (e) {
+              showToast('Failed to create invite code: ' + e.message, 'error');
+            } finally {
+              inviteCodeConfirmBtn.disabled = false;
+              inviteCodeConfirmBtn.textContent = 'Create';
+            }
+          });
         }
         
         // === Create Group Modal ===
@@ -2081,7 +3392,7 @@
         bubbleWrapper.className = 'relative group max-w-[80%]';
 
         const bubble = document.createElement('div');
-        bubble.className = `message-bubble-anim px-4 py-2 rounded-2xl text-sm border ${
+        bubble.className = `message-bubble-anim px-4 py-2 rounded-2xl text-sm font-medium border ${
           isMine
             ? 'mine bg-gradient-to-r from-sky-500 to-blue-600 text-white border-sky-600 shadow-lg shadow-sky-900/40'
             : 'bg-slate-800/90 text-slate-100 border-slate-700'
@@ -2114,7 +3425,7 @@
               wrapper.appendChild(img);
               const replayBtn = document.createElement('button');
               replayBtn.className = 'absolute bottom-3 right-3 bg-black/60 hover:bg-black/80 text-white text-xs px-2 py-1 rounded';
-              replayBtn.textContent = '↻ GIF';
+              replayBtn.textContent = 'â†» GIF';
               replayBtn.onclick = (e) => { e.stopPropagation(); replayGif(img); };
               wrapper.appendChild(replayBtn);
               bubble.appendChild(wrapper);
@@ -2127,7 +3438,7 @@
         // Add text
         if (msg.text) {
           const textEl = document.createElement('span');
-          textEl.className = 'message-text-reveal';
+          textEl.className = 'message-text-reveal font-medium';
           textEl.textContent = msg.text;
           bubble.appendChild(textEl);
         }
@@ -2190,8 +3501,8 @@
           }
 
           const deleteBtn = document.createElement('button');
-          // DM buttons: hidden until hover/touch, tight to bubble corner
-          deleteBtn.className = 'absolute -top-1 -right-1 z-10 w-6 h-6 rounded-full bg-slate-600 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center hover:bg-red-500 active:bg-red-500 text-sm';
+          // DM buttons: match global chat style - bigger, better positioned
+          deleteBtn.className = 'absolute -top-3 -right-3 z-20 w-7 h-7 rounded-full bg-slate-600 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center hover:bg-red-500 active:bg-red-500 text-sm cursor-pointer';
           deleteBtn.textContent = '🗑️';
           deleteBtn.title = 'Delete message';
           attachActionHandler(deleteBtn, () => {
@@ -2200,8 +3511,8 @@
           bubbleWrapper.appendChild(deleteBtn);
 
           const editBtn = document.createElement('button');
-          // DM edit button: hidden until hover/touch, next to delete button
-          editBtn.className = 'absolute -top-1 right-6 z-10 w-6 h-6 rounded-full bg-slate-600 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center hover:bg-sky-500 active:bg-sky-500';
+          // DM edit button: match global chat style
+          editBtn.className = 'absolute -top-3 right-5 z-20 w-7 h-7 rounded-full bg-slate-600 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center hover:bg-sky-500 active:bg-sky-500 cursor-pointer';
           editBtn.innerHTML = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 20 20\" fill=\"currentColor\" class=\"w-3.5 h-3.5\"><path d=\"M15.502 1.94a1.5 1.5 0 0 1 2.122 2.12l-1.06 1.062-2.122-2.122 1.06-1.06Zm-2.829 2.828-9.192 9.193a2 2 0 0 0-.518.94l-.88 3.521a.5.5 0 0 0 .607.607l3.52-.88a2 2 0 0 0 .942-.518l9.193-9.193-2.672-2.67Z\"/></svg>";
           editBtn.title = 'Edit message';
           attachActionHandler(editBtn, () => {
@@ -2214,7 +3525,7 @@
         if (!isMine && msg.key) {
           // Report button
           const reportBtn = document.createElement('button');
-          reportBtn.className = 'absolute -top-1 -left-1 z-10 w-6 h-6 rounded-full bg-slate-600 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center hover:bg-amber-500 active:bg-amber-500 text-sm';
+          reportBtn.className = 'absolute -top-3 -left-3 z-20 w-7 h-7 rounded-full bg-slate-600 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center hover:bg-amber-500 active:bg-amber-500 text-sm cursor-pointer';
           reportBtn.textContent = '⚠️';
           reportBtn.title = 'Report message';
           // reuse attachActionHandler if available in this scope, otherwise fallback
@@ -2233,7 +3544,7 @@
           // Admin delete
           if (isAdmin) {
             const adminDeleteBtn = document.createElement('button');
-            adminDeleteBtn.className = 'absolute -top-1 -right-1 z-10 w-6 h-6 rounded-full bg-slate-600 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center hover:bg-red-500 active:bg-red-500 text-sm';
+            adminDeleteBtn.className = 'absolute -top-3 -right-3 z-20 w-7 h-7 rounded-full bg-red-600 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center hover:bg-red-700 active:bg-red-700 text-sm cursor-pointer';
             adminDeleteBtn.textContent = '🗑️';
             adminDeleteBtn.title = 'Admin delete';
             if (typeof attachActionHandler === 'function') {
@@ -2385,11 +3696,74 @@
             }
           });
         }
+        
+        // Group tabs: Your Groups / Discover
+        const groupTabYours = document.getElementById('groupTabYours');
+        const groupTabDiscover = document.getElementById('groupTabDiscover');
+        if (groupTabYours) {
+          groupTabYours.addEventListener('click', () => {
+            activeGroupTab = 'yours';
+            updateGroupTabs();
+          });
+        }
+        if (groupTabDiscover) {
+          groupTabDiscover.addEventListener('click', () => {
+            activeGroupTab = 'discover';
+            updateGroupTabs();
+          });
+        }
+        
+        // Join by invite code
+        const groupInviteCodeInput = document.getElementById('groupInviteCodeInput');
+        const groupJoinByCodeBtn = document.getElementById('groupJoinByCodeBtn');
+        const inviteCodeError = document.getElementById('inviteCodeError');
+        
+        function showInviteCodeError(msg) {
+          if (inviteCodeError) {
+            inviteCodeError.textContent = msg;
+            inviteCodeError.classList.remove('hidden');
+          }
+        }
+        function hideInviteCodeError() {
+          if (inviteCodeError) {
+            inviteCodeError.textContent = '';
+            inviteCodeError.classList.add('hidden');
+          }
+        }
+        
+        if (groupJoinByCodeBtn && groupInviteCodeInput) {
+          groupInviteCodeInput.addEventListener('input', hideInviteCodeError);
+          
+          groupJoinByCodeBtn.addEventListener('click', async () => {
+            hideInviteCodeError();
+            const code = groupInviteCodeInput.value.trim().toUpperCase();
+            if (!code) {
+              showInviteCodeError('Please enter an invite code');
+              return;
+            }
+            
+            groupJoinByCodeBtn.disabled = true;
+            groupJoinByCodeBtn.textContent = 'Joining...';
+            
+            try {
+              await joinGroupByInviteCode(code);
+              groupInviteCodeInput.value = '';
+            } catch (e) {
+              showInviteCodeError(e.message || 'Invalid or expired code');
+            } finally {
+              groupJoinByCodeBtn.disabled = false;
+              groupJoinByCodeBtn.textContent = 'Join';
+            }
+          });
+          groupInviteCodeInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              groupJoinByCodeBtn.click();
+            }
+          });
+        }
 
         if (groupsPageForm) {
-          // show community guidelines on first typed character in Groups input as well
-          if (groupsPageInput) attachGuidelinesOnFirstType(groupsPageInput);
-          
           // Add mention support to group chat input
           if (groupsPageInput) {
             groupsPageInput.addEventListener('input', () => {
@@ -2444,8 +3818,6 @@
         let pendingDmMediaUrl = null;
         let pendingDmMediaFileId = null;
         if (dmPageForm) {
-          // show community guidelines on first typed character in DM input as well
-          if (dmPageInput) attachGuidelinesOnFirstType(dmPageInput);
           dmPageForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             if (!activeDMThread || !dmPageInput || !activeDMTarget) return;
@@ -2544,7 +3916,7 @@
 
             try {
               if (!(await canUpload())) {
-                alert('Slow down! Wait a few seconds.');
+                showToast('Slow down! Wait a few seconds', 'error');
                 return;
               }
 
@@ -2552,7 +3924,7 @@
               if (file.type && file.type.startsWith('video/')) {
                 const dur = await getVideoDuration(file);
                 if (dur > 30) {
-                  alert('Video is too long. Maximum allowed duration is 30 seconds.');
+                  showToast('Video is too long. Max 30 seconds', 'error');
                   dmUploadInProgress = false;
                   return;
                 }
@@ -2575,7 +3947,7 @@
               } catch (e) {}
 
               if (uploadResult && uploadResult.url) {
-                // Store pending media and show preview; do NOT auto-send — user will press Send
+                // Store pending media and show preview; do NOT auto-send â€” user will press Send
                 pendingDmMediaUrl = uploadResult.url;
                 pendingDmMediaFileId = uploadResult.fileId || null;
 
@@ -2605,7 +3977,7 @@
               }
             } catch (err) {
               console.error('[DM] media upload error', err);
-              try { if (err && err.message) alert('Media upload failed: ' + err.message); } catch (e) {}
+              if (err && err.message) showToast('Media upload failed: ' + err.message, 'error');
             } finally {
               dmUploadInProgress = false;
             }
@@ -2711,7 +4083,7 @@
         
         async function startDmWithUser(otherUid, otherUsername) {
           if (!otherUid || otherUid === currentUserId) {
-            alert('Cannot start conversation');
+            showToast('Cannot start conversation', 'error');
             return;
           }
           try {
@@ -2735,7 +4107,7 @@
             openDmPageThread(otherUid, otherUsername, threadId);
           } catch (err) {
             console.error('[DM] start conversation error', err);
-            alert('Error starting conversation');
+            showToast('Error starting conversation', 'error');
           }
         }
         
@@ -2748,14 +4120,14 @@
               const usersSnap = await db.ref('users').orderByChild('username').equalTo(searchVal).once('value');
               const users = usersSnap.val();
               if (!users) {
-                alert('User not found. Try typing to search.');
+                showToast('User not found', 'error');
                 return;
               }
               const otherUid = Object.keys(users)[0];
               startDmWithUser(otherUid, searchVal);
             } catch (err) {
               console.error('[DM] start conversation error', err);
-              alert('Error starting conversation');
+              showToast('Error starting conversation', 'error');
             }
           });
         }
@@ -2768,7 +4140,7 @@
             if (confirm('Block this user?')) {
               try {
                 await db.ref('blocks/' + currentUserId + '/' + activeDMTarget.uid).set(true);
-                alert('User blocked');
+                showToast('User blocked', 'success');
               } catch (err) {
                 console.error('[DM] block error', err);
               }
@@ -2938,9 +4310,9 @@
 
         mentionSelectedIndex = 0;
         mentionAutocomplete.innerHTML = suggestions.map((user, i) => {
-          const initials = user.isEveryone ? '📢' : user.username.slice(0, 2).toUpperCase();
+          const initials = user.isEveryone ? 'ðŸ“¢' : user.username.slice(0, 2).toUpperCase();
           const avatarContent = user.isEveryone
-            ? '📢'
+            ? 'ðŸ“¢'
             : (user.profilePic 
               ? `<img src="${escapeHtml(user.profilePic)}" alt="" onerror="this.parentElement.innerHTML='${initials}'">` 
               : initials);
@@ -3413,6 +4785,19 @@
         adminListener = (snap) => {
           isAdmin = snap.exists();
           console.log("[checkAdmin] Admin check for uid", uid, "- exists:", isAdmin, "- snap.val():", snap.val());
+          
+          // Show/hide mod panel button
+          const modPanelBtn = document.getElementById("adminModPanelBtn");
+          if (modPanelBtn) {
+            if (isAdmin) {
+              modPanelBtn.classList.remove("hidden");
+              modPanelBtn.classList.add("flex");
+            } else {
+              modPanelBtn.classList.add("hidden");
+              modPanelBtn.classList.remove("flex");
+            }
+          }
+          
           if (isAdmin) {
             // Add admin delete buttons to already-rendered non-owner messages
             try {
@@ -3450,9 +4835,27 @@
         try {
           console.log("[ban] deleting account for uid:", uid);
           
-          // Get user data
-          const userSnap = await db.ref("users").child(uid).once("value");
+          // Get user data (username)
+          const userSnap = await db.ref("users/" + uid).once("value");
           const userData = userSnap.val();
+          console.log("[ban] user data:", userData);
+          
+          // Get fingerprint separately (it's stored directly under users/{uid}/fingerprint)
+          const fpSnap = await db.ref("users/" + uid + "/fingerprint").once("value");
+          const storedFingerprint = fpSnap.val();
+          console.log("[ban] stored fingerprint:", storedFingerprint ? storedFingerprint.slice(0,16) + '...' : 'none');
+          
+          // Ban user's fingerprint if stored and feature enabled (hardware ban)
+          if (FINGERPRINT_ENABLED && storedFingerprint && typeof storedFingerprint === 'string' && storedFingerprint.length >= 32) {
+            try {
+              await banTargetFingerprint(storedFingerprint, reason + ' (Account: ' + uid.slice(0,8) + ')');
+              console.log("[ban] fingerprint banned for uid:", uid);
+            } catch (e) {
+              console.warn("[ban] failed to ban fingerprint:", e);
+            }
+          } else {
+            console.log("[ban] no fingerprint to ban for this user");
+          }
           
           // Delete all messages by this user
           const msgsSnap = await db.ref("messages").orderByChild("userId").equalTo(uid).once("value");
@@ -3487,7 +4890,9 @@
           console.log("[ban] adding uid to bannedUsers:", uid);
           await db.ref("bannedUsers/" + uid).set({
             until: 9999999999999,
-            reason: reason
+            reason: reason,
+            username: userData?.username || 'Unknown',
+            bannedAt: Date.now()
           });
           console.log("[ban] uid added to bannedUsers successfully");
           
@@ -3515,6 +4920,7 @@
         const banReasonCancel = document.getElementById("banReasonCancel");
         const banReasonCustom = document.getElementById("banReasonCustom");
         const banDuration = document.getElementById("banDuration");
+        const banHardwareBan = document.getElementById("banHardwareBan");
         const banReasonSpam = document.getElementById("banReasonSpam");
         const banReasonAbuse = document.getElementById("banReasonAbuse");
         const banReasonDisruption = document.getElementById("banReasonDisruption");
@@ -3529,9 +4935,11 @@
         banReasonDisruption.onclick = () => setReason("Disruption");
         banReasonHarassment.onclick = () => setReason("Harassment");
 
-        banReasonConfirm.onclick = () => {
+        banReasonConfirm.onclick = async () => {
           const reason = banReasonCustom.value.trim() || "Rule break";
           const duration = banDuration.value;
+          const doHardwareBan = banHardwareBan && banHardwareBan.checked;
+          
           if (pendingBanUid) {
             let chosenDuration;
             if (duration === "permanent") {
@@ -3541,14 +4949,34 @@
               chosenDuration = Number.isFinite(parsed) ? parsed : 60;
             }
 
+            // If hardware ban checkbox is checked, ban their fingerprint
+            if (doHardwareBan && FINGERPRINT_ENABLED) {
+              try {
+                const fpSnap = await db.ref("users/" + pendingBanUid + "/fingerprint").once("value");
+                const storedFp = fpSnap.val();
+                if (storedFp && typeof storedFp === 'string' && storedFp.length >= 32) {
+                  await banTargetFingerprint(storedFp, reason + ' (UID: ' + pendingBanUid.slice(0,8) + ')');
+                  console.log("[ban] hardware banned user fingerprint");
+                  showToast("Hardware ban applied", "success");
+                } else {
+                  console.warn("[ban] no fingerprint found for hardware ban");
+                  showToast("No fingerprint stored for this user", "warning");
+                }
+              } catch (e) {
+                console.error("[ban] hardware ban failed:", e);
+              }
+            }
+
             banUser(pendingBanUid, chosenDuration, reason);
             banReasonModal.classList.add("hidden");
+            if (banHardwareBan) banHardwareBan.checked = false;
             viewProfileCloseBtn.click();
           }
         };
 
         banReasonCancel.onclick = () => {
           banReasonModal.classList.add("hidden");
+          if (banHardwareBan) banHardwareBan.checked = false;
           pendingBanUid = null;
         };
       }
@@ -3596,6 +5024,390 @@
           console.error("[ban] failed to unban user", err);
         }
       }
+
+      // ===== ADMIN MODERATION PANEL =====
+      const OWNER_UID = 'u5yKqiZvioWuBGcGK3SWUBpUVrc2';
+      let modPanelCurrentTab = 'banned';
+      
+      function setupModPanel() {
+        const modPanelBtn = document.getElementById("adminModPanelBtn");
+        const modPanelModal = document.getElementById("modPanelModal");
+        const modPanelCloseBtn = document.getElementById("modPanelCloseBtn");
+        const modPanelRefreshBtn = document.getElementById("modPanelRefreshBtn");
+        const modPanelUnbanAllBtn = document.getElementById("modPanelUnbanAllBtn");
+        const modPanelTabBanned = document.getElementById("modPanelTabBanned");
+        const modPanelTabMuted = document.getElementById("modPanelTabMuted");
+        const modPanelTabHardware = document.getElementById("modPanelTabHardware");
+        const modPanelContent = document.getElementById("modPanelContent");
+        
+        if (!modPanelBtn || !modPanelModal) return;
+        
+        modPanelBtn.onclick = () => {
+          modPanelModal.classList.remove("hidden");
+          // Show Unban All button only for owner
+          if (modPanelUnbanAllBtn && currentUserId === OWNER_UID) {
+            modPanelUnbanAllBtn.classList.remove("hidden");
+          }
+          loadModPanelTab('banned');
+        };
+        
+        modPanelCloseBtn.onclick = () => {
+          modPanelModal.classList.add("hidden");
+        };
+        
+        modPanelModal.onclick = (e) => {
+          if (e.target === modPanelModal) modPanelModal.classList.add("hidden");
+        };
+        
+        modPanelRefreshBtn.onclick = () => loadModPanelTab(modPanelCurrentTab);
+        
+        // Unban All - owner only
+        if (modPanelUnbanAllBtn) {
+          modPanelUnbanAllBtn.onclick = async () => {
+            if (currentUserId !== OWNER_UID) {
+              showToast("Only the owner can use this", "error");
+              return;
+            }
+            if (!confirm(" UNBAN ALL?\n\nThis will remove ALL bans, mutes, and hardware bans. Are you sure?")) return;
+            if (!confirm("Are you REALLY sure? This cannot be undone!")) return;
+            
+            modPanelUnbanAllBtn.disabled = true;
+            modPanelUnbanAllBtn.textContent = "Clearing...";
+            
+            try {
+              await Promise.all([
+                db.ref("bannedUsers").remove(),
+                db.ref("mutedUsers").remove(),
+                db.ref("bannedFingerprints").remove()
+              ]);
+              showToast("All bans cleared!", "success");
+              loadModPanelTab(modPanelCurrentTab);
+            } catch (e) {
+              console.error("[modPanel] unban all error:", e);
+              showToast("Error clearing bans", "error");
+            }
+            
+            modPanelUnbanAllBtn.disabled = false;
+            modPanelUnbanAllBtn.textContent = " Unban All";
+          };
+        }
+        
+        const setTab = (tab) => {
+          modPanelCurrentTab = tab;
+          [modPanelTabBanned, modPanelTabMuted, modPanelTabHardware].forEach(btn => {
+            btn.classList.remove('bg-red-600', 'bg-yellow-600', 'bg-purple-600', 'text-white');
+            btn.classList.add('bg-slate-700', 'text-slate-300');
+          });
+          if (tab === 'banned') {
+            modPanelTabBanned.classList.remove('bg-slate-700', 'text-slate-300');
+            modPanelTabBanned.classList.add('bg-red-600', 'text-white');
+          } else if (tab === 'muted') {
+            modPanelTabMuted.classList.remove('bg-slate-700', 'text-slate-300');
+            modPanelTabMuted.classList.add('bg-yellow-600', 'text-white');
+          } else if (tab === 'hardware') {
+            modPanelTabHardware.classList.remove('bg-slate-700', 'text-slate-300');
+            modPanelTabHardware.classList.add('bg-purple-600', 'text-white');
+          }
+          loadModPanelTab(tab);
+        };
+        
+        modPanelTabBanned.onclick = () => setTab('banned');
+        modPanelTabMuted.onclick = () => setTab('muted');
+        modPanelTabHardware.onclick = () => setTab('hardware');
+      }
+      
+      async function loadModPanelTab(tab) {
+        const modPanelContent = document.getElementById("modPanelContent");
+        modPanelContent.innerHTML = '<div class="text-center py-8 text-slate-500">Loading...</div>';
+        
+        try {
+          if (tab === 'banned') {
+            await loadBannedUsers();
+          } else if (tab === 'muted') {
+            await loadMutedUsers();
+          } else if (tab === 'hardware') {
+            await loadHardwareBans();
+          }
+        } catch (e) {
+          modPanelContent.innerHTML = '<div class="text-center py-8 text-red-400">Error loading data</div>';
+          console.error("[modPanel] load error:", e);
+        }
+      }
+      
+      async function loadBannedUsers() {
+        const modPanelContent = document.getElementById("modPanelContent");
+        console.log('[modPanel] loading banned users...');
+        const [banSnap, usersSnap, hwBanSnap] = await Promise.all([
+          db.ref("bannedUsers").once("value"),
+          db.ref("users").once("value"),
+          db.ref("bannedFingerprints").once("value")
+        ]);
+        const banned = banSnap.val() || {};
+        const users = usersSnap.val() || {};
+        const hwBans = hwBanSnap.val() || {};
+        
+        // Filter out expired bans and auto-clean them
+        const now = Date.now();
+        const activeEntries = [];
+        for (const [uid, data] of Object.entries(banned)) {
+          const isPermanent = !data.until || data.until === 9999999999999;
+          const isExpired = !isPermanent && data.until < now;
+          if (isExpired) {
+            // Auto-remove expired bans
+            db.ref("bannedUsers/" + uid).remove().catch(() => {});
+          } else {
+            activeEntries.push([uid, data]);
+          }
+        }
+        console.log('[modPanel] active banned entries:', activeEntries.length);
+        
+        if (activeEntries.length === 0) {
+          modPanelContent.innerHTML = '<div class="flex flex-col items-center justify-center py-16 text-slate-400"><div class="w-20 h-20 rounded-full bg-green-600/20 flex items-center justify-center mb-4"><span class="text-4xl">âœ“</span></div><p class="text-xl font-medium">No Banned Users</p><p class="text-sm text-slate-500 mt-1">All clear!</p></div>';
+          return;
+        }
+        
+        let html = '<div class="space-y-4">';
+        for (const [uid, data] of activeEntries) {
+          const userObj = users[uid] || {};
+          // Use stored username from ban record if account was deleted, fallback to users table
+          const username = data.username || userObj.username || uid.slice(0, 8);
+          const fp = userObj.fingerprint;
+          const isPermanent = !data.until || data.until === 9999999999999;
+          const expiresAt = isPermanent ? null : new Date(data.until).toLocaleString();
+          const reason = data.reason || 'No reason';
+          const isHardwareBanned = fp && hwBans[fp];
+          const bannedAt = data.bannedAt ? new Date(data.bannedAt).toLocaleDateString() : null;
+          
+          html += `
+            <div class="bg-slate-800/80 rounded-2xl p-5 border ${isPermanent ? 'border-red-500/30' : 'border-amber-500/30'} shadow-xl">
+              <div class="flex items-start gap-4">
+                <div class="w-14 h-14 rounded-xl bg-gradient-to-br ${isPermanent ? 'from-red-500 to-red-700' : 'from-amber-500 to-orange-600'} flex items-center justify-center text-2xl font-bold text-white shadow-lg flex-shrink-0">
+                  ${escapeHtml(username.charAt(0).toUpperCase())}
+                </div>
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center justify-between mb-1">
+                    <div class="flex items-center gap-2 flex-wrap">
+                      <span class="font-bold text-xl text-white">${escapeHtml(username)}</span>
+                      ${isHardwareBanned ? '<span class="px-2 py-0.5 bg-purple-600 text-white text-xs rounded-full font-medium">ðŸ–¥ï¸ HW</span>' : ''}
+                      ${isPermanent ? '<span class="px-2 py-0.5 bg-red-600 text-white text-xs rounded-full font-medium">PERMANENT</span>' : ''}
+                    </div>
+                  </div>
+                  <div class="text-xs text-slate-400 font-mono mb-3">${uid}</div>
+                  <div class="bg-slate-900/50 rounded-lg p-3 mb-3">
+                    <div class="text-xs text-slate-500 uppercase tracking-wide mb-1">Reason</div>
+                    <p class="text-slate-200">${escapeHtml(reason)}</p>
+                  </div>
+                  <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-4 text-xs text-slate-400">
+                      ${bannedAt ? '<span>ðŸ“… ' + bannedAt + '</span>' : ''}
+                      ${!isPermanent && expiresAt ? '<span>â° Expires: ' + expiresAt + '</span>' : ''}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="flex gap-2 flex-wrap mt-4 pt-4 border-t border-slate-700">
+                <button onclick="modPanelUnban('${uid}')" class="px-5 py-2 bg-green-600 hover:bg-green-500 text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-green-500/25 hover:scale-105">âœ“ Unban</button>
+                <button onclick="modPanelExtendBan('${uid}')" class="px-5 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-amber-500/25 hover:scale-105">â±ï¸ Extend</button>
+                ${fp && !isHardwareBanned ? `<button onclick="modPanelHardwareBan('${fp}', '${uid}')" class="px-5 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-purple-500/25 hover:scale-105">ðŸ–¥ï¸ HW Ban</button>` : ''}
+                ${fp && isHardwareBanned ? `<button onclick="modPanelUnHardwareBan('${fp}')" class="px-5 py-2 bg-slate-600 hover:bg-slate-500 text-white rounded-xl font-semibold transition-all shadow-lg hover:scale-105">ðŸ–¥ï¸ Remove HW</button>` : ''}
+              </div>
+            </div>
+          `;
+        }
+        html += '</div>';
+        modPanelContent.innerHTML = html;
+      }
+      
+      async function loadMutedUsers() {
+        const modPanelContent = document.getElementById("modPanelContent");
+        console.log('[modPanel] loading muted users...');
+        const [muteSnap, usersSnap] = await Promise.all([
+          db.ref("mutedUsers").once("value"),
+          db.ref("users").once("value")
+        ]);
+        const muted = muteSnap.val() || {};
+        const users = usersSnap.val() || {};
+        
+        // Filter out expired mutes and auto-clean them
+        const now = Date.now();
+        const activeEntries = [];
+        for (const [uid, data] of Object.entries(muted)) {
+          const isPermanent = !data.until || data.until === 9999999999999;
+          const isExpired = !isPermanent && data.until && data.until < now;
+          if (isExpired) {
+            // Auto-remove expired mutes
+            db.ref("mutedUsers/" + uid).remove().catch(() => {});
+          } else {
+            activeEntries.push([uid, data]);
+          }
+        }
+        console.log('[modPanel] active muted entries:', activeEntries.length);
+        
+        if (activeEntries.length === 0) {
+          modPanelContent.innerHTML = '<div class="flex flex-col items-center justify-center py-16 text-slate-400"><div class="w-20 h-20 rounded-full bg-green-600/20 flex items-center justify-center mb-4"><span class="text-4xl">âœ“</span></div><p class="text-xl font-medium">No Muted Users</p><p class="text-sm text-slate-500 mt-1">All clear!</p></div>';
+          return;
+        }
+        
+        let html = '<div class="space-y-4">';
+        for (const [uid, data] of activeEntries) {
+          const userObj = users[uid] || {};
+          const username = data.username || userObj.username || uid.slice(0, 8);
+          const isPermanent = !data.until || data.until === 9999999999999;
+          const expiresAt = isPermanent ? null : new Date(data.until).toLocaleString();
+          const reason = data.reason || 'No reason';
+          
+          html += `
+            <div class="bg-slate-800/80 rounded-2xl p-5 border ${isPermanent ? 'border-orange-500/30' : 'border-amber-500/30'} shadow-xl">
+              <div class="flex items-start gap-4">
+                <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-orange-500 to-amber-600 flex items-center justify-center text-2xl shadow-lg flex-shrink-0">ðŸ”‡</div>
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center justify-between mb-1">
+                    <div class="flex items-center gap-2 flex-wrap">
+                      <span class="font-bold text-xl text-white">${escapeHtml(username)}</span>
+                      ${isPermanent ? '<span class="px-2 py-0.5 bg-orange-600 text-white text-xs rounded-full font-medium">PERMANENT</span>' : ''}
+                    </div>
+                  </div>
+                  <div class="text-xs text-slate-400 font-mono mb-3">${uid}</div>
+                  <div class="bg-slate-900/50 rounded-lg p-3 mb-3">
+                    <div class="text-xs text-slate-500 uppercase tracking-wide mb-1">Reason</div>
+                    <p class="text-slate-200">${escapeHtml(reason)}</p>
+                  </div>
+                  ${!isPermanent && expiresAt ? `<div class="text-xs text-slate-400">â° Expires: ${expiresAt}</div>` : ''}
+                </div>
+              </div>
+              <div class="flex gap-2 flex-wrap mt-4 pt-4 border-t border-slate-700">
+                <button onclick="modPanelUnmute('${uid}')" class="px-5 py-2 bg-green-600 hover:bg-green-500 text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-green-500/25 hover:scale-105">âœ“ Unmute</button>
+                <button onclick="modPanelExtendMute('${uid}')" class="px-5 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-amber-500/25 hover:scale-105">â±ï¸ Extend</button>
+              </div>
+            </div>
+          `;
+        }
+        html += '</div>';
+        modPanelContent.innerHTML = html;
+      }
+      
+      async function loadHardwareBans() {
+        const modPanelContent = document.getElementById("modPanelContent");
+        const snap = await db.ref("bannedFingerprints").once("value");
+        const banned = snap.val() || {};
+        const entries = Object.entries(banned);
+        
+        if (entries.length === 0) {
+          modPanelContent.innerHTML = '<div class="flex flex-col items-center justify-center py-12 text-slate-400"><svg class="w-16 h-16 mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg><p class="text-lg">No hardware bans</p></div>';
+          return;
+        }
+        
+        let html = '<div class="space-y-3">';
+        for (const [fpHash, data] of entries) {
+          const reason = data.reason || 'No reason';
+          const bannedAt = data.timestamp ? new Date(data.timestamp).toLocaleString() : 'Unknown';
+          const bannedBy = data.bannedBy ? data.bannedBy.slice(0, 8) + '...' : 'System';
+          
+          html += `
+            <div class="bg-gradient-to-r from-purple-900/30 to-slate-800 rounded-xl p-4 border border-purple-700/50 backdrop-blur-sm shadow-lg">
+              <div class="flex justify-between items-start mb-3">
+                <div class="flex items-center gap-3">
+                  <div class="w-10 h-10 rounded-full bg-gradient-to-br from-purple-600 to-purple-800 flex items-center justify-center text-lg">ðŸ–¥ï¸</div>
+                  <div>
+                    <span class="font-mono text-sm text-purple-300">${fpHash.slice(0, 20)}...</span>
+                    <div class="text-xs text-slate-500">Banned by: ${bannedBy}</div>
+                  </div>
+                </div>
+                <span class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-purple-600/30 text-purple-300">ðŸ• ${bannedAt}</span>
+              </div>
+              <p class="text-sm text-slate-300 mb-4 pl-12">ðŸ“ ${escapeHtml(reason)}</p>
+              <div class="flex gap-2 pl-12">
+                <button onclick="modPanelUnHardwareBan('${fpHash}')" class="px-4 py-1.5 bg-green-600 hover:bg-green-500 text-white text-xs rounded-lg font-medium transition-colors shadow-md">âœ“ Remove HW Ban</button>
+              </div>
+            </div>
+          `;
+        }
+        html += '</div>';
+        modPanelContent.innerHTML = html;
+      }
+      
+      // Mod panel action functions (global for onclick handlers)
+      window.modPanelUnban = async (uid) => {
+        if (!isAdmin) return;
+        if (!confirm("Unban this user?")) return;
+        const btn = event.target;
+        const card = btn.closest('.bg-slate-800\\/80');
+        if (card) card.style.opacity = '0.5';
+        await unbanUser(uid);
+        if (card) card.remove();
+        showToast("User unbanned", "success");
+        // Check if list is empty now
+        const content = document.getElementById('modPanelContent');
+        if (content && !content.querySelector('.bg-slate-800\\/80')) {
+          content.innerHTML = '<div class="flex flex-col items-center justify-center py-16 text-slate-400"><div class="w-20 h-20 rounded-full bg-green-600/20 flex items-center justify-center mb-4"><span class="text-4xl">âœ“</span></div><p class="text-xl font-medium">No Banned Users</p><p class="text-sm text-slate-500 mt-1">All clear!</p></div>';
+        }
+      };
+      
+      window.modPanelExtendBan = async (uid) => {
+        if (!isAdmin) return;
+        const mins = prompt("Extend ban by how many minutes? (or 'permanent')");
+        if (!mins) return;
+        
+        const banSnap = await db.ref("bannedUsers/" + uid).once("value");
+        const current = banSnap.val() || {};
+        
+        if (mins.toLowerCase() === 'permanent') {
+          await db.ref("bannedUsers/" + uid).update({ until: 9999999999999 });
+        } else {
+          const addMs = parseInt(mins) * 60 * 1000;
+          const newUntil = Math.max(current.until || Date.now(), Date.now()) + addMs;
+          await db.ref("bannedUsers/" + uid).update({ until: newUntil });
+        }
+        showToast("Ban extended", "success");
+        loadModPanelTab('banned');
+      };
+      
+      window.modPanelHardwareBan = async (fp, uid) => {
+        if (!isAdmin) return;
+        if (!confirm("Hardware ban this user's device?")) return;
+        const reason = prompt("Reason for hardware ban:", "Ban evasion prevention") || "Ban evasion prevention";
+        await banTargetFingerprint(fp, reason + ' (UID: ' + uid.slice(0,8) + ')');
+        showToast("Hardware ban applied", "success");
+        loadModPanelTab('banned');
+      };
+      
+      window.modPanelUnHardwareBan = async (fp) => {
+        if (!isAdmin) return;
+        if (!confirm("Remove hardware ban?")) return;
+        await unbanFingerprint(fp);
+        showToast("Hardware ban removed", "success");
+        loadModPanelTab(modPanelCurrentTab);
+      };
+      
+      window.modPanelUnmute = async (uid) => {
+        if (!isAdmin) return;
+        if (!confirm("Unmute this user?")) return;
+        const btn = event.target;
+        const card = btn.closest('.bg-slate-800\\/80');
+        if (card) card.style.opacity = '0.5';
+        await db.ref("mutedUsers/" + uid).remove();
+        if (card) card.remove();
+        showToast("User unmuted", "success");
+        // Check if list is empty now
+        const content = document.getElementById('modPanelContent');
+        if (content && !content.querySelector('.bg-slate-800\\/80')) {
+          content.innerHTML = '<div class="flex flex-col items-center justify-center py-16 text-slate-400"><div class="w-20 h-20 rounded-full bg-green-600/20 flex items-center justify-center mb-4"><span class="text-4xl">âœ“</span></div><p class="text-xl font-medium">No Muted Users</p><p class="text-sm text-slate-500 mt-1">All clear!</p></div>';
+        }
+      };
+      
+      window.modPanelExtendMute = async (uid) => {
+        if (!isAdmin) return;
+        const mins = prompt("Extend mute by how many minutes?");
+        if (!mins) return;
+        
+        const muteSnap = await db.ref("mutedUsers/" + uid).once("value");
+        const current = muteSnap.val() || {};
+        const addMs = parseInt(mins) * 60 * 1000;
+        const newUntil = Math.max(current.until || Date.now(), Date.now()) + addMs;
+        await db.ref("mutedUsers/" + uid).update({ until: newUntil });
+        showToast("Mute extended", "success");
+        loadModPanelTab('muted');
+      };
 
       function watchBanStatus(uid) {
         if (!uid) return;
@@ -3787,7 +5599,7 @@
             msgInput.placeholder = "You are muted for " + timeLeft + "s";
             if (muteInlineBanner && muteInlineText) {
               muteInlineBanner.classList.remove("hidden");
-              muteInlineText.textContent = "Muted: " + (data.reason || "Rule break") + " — " + timeLeft + "s left";
+              muteInlineText.textContent = "Muted: " + (data.reason || "Rule break") + " â€” " + timeLeft + "s left";
             }
             
             // Show mute popup
@@ -3815,7 +5627,7 @@
                 muteTimer.textContent = timeLeft2 + "s remaining";
                 msgInput.placeholder = "You are muted for " + timeLeft2 + "s";
                 if (muteInlineText) {
-                  muteInlineText.textContent = "Muted: " + (data.reason || "Rule break") + " — " + timeLeft2 + "s left";
+                  muteInlineText.textContent = "Muted: " + (data.reason || "Rule break") + " â€” " + timeLeft2 + "s left";
                 }
               }
             }, 1000);
@@ -4042,31 +5854,31 @@
       function createFlexiblePattern(word) {
         // Build a map of common substitutions for letters
         const subs = {
-          'a': '[a@4àáâãäåα]',
-          'b': '[b8ß]',
-          'c': '[cç(\[]',
-          'd': '[dδ]',
-          'e': '[e3èéêë€]',
+          'a': '[a@4Ã Ã¡Ã¢Ã£Ã¤Ã¥Î±]',
+          'b': '[b8ÃŸ]',
+          'c': '[cÃ§(\[]',
+          'd': '[dÎ´]',
+          'e': '[e3Ã¨Ã©ÃªÃ«â‚¬]',
           'f': '[f]',
           'g': '[g9q]',
           'h': '[h#]',
-          'i': '[i1!|ìíîï]',
+          'i': '[i1!|Ã¬Ã­Ã®Ã¯]',
           'j': '[j]',
           'k': '[k]',
-          'l': '[l1|!ìíîï]',
+          'l': '[l1|!Ã¬Ã­Ã®Ã¯]',
           'm': '[m]',
-          'n': '[nñ]',
-          'o': '[o0óòôõöø]',
+          'n': '[nÃ±]',
+          'o': '[o0Ã³Ã²Ã´ÃµÃ¶Ã¸]',
           'p': '[p]',
           'q': '[q9]',
           'r': '[r]',
           's': '[s5$]',
           't': '[t7+]',
-          'u': '[uùúûü]',
+          'u': '[uÃ¹ÃºÃ»Ã¼]',
           'v': '[v]',
           'w': '[w]',
-          'x': '[x%×]',
-          'y': '[yÿ]',
+          'x': '[x%Ã—]',
+          'y': '[yÃ¿]',
           'z': '[z2]'
         };
 
@@ -4297,12 +6109,12 @@
               console.log("[init] auto-created friendRequests incoming for target", targetUid);
             }
           } else {
-            // Not the target user — skip creating other users' nodes to avoid permission errors
+            // Not the target user â€” skip creating other users' nodes to avoid permission errors
             console.log("[init] skipping auto-create friendRequests for other user:", targetUid);
           }
         } catch (err) {
           // Permission denied is common if rules disallow creating other users' nodes.
-          // Don't block the flow — just log details for debugging.
+          // Don't block the flow â€” just log details for debugging.
           logDetailedError("ensureTargetFriendRequestsIncoming", err, { targetUid });
         }
       }
@@ -4345,7 +6157,7 @@
         console.log("[ui] chat user label set to:", currentUsername || "");
       }
 
-      // On-screen warning (2 seconds) — now combined with typing in one line
+      // On-screen warning (2 seconds) â€” now combined with typing in one line
       function showRateLimitWarning() {
         currentWarningText = "Slow down!";
         if (sendWarningTimeoutId) {
@@ -4575,7 +6387,7 @@
 
         if (msg && msg.text) {
           const textSpan = document.createElement("span");
-          textSpan.className = msg.media ? "message-text-reveal block mt-2" : "message-text-reveal inline-block";
+          textSpan.className = msg.media ? "message-text-reveal block mt-2 font-medium" : "message-text-reveal inline-block font-medium";
           textSpan.textContent = msg.text;
           bubble.appendChild(textSpan);
         }
@@ -4588,7 +6400,7 @@
         row.className = mine ? "flex justify-end" : "flex justify-start";
 
         const bubble = document.createElement("div");
-        bubble.className = `message-bubble-anim max-w-[80%] px-4 py-2 rounded-2xl text-sm border ${
+        bubble.className = `message-bubble-anim max-w-[80%] px-4 py-2 rounded-2xl text-sm font-medium border ${
           mine
             ? "mine bg-gradient-to-r from-sky-500 to-blue-600 text-white border-sky-600 shadow-lg shadow-sky-900/40"
             : "bg-slate-800/90 text-slate-100 border-slate-700"
@@ -4803,7 +6615,7 @@
             dmLastUpdateTimeByThread[item.threadId] = Math.max(item.lastMsg ? lastTime : 0, dmLastUpdateTimeByThread[item.threadId] || 0);
 
             // Only treat a thread as unread if the inbox entry explicitly has an `unread` number.
-            // Do NOT infer unread from timestamps here — that caused every thread to appear unread.
+            // Do NOT infer unread from timestamps here â€” that caused every thread to appear unread.
             const unreadCount = (typeof item.unread === 'number') ? item.unread : 0;
             if (unreadCount > 0) {
               dmUnreadCounts[item.threadId] = unreadCount;
@@ -4919,7 +6731,7 @@
         }
       }
 
-      // 🔍 Check if username is already taken in DB
+      // ðŸ” Check if username is already taken in DB
       async function isUsernameTaken(username) {
         console.log("[users] checking if username taken:", username);
         try {
@@ -5001,8 +6813,6 @@
       registerBtn.onclick = async () => {
         clearRegisterMessages();
 
-        
-
         const username = regUsernameInput.value.trim();
         const password = regPasswordInput.value.trim();
         const passwordConfirm = regPasswordConfirmInput.value.trim();
@@ -5033,6 +6843,19 @@
         if (!/^[a-zA-Z0-9_ -]+$/.test(username) || /^[_-]|[_-]$/.test(username)) {
           registerError.textContent = "Use letters/numbers/underscore/dash/space (no leading/trailing _ or -).";
           return;
+        }
+
+        // Check device fingerprint ban FIRST (before even trying to register)
+        try {
+          const fpCheck = await checkFingerprintBan();
+          if (fpCheck.banned) {
+            console.log("[register] device fingerprint is banned");
+            registerError.textContent = "This device has been banned. Contact support.";
+            return;
+          }
+        } catch (e) {
+          console.warn("[register] fingerprint check failed:", e);
+          // Continue - don't block on fingerprint check failure
         }
 
         let usernameHasBad = badWordPattern.test(username);
@@ -5131,6 +6954,17 @@
           // Keep them logged in after registration
           console.log("[register] registration complete, staying logged in");
           
+          // Store fingerprint for hardware ban enforcement (even without canvas consent)
+          try {
+            const fp = await generateBrowserFingerprint();
+            if (fp) {
+              await db.ref('users/' + user.uid + '/fingerprint').set(fp);
+              console.log("[register] fingerprint stored for ban enforcement");
+            }
+          } catch (e) {
+            console.warn("[register] could not store fingerprint:", e);
+          }
+          
           // Hide the register form
           registerForm.classList.add("hidden");
         } catch (error) {
@@ -5149,8 +6983,6 @@
       loginBtn.onclick = async () => {
         clearLoginMessages();
 
-        
-
         const username = loginUsernameInput.value.trim();
         const password = loginPasswordInput.value.trim();
         const remember = rememberMeCheckbox.checked;
@@ -5168,20 +7000,38 @@
         // TEMP: spaces allowed
         // if (username.includes(" ")) { ... }
 
+        // Check device fingerprint ban FIRST (before even trying to login)
+        try {
+          const fpCheck = await checkFingerprintBan();
+          if (fpCheck.banned) {
+            console.log("[login] device fingerprint is banned");
+            loginError.textContent = "This device has been banned. Contact support.";
+            return;
+          }
+        } catch (e) {
+          console.warn("[login] fingerprint check failed:", e);
+          // Continue - don't block on fingerprint check failure
+        }
+
         const fakeEmail = makeEmailFromUsername(username);
 
         try {
           // Check if email/username is banned (use encoded keys)
-          const encodedEmail = encodeFirebaseKey(fakeEmail);
-          const encodedUsername = encodeFirebaseKey(username);
-          
-          const bannedEmailSnap = await db.ref("bannedEmails/" + encodedEmail).once("value");
-          const bannedUsernameSnap = await db.ref("bannedUsernames/" + encodedUsername).once("value");
-          
-          if (bannedEmailSnap.exists() || bannedUsernameSnap.exists()) {
-            const bannedReason = bannedEmailSnap.val()?.reason || bannedUsernameSnap.val()?.reason || "Account has been permanently banned";
-            loginError.textContent = "This account is banned: " + bannedReason;
-            return;
+          // Wrapped in try-catch since this check happens before auth
+          try {
+            const encodedEmail = encodeFirebaseKey(fakeEmail);
+            const encodedUsername = encodeFirebaseKey(username);
+            
+            const bannedEmailSnap = await db.ref("bannedEmails/" + encodedEmail).once("value");
+            const bannedUsernameSnap = await db.ref("bannedUsernames/" + encodedUsername).once("value");
+            
+            if (bannedEmailSnap.exists() || bannedUsernameSnap.exists()) {
+              const bannedReason = bannedEmailSnap.val()?.reason || bannedUsernameSnap.val()?.reason || "Account has been permanently banned";
+              loginError.textContent = "This account is banned: " + bannedReason;
+              return;
+            }
+          } catch (banCheckErr) {
+            console.warn("[login] could not check banned status, continuing:", banCheckErr.message);
           }
 
           const persistence = remember
@@ -5263,7 +7113,7 @@
             const recoveryEmail = profileSnap.exists() ? profileSnap.val() : null;
             console.log('[recovery] fetched recoveryEmail =', recoveryEmail);
             if (!recoveryEmail) {
-              loginError.textContent = 'No recovery email set — contact support at chatrahelpcenter@gmail.com';
+              loginError.textContent = 'No recovery email set â€” contact support at chatrahelpcenter@gmail.com';
               return;
             }
             // Call worker to create token and return verify link
@@ -5286,7 +7136,7 @@
               const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
               if (!emailRegex.test(recoveryEmail || '')) {
                 console.warn('[recovery] invalid recoveryEmail, aborting send', recoveryEmail);
-                loginError.textContent = 'Recovery email on file is invalid — update your profile before requesting a reset.';
+                loginError.textContent = 'Recovery email on file is invalid â€” update your profile before requesting a reset.';
                 return;
               }
               const EMAILJS_SERVICE = 'service_sf4vssc';
@@ -5371,18 +7221,56 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           await db.ref("messages/" + messageId).remove();
           console.log("[delete] deleted message from Firebase");
 
-          // Remove from DOM
-          const messageElements = messagesDiv.querySelectorAll(".message-bubble-anim");
-          messageElements.forEach(el => {
-            const parent = el.closest(".w-full");
-            if (parent && parent.dataset.messageId === messageId) {
-              parent.remove();
-            }
-          });
+          // Remove from DOM - directly find element by data-message-id
+          const row = messagesDiv.querySelector(`[data-message-id="${messageId}"]`);
+          if (row) {
+            row.remove();
+            console.log("[delete] removed message from DOM");
+          }
 
         } catch (err) {
           console.error("[delete] error deleting message", err);
-          alert("Failed to delete message: " + (err.message || "Unknown error"));
+          showToast("Failed to delete message", "error");
+        }
+      }
+
+      // Delete group message function
+      async function deleteGroupMessage(groupId, messageId, deleteToken) {
+        if (!groupId || !messageId) {
+          console.error("[delete group] no groupId or messageId provided");
+          return;
+        }
+
+        try {
+          console.log("[delete group] deleting message", messageId, "from group", groupId);
+
+          // Delete from Cloudinary if has deleteToken
+          if (deleteToken) {
+            try {
+              await deleteFromCloudinary(deleteToken);
+              console.log("[delete group] deleted media from Cloudinary");
+            } catch (err) {
+              console.warn("[delete group] failed to delete from Cloudinary, continuing", err);
+            }
+          }
+
+          // Delete from Firebase
+          await db.ref("groups/" + groupId + "/messages/" + messageId).remove();
+          console.log("[delete group] deleted message from Firebase");
+
+          // Remove from DOM - directly find element by data-message-id
+          const groupMsgContainer = document.getElementById('groupMessagesContainer');
+          if (groupMsgContainer) {
+            const row = groupMsgContainer.querySelector(`[data-message-id="${messageId}"]`);
+            if (row) {
+              row.remove();
+              console.log("[delete group] removed message from DOM");
+            }
+          }
+
+        } catch (err) {
+          console.error("[delete group] error deleting message", err);
+          throw err;
         }
       }
 
@@ -5420,7 +7308,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           if (row) row.remove();
         } catch (err) {
           console.error("[dm delete] error", err);
-          alert("Failed to delete DM: " + (err.message || "Unknown error"));
+          showToast("Failed to delete DM", "error");
         }
       }
 
@@ -5470,7 +7358,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         const doSave = async () => {
           const trimmed = textarea.value.trim();
           if (!trimmed) {
-            alert("Message cannot be empty.");
+            showToast("Message cannot be empty", "error");
             return;
           }
           try {
@@ -5483,7 +7371,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             cancelDmInlineEdit();
           } catch (err) {
             console.error("[dm edit] error editing message", err);
-            alert("Failed to edit message: " + (err.message || "Unknown error"));
+            showToast("Failed to edit message", "error");
           }
         };
 
@@ -5540,7 +7428,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             if (bubbleWrapper) {
               const success = document.createElement('div');
               success.className = 'mt-2 text-xs inline-block rounded px-2 py-1 bg-emerald-200 text-emerald-900 font-medium';
-              success.textContent = 'Report submitted — thank you.';
+              success.textContent = 'Report submitted â€” thank you.';
               bubbleWrapper.appendChild(success);
               setTimeout(() => {
                 success.style.opacity = '0';
@@ -5553,7 +7441,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           console.log("[dm report] report submitted");
         } catch (err) {
           console.error("[dm report] error", err);
-          alert("Failed to submit report: " + (err.message || "Unknown error"));
+          showToast("Failed to submit report", "error");
         }
       }
 
@@ -5647,7 +7535,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-3 h-3"><path fill-rule="evenodd" d="M6.232 2.186a.75.75 0 0 1-.02.848L3.347 6.75h9.028a3.375 3.375 0 0 1 0 6.75H10.5a.75.75 0 0 1 0-1.5h1.875a1.875 1.875 0 0 0 0-3.75H3.347l2.865 3.716a.75.75 0 1 1-1.19.914l-4-5.19a.75.75 0 0 1 0-.915l4-5.19a.75.75 0 0 1 .848-.203.75.75 0 0 1 .362.604Z" clip-rule="evenodd"/></svg>
                 Replying to <span class="text-slate-100">${escapeHtml(pendingReply.username)}</span>
               </div>
-              <p class="text-xs text-slate-400 mt-0.5">"${escapeHtml(previewText(pendingReply.text, 64))}"</p>
+              <p class="text-xs text-slate-400 mt-0.5 font-medium">"${escapeHtml(previewText(pendingReply.text, 64))}"</p>
             </div>
             <button type="button" id="cancelReplyBtn" class="p-1 hover:bg-slate-700 rounded-lg transition-colors text-slate-400 hover:text-white" title="Cancel reply">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
@@ -5728,7 +7616,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         const doSave = async () => {
           const trimmed = textarea.value.trim();
           if (!trimmed) {
-            alert("Message cannot be empty.");
+            showToast("Message cannot be empty", "error");
             return;
           }
           try {
@@ -5741,7 +7629,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             cancelInlineEdit();
           } catch (err) {
             console.error("[edit] error editing message", err);
-            alert("Failed to edit message: " + (err.message || "Unknown error"));
+            showToast("Failed to edit message", "error");
           }
         };
 
@@ -5920,7 +7808,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             }
           });
           // Add title hint
-          nameLabel.title = "Click to view profile • Shift+Click to @mention";
+          nameLabel.title = "Click to view profile â€¢ Shift+Click to @mention";
           column.appendChild(nameLabel);
         } else {
           // Hide avatar for own messages
@@ -5969,7 +7857,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
               <svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 16 16\" fill=\"currentColor\" class=\"w-3 h-3\"><path fill-rule=\"evenodd\" d=\"M6.232 2.186a.75.75 0 0 1-.02.848L3.347 6.75h9.028a3.375 3.375 0 0 1 0 6.75H10.5a.75.75 0 0 1 0-1.5h1.875a1.875 1.875 0 0 0 0-3.75H3.347l2.865 3.716a.75.75 0 1 1-1.19.914l-4-5.19a.75.75 0 0 1 0-.915l4-5.19a.75.75 0 0 1 .848-.203.75.75 0 0 1 .362.604Z\" clip-rule=\"evenodd\"/></svg>
               ${escapeHtml(msg.replyTo.username || "Unknown")}
             </div>
-            <p class="text-[11px] ${isMine ? 'text-sky-100/80' : 'text-slate-400'} mt-0.5">"${escapeHtml(replySnippet)}"</p>
+            <p class="text-[11px] ${isMine ? 'text-sky-100/80' : 'text-slate-400'} mt-0.5 font-medium">"${escapeHtml(replySnippet)}"</p>
           `;
           replyPreview.addEventListener("click", (e) => {
             e.stopPropagation();
@@ -6076,7 +7964,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         // Add text if present (with @mention highlighting)
         if (msg.text) {
           const textSpan = document.createElement("span");
-          textSpan.className = "message-text-reveal inline-block";
+          textSpan.className = "message-text-reveal inline-block font-medium";
           // Render text with mentions highlighted
           textSpan.innerHTML = renderTextWithMentions(msg.text, isMine);
           
@@ -6179,8 +8067,8 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         // Add delete button for own messages
         if (isMine && messageId) {
           const deleteBtn = document.createElement("button");
-          // Hidden by default, show on hover, close to bubble
-          deleteBtn.className = "absolute -top-3 -right-3 z-20 w-7 h-7 rounded-full bg-slate-600 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center hover:bg-red-500 active:bg-red-500 text-sm cursor-pointer";
+          // Hidden by default, show on hover, pushed outside bubble
+          deleteBtn.className = "absolute -top-4 -right-4 z-20 w-7 h-7 rounded-full bg-slate-600 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center hover:bg-red-500 active:bg-red-500 text-sm cursor-pointer";
           deleteBtn.textContent = "🗑️";
           deleteBtn.title = "Delete message";
           
@@ -6197,7 +8085,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
 
           const editBtn = document.createElement("button");
           // Hidden by default, show on hover, next to delete button
-          editBtn.className = "absolute -top-3 right-5 z-20 w-7 h-7 rounded-full bg-slate-600 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center hover:bg-sky-500 active:bg-sky-500 cursor-pointer";
+          editBtn.className = "absolute -top-4 right-4 z-20 w-7 h-7 rounded-full bg-slate-600 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center hover:bg-sky-500 active:bg-sky-500 cursor-pointer";
           editBtn.innerHTML = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 20 20\" fill=\"currentColor\" class=\"w-3.5 h-3.5\"><path d=\"M15.502 1.94a1.5 1.5 0 0 1 2.122 2.12l-1.06 1.062-2.122-2.122 1.06-1.06Zm-2.829 2.828-9.192 9.193a2 2 0 0 0-.518.94l-.88 3.521a.5.5 0 0 0 .607.607l3.52-.88a2 2 0 0 0 .942-.518l9.193-9.193-2.672-2.67Z\"/></svg>";
           editBtn.title = "Edit message";
 
@@ -6213,8 +8101,8 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           // If already reported locally, don't add a report button
           if (!reportedMessages.has(messageId)) {
             const reportBtn = document.createElement("button");
-            // Hidden by default, show on hover, close to bubble
-            reportBtn.className = "absolute -top-3 -left-3 z-20 w-7 h-7 rounded-full bg-slate-600 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center hover:bg-amber-500 active:bg-amber-500 text-sm cursor-pointer";
+            // Hidden by default, show on hover, pushed outside bubble
+            reportBtn.className = "absolute -top-4 -left-4 z-20 w-7 h-7 rounded-full bg-slate-600 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center hover:bg-amber-500 active:bg-amber-500 text-sm cursor-pointer";
             reportBtn.textContent = "⚠️";
             reportBtn.title = "Report message";
 
@@ -6239,11 +8127,39 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           }
         }
 
+        // Add copy button on all messages with text
+        if (messageId && msg.text) {
+          const copyBtn = document.createElement("button");
+          // Hidden by default, show on hover, pushed outside bubble
+          copyBtn.className = "absolute -bottom-4 " + (isMine ? "-right-4" : "-left-4") + " z-20 w-7 h-7 rounded-full bg-slate-600 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center hover:bg-emerald-500 active:bg-emerald-500 cursor-pointer";
+          copyBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-3.5 h-3.5"><path d="M7 3.5A1.5 1.5 0 0 1 8.5 2h3.879a1.5 1.5 0 0 1 1.06.44l3.122 3.12a1.5 1.5 0 0 1 .439 1.061V11.5A1.5 1.5 0 0 1 15.5 13H8.5A1.5 1.5 0 0 1 7 11.5v-8Z"/><path d="M4.5 6A1.5 1.5 0 0 0 3 7.5v9A1.5 1.5 0 0 0 4.5 18h7a1.5 1.5 0 0 0 1.5-1.5v-2a.5.5 0 0 0-1 0v2a.5.5 0 0 1-.5.5h-7a.5.5 0 0 1-.5-.5v-9a.5.5 0 0 1 .5-.5h2a.5.5 0 0 0 0-1h-2Z"/></svg>';
+          copyBtn.title = "Copy message";
+
+          copyBtn.addEventListener("click", () => {
+            navigator.clipboard.writeText(msg.text).then(() => {
+              showToast('Message copied!', 'success');
+            }).catch(() => {
+              showToast('Failed to copy', 'error');
+            });
+          });
+          // Touch handler for iPad
+          copyBtn.addEventListener("touchend", (e) => {
+            e.preventDefault();
+            navigator.clipboard.writeText(msg.text).then(() => {
+              showToast('Message copied!', 'success');
+            }).catch(() => {
+              showToast('Failed to copy', 'error');
+            });
+          });
+
+          bubble.appendChild(copyBtn);
+        }
+
         // Add reply button on all messages
         if (messageId) {
           const replyBtn = document.createElement("button");
-          // Hidden by default, show on hover, close to bubble
-          replyBtn.className = "absolute -bottom-3 " + (isMine ? "-left-3" : "-right-3") + " z-20 w-7 h-7 rounded-full bg-slate-600 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center hover:bg-sky-500 active:bg-sky-500 cursor-pointer";
+          // Hidden by default, show on hover, pushed outside bubble
+          replyBtn.className = "absolute -bottom-4 " + (isMine ? "-left-4" : "-right-4") + " z-20 w-7 h-7 rounded-full bg-slate-600 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center hover:bg-sky-500 active:bg-sky-500 cursor-pointer";
           replyBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-3.5 h-3.5"><path fill-rule="evenodd" d="M7.793 2.232a.75.75 0 0 1-.025 1.06L3.622 7.25h10.003a5.375 5.375 0 0 1 0 10.75H10.75a.75.75 0 0 1 0-1.5h2.875a3.875 3.875 0 0 0 0-7.75H3.622l4.146 3.957a.75.75 0 0 1-1.036 1.085l-5.5-5.25a.75.75 0 0 1 0-1.085l5.5-5.25a.75.75 0 0 1 1.06.025Z" clip-rule="evenodd"/></svg>';
           replyBtn.title = "Reply";
 
@@ -6287,8 +8203,8 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         // Admin delete button for other users' messages
         if (!isMine && messageId && isAdmin) {
           const adminDeleteBtn = document.createElement("button");
-          // Hidden by default, show on hover, close to bubble
-          adminDeleteBtn.className = "absolute -top-3 -right-3 z-20 w-7 h-7 rounded-full bg-red-600 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center hover:bg-red-700 active:bg-red-700 text-sm cursor-pointer";
+          // Hidden by default, show on hover, pushed outside bubble
+          adminDeleteBtn.className = "absolute -top-4 -right-4 z-20 w-7 h-7 rounded-full bg-red-600 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center hover:bg-red-700 active:bg-red-700 text-sm cursor-pointer";
           adminDeleteBtn.textContent = "🗑️";
           adminDeleteBtn.title = "Admin delete";
           adminDeleteBtn.setAttribute("data-admin-delete", "true");
@@ -6450,7 +8366,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         }
         // Trim trailing non-word characters (punctuation/space) without using Unicode property escapes
         slice = slice.replace(/[\W_]+$/g, '');
-        return slice + '…';
+        return slice + 'â€¦';
       }
 
       // Batch render messages for better performance
@@ -6646,7 +8562,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
                 const scrollDelays = (typeof FAST_MODE_ENABLED !== 'undefined' && FAST_MODE_ENABLED) ? [50, 150, 400] : [300, 800, 1500];
                 scrollDelays.forEach(d => setTimeout(scrollToBottom, d));
 
-                // Hide loading screen after messages are loaded — keep it visible slightly longer for a smooth transition.
+                // Hide loading screen after messages are loaded â€” keep it visible slightly longer for a smooth transition.
                 const extraDelay = (typeof FAST_MODE_ENABLED !== 'undefined' && FAST_MODE_ENABLED) ? 50 : 1500;
                 setTimeout(() => { if (loadingScreen) loadingScreen.classList.add("hidden"); }, extraDelay);
 
@@ -6824,13 +8740,13 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
 
         let text = "";
         if (typingUsers.length === 1) {
-          text = typingUsers[0] + " is typing…";
+          text = typingUsers[0] + " is typingâ€¦";
         } else if (typingUsers.length === 2) {
-          text = typingUsers[0] + " and " + typingUsers[1] + " are typing…";
+          text = typingUsers[0] + " and " + typingUsers[1] + " are typingâ€¦";
         } else if (typingUsers.length === 3) {
-          text = typingUsers[0] + ", " + typingUsers[1] + ", and " + typingUsers[2] + " are typing…";
+          text = typingUsers[0] + ", " + typingUsers[1] + ", and " + typingUsers[2] + " are typingâ€¦";
         } else if (typingUsers.length > 3) {
-          text = "Several people are typing…";
+          text = "Several people are typingâ€¦";
         }
 
         lastTypingText = text;
@@ -6971,6 +8887,20 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
 
         if (user) {
           try {
+            // Check FINGERPRINT ban FIRST (before even checking user ban)
+            const fpCheck = await checkFingerprintBan();
+            if (fpCheck.banned) {
+              console.log("[auth] device fingerprint is banned:", fpCheck.reason);
+              const banPopup = document.getElementById("banPopup");
+              const banReason = document.getElementById("banReason");
+              if (banPopup && banReason) {
+                banReason.textContent = "Device banned: " + (fpCheck.reason || "Ban evasion detected");
+                banPopup.classList.remove("hidden");
+              }
+              setTimeout(() => auth.signOut(), 3000);
+              return;
+            }
+            
             // Check if user is banned IMMEDIATELY
             const banSnap = await db.ref("bannedUsers/" + user.uid).once("value");
             if (banSnap.exists()) {
@@ -7008,8 +8938,25 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             // Setup presence tracking
             setupPresence(user.uid);
             
+            // Store fingerprint in user record (mandatory for security)
+            if (FINGERPRINT_ENABLED) {
+              (async () => {
+                try {
+                  const fp = await generateBrowserFingerprint();
+                  if (fp) {
+                    await db.ref('users/' + user.uid + '/fingerprint').set(fp);
+                  }
+                } catch (e) {
+                  console.warn('[fingerprint] failed to store:', e);
+                }
+              })();
+            }
+            
             // Load cleared notifications from localStorage
             loadClearedNotifications();
+            
+            // Check and show Community Guidelines if not accepted yet
+            checkAndShowGuidelines(user.uid);
 
             // Get username from DB (ONE PLACE)
             currentUsername = await fetchUsername(
@@ -7074,6 +9021,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             setupWarnModal();
             setupMuteModal();
             setupBanModal();
+            setupModPanel();
             
             // Start DM inbox listener for notifications
             await loadDmInbox();
@@ -7096,13 +9044,67 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             applyFastMode(settings.fastMode === true, false);
             initRatingSettings(settings);
             
-            // Check if we need to show the mod app popup
-            checkAndShowModAppPopup();
+            // ========== SEQUENCED ONBOARDING FLOW ==========
+            // Order: Guidelines -> Walkthrough -> Mod App Popup -> Canvas Consent
+            // Each waits for the previous to complete before showing
             
-            // Start onboarding walkthrough for new users (after UI is ready)
-            setTimeout(() => {
-              startWalkthrough();
-            }, 1500);
+            (async () => {
+              // 1. Wait for guidelines acceptance (if needed)
+              await checkAndShowGuidelines(user.uid);
+              
+              // 2. Small delay after guidelines, then start walkthrough
+              await new Promise(r => setTimeout(r, 800));
+              
+              // 3. Start walkthrough and wait for it to complete
+              await new Promise(resolve => {
+                startWalkthrough();
+                // Wait for walkthrough to complete or be skipped
+                // Check every 500ms if walkthrough is done
+                const checkDone = setInterval(() => {
+                  const overlay = document.getElementById('walkthroughOverlay');
+                  if (!overlay || overlay.classList.contains('hidden') || !walkthroughActive) {
+                    clearInterval(checkDone);
+                    resolve();
+                  }
+                }, 500);
+                // Safety timeout after 60 seconds
+                setTimeout(() => { clearInterval(checkDone); resolve(); }, 60000);
+              });
+              
+              // 4. Small delay, then mod app popup (if eligible)
+              await new Promise(r => setTimeout(r, 500));
+              checkAndShowModAppPopup();
+              
+              // 5. Small delay, then canvas consent (if needed)
+              await new Promise(r => setTimeout(r, 1000));
+              if (FINGERPRINT_ENABLED) {
+                const consentStatus = await checkCanvasConsentFromFirebase(user.uid);
+                console.log('[fingerprint] canvas consent check:', consentStatus);
+                
+                if (consentStatus === true) {
+                  // User granted consent
+                  canvasConsentCache = true;
+                  cachedFingerprint = null;
+                  try {
+                    const fp = await generateBrowserFingerprint();
+                    if (fp) {
+                      await db.ref('users/' + user.uid + '/fingerprint').set(fp);
+                    }
+                  } catch (e) {
+                    console.warn('[fingerprint] failed to regenerate with canvas:', e);
+                  }
+                } else if (consentStatus === 'declined') {
+                  // User previously declined - don't prompt again
+                  console.log('[fingerprint] user previously declined, not showing modal');
+                  canvasConsentCache = false;
+                } else {
+                  // No consent recorded yet - show modal
+                  console.log('[fingerprint] showing canvas consent modal');
+                  canvasConsentCache = false;
+                  showCanvasConsentModal();
+                }
+              }
+            })();
 
             // Ensure AI edit button visibility updates now that auth.user is available
             try { updateAiEditButtonVisibility(); } catch (e) { /* ignore */ }
@@ -7114,7 +9116,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             } catch (e) {
               console.warn("[auth] error signing out:", e);
             }
-            alert("Error loading your profile. Please log in again.");
+            showToast("Error loading profile. Please log in again.", "error");
           }
         } else {
           console.log(
@@ -7211,7 +9213,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           loginUsernameInput.value = "";
         } catch (err) {
           console.error("[logout] error during logout:", err);
-          alert("Error logging out. Try refreshing the page.");
+          showToast("Error logging out. Try refreshing.", "error");
         } finally {
           logoutBtn.disabled = false;
           logoutBtn.textContent = "Logout";
@@ -7248,11 +9250,11 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         }
 
         if (isMuted) {
-          alert("You are muted and cannot send messages right now.");
+          showToast("You are muted", "error");
           return;
         }
 
-        // ✅ Local send cooldowns (match server rules: 0.5s text, 1s media)
+        // âœ… Local send cooldowns (match server rules: 0.5s text, 1s media)
         const now = Date.now();
         const isMedia = !!pendingMediaUrl;
         const cooldown = isMedia ? MEDIA_COOLDOWN_MS : TEXT_COOLDOWN_MS;
@@ -7267,7 +9269,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           // Check for threats and violence first (these are serious)
           for (let pattern of THREAT_PATTERNS) {
             if (pattern.test(text)) {
-              currentWarningText = "⚠️ Message blocked: Threats or violence are not allowed.";
+              currentWarningText = " Message blocked: Threats or violence are not allowed.";
               updateStatusBar();
               setTimeout(() => {
                 currentWarningText = "";
@@ -7281,7 +9283,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           // Check for hate speech and harassment
           for (let pattern of HATE_PATTERNS) {
             if (pattern.test(text)) {
-              currentWarningText = "⚠️ Message blocked: Hateful or harassing language is not allowed.";
+              currentWarningText = " Message blocked: Hateful or harassing language is not allowed.";
               updateStatusBar();
               setTimeout(() => {
                 currentWarningText = "";
@@ -7296,7 +9298,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           text = filterBadWords(text);
           if (typeof text === 'string' && text.startsWith('[FILTERED')) {
             // Block send and show a warning
-            currentWarningText = '⚠️ Message blocked: Hateful or harassing language is not allowed.';
+            currentWarningText = ' Message blocked: Hateful or harassing language is not allowed.';
             updateStatusBar();
             setTimeout(() => {
               currentWarningText = '';
@@ -7320,7 +9322,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
 
         // Add visual feedback to send button
         const originalBtnText = sendBtn.innerHTML;
-        sendBtn.innerHTML = '<span class="animate-pulse">✓</span>';
+        sendBtn.innerHTML = '<span class="animate-pulse">âœ“</span>';
         sendBtn.disabled = true;
 
         // Build message object
@@ -7425,8 +9427,9 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           (async () => {
             let botReply = null;
             // Add user message to memory
-            addToAiMemory(uid, 'user', aiQuery);
+            addToAiMemory(uid, 'user', aiQuery, currentUsername);
             const conversationHistory = getAiMemory(uid);
+            const talkingToUsername = getAiUsername(uid) || currentUsername || 'User';
             
             try {
               const aiWorkerUrl = 'https://recovery-modmojheh.modmojheh.workers.dev';
@@ -7434,7 +9437,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
                 const r = await fetch(aiWorkerUrl + '/ai', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ prompt: aiQuery, history: conversationHistory })
+                  body: JSON.stringify({ prompt: aiQuery, history: conversationHistory, username: talkingToUsername })
                 });
                 if (r.ok) {
                   const jr = await r.json();
@@ -7452,10 +9455,10 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             botReply = botReply.replace(/\n{3,}/g, '\n\n').trim();
             
             // Remove @everyone from AI responses (security)
-            botReply = botReply.replace(/@everyone/gi, '@​everyone'); // Zero-width space breaks the mention
+            botReply = botReply.replace(/@everyone/gi, '@â€‹everyone'); // Zero-width space breaks the mention
             
             // Add AI reply to memory
-            addToAiMemory(uid, 'assistant', botReply);
+            addToAiMemory(uid, 'assistant', botReply, currentUsername);
 
             try {
               const botMessage = {
@@ -7546,12 +9549,12 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         // No moderation: directly proceed to upload (skip moderation step)
         const isVideo = file.type.startsWith("video/");
         if (isVideo) {
-          console.log("[upload] video file detected — skipping moderation and uploading directly");
+          console.log("[upload] video file detected â€” skipping moderation and uploading directly");
         } else {
-          console.log("[upload] image file detected — moderation disabled, uploading directly");
+          console.log("[upload] image file detected â€” moderation disabled, uploading directly");
         }
 
-        // 2️⃣ If safe, upload to ImageKit
+        // 2ï¸âƒ£ If safe, upload to ImageKit
         const formData = new FormData();
         formData.append("file", file);
 
@@ -7693,12 +9696,12 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         const type = (file?.type || "").toLowerCase();
 
         if (type.includes("gif")) {
-          console.log("[upload] GIF detected – skipping compression.");
+          console.log("[upload] GIF detected — skipping compression.");
           return file;
         }
 
         if (type.includes("video")) {
-          console.log("[upload] video detected – skipping compression.");
+          console.log("[upload] video detected — skipping compression.");
           return file;
         }
 
@@ -7752,7 +9755,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         const userObj = auth.currentUser;
         if (!userObj || !currentUsername) return;
         if (!(await canUpload())) {
-          alert("Slow down! Wait a few seconds.");
+          showToast("Slow down! Wait a few seconds", "error");
           return;
         }
 
@@ -7794,12 +9797,12 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
 
         const userObj = auth.currentUser;
         if (!userObj) {
-          alert("Please log in to send media");
+          showToast("Please log in to send media", "error");
           return;
         }
 
         if (!(await canUpload())) {
-          alert("Slow down! Wait a few seconds.");
+          showToast("Slow down! Wait a few seconds", "error");
           mediaInput.value = "";
           return;
         }
@@ -7809,7 +9812,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           if (file.type && file.type.startsWith('video/')) {
             const dur = await getVideoDuration(file);
             if (dur > 30) {
-              alert('Video is too long. Maximum allowed duration is 30 seconds.');
+              showToast('Video too long. Max 30 seconds', 'error');
               mediaInput.value = '';
               return;
             }
@@ -7863,7 +9866,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           mediaInput.value = "";
         } catch (err) {
           console.error("[media] error uploading:", err);
-          alert("Error uploading media: " + err.message);
+          showToast("Error uploading media", "error");
           
           // Reset button
           mediaUploadBtn.disabled = false;
@@ -8033,42 +10036,58 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
 
       function openPatchNotes() {
         try {
-          document.getElementById('patchNotesTitle').textContent = 'Patch Notes — v6.0';
+          document.getElementById('patchNotesTitle').textContent = 'Patch Notes - v7.0';
           patchNotesContent.innerHTML = `
-            <h4 class="font-semibold text-slate-200">Version 6.0 — December 2025</h4>
-            <p class="text-xs text-slate-400">Released: December 15, 2025</p>
+            <h4 class="font-semibold text-slate-200">Version 7.0 - January 2026</h4>
+            <p class="text-xs text-slate-400">Released: January 2026</p>
             
-            <h5 class="font-medium text-sky-400 mt-4 mb-2">🆕 New Features</h5>
+            <h5 class="font-medium text-sky-400 mt-4 mb-2">New Features</h5>
             <ul class="list-disc pl-5 space-y-1">
-                <li><strong>Share Button</strong> — Share Chatra with friends! Tap the share icon in the header to copy a link or download a QR code.</li>
-                <li><strong>Google Analytics</strong> — Added analytics to help improve the app experience.</li>
-                <li><strong>@everyone (Admin)</strong> — Admins can now mention everyone in global chat with <span class="text-amber-400">@everyone</span> — all users will see the orange highlight and notification.</li>
-                <li><strong>Timestamps</strong> — Messages in Global Chat and DMs now show time (today) or date (older) below each message.</li>
+                <li><strong>Group Chat</strong> - Create and join group chats with friends.</li>
+                <li><strong>Group Search</strong> - Search groups in real-time as you type.</li>
+                <li><strong>Online Counter</strong> - See how many users are currently online.</li>
+                <li><strong>Online Status</strong> - Friends list shows who is online with green/gray dots.</li>
+                <li><strong>@AI Mentions</strong> - Mention the AI with @AI anywhere in your message.</li>
+                <li><strong>Unban All Button</strong> - Owner-only button to clear all bans at once.</li>
+                <li><strong>Hardware Ban System</strong> - Admins can hardware ban users to prevent evasion.</li>
+                <li><strong>Mod Panel Improvements</strong> - View usernames, extend bans, manage hardware bans.</li>
             </ul>
             
-            <h5 class="font-medium text-emerald-400 mt-4 mb-2">✨ Improvements</h5>
+            <h5 class="font-medium text-emerald-400 mt-4 mb-2">Improvements</h5>
             <ul class="list-disc pl-5 space-y-1">
-                <li><strong>Slimmer Bubbles</strong> — Global chat message bubbles are now smaller and thinner for a cleaner look.</li>
-                <li><strong>QR Downloads</strong> — Share QR codes are generated locally and download directly to your device.</li>
-                <li><strong>Mention Persistence</strong> — Mentions you've already seen won't re-notify after refresh or scrolling.</li>
+                <li><strong>Toast Notifications</strong> - All browser alerts replaced with styled in-app toasts.</li>
+                <li><strong>DM Buttons</strong> - Delete, edit, and report buttons now match Global Chat style.</li>
+                <li><strong>Group Settings Modal</strong> - Photo upload, name editing, member management.</li>
+                <li><strong>Inline Confirmations</strong> - Leave/delete actions use inline buttons.</li>
+                <li><strong>Safari Support</strong> - Fixed viewport issues with Safari.</li>
+                <li><strong>Expired Bans Auto-Remove</strong> - Expired bans automatically removed.</li>
             </ul>
             
-            <h5 class="font-medium text-rose-400 mt-4 mb-2">🐛 Bug Fixes</h5>
+            <h5 class="font-medium text-rose-400 mt-4 mb-2">Bug Fixes</h5>
             <ul class="list-disc pl-5 space-y-1">
-                <li>Fixed duplicate mention notifications when refreshing or scrolling to old messages.</li>
-                <li>Fixed ban duration dropdown not showing all options (hour, day, week, month, permanent).</li>
-                <li>Fixed timestamp styling causing centered text and gaps in message bubbles.</li>
+                <li>Fixed corrupted emoji characters throughout the app.</li>
+                <li>Fixed bannedEmails permission denied error on login.</li>
+                <li>Fixed mod panel not showing usernames for banned users.</li>
+                <li>Fixed page switching bug where Global Chat and Groups showed together.</li>
             </ul>
             
             <h4 class="font-semibold text-slate-200 mt-6">Previous Updates</h4>
             <details class="text-xs text-slate-400 mt-2">
-              <summary class="cursor-pointer hover:text-slate-300">v5.5 — Click to expand</summary>
+              <summary class="cursor-pointer hover:text-slate-300">v6.0 - Share and Mentions</summary>
               <ul class="list-disc pl-5 space-y-1 mt-2">
-                <li>Added mentioning others when replying — reply previews now highlight mentions.</li>
+                <li>Added Share Button - Share Chatra with friends via link or QR code.</li>
+                <li>Added @everyone (Admin) - Admins can mention everyone in global chat.</li>
+                <li>Added Timestamps - Messages show time or date below each bubble.</li>
+                <li>Slimmer message bubbles for a cleaner look.</li>
+              </ul>
+            </details>
+            <details class="text-xs text-slate-400 mt-2">
+              <summary class="cursor-pointer hover:text-slate-300">v5.5 - Walkthrough and Reports</summary>
+              <ul class="list-disc pl-5 space-y-1 mt-2">
+                <li>Added mentioning others when replying.</li>
                 <li>Added an onboarding walkthrough for new users.</li>
                 <li>Improved reporting system with inline report flow.</li>
                 <li>Fixed touchscreen compatibility (iPad/Safari).</li>
-                <li>Added Suggestions & Help overlay.</li>
               </ul>
             </details>`;
         } catch (e) {}
@@ -8170,7 +10189,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         openHelpModal();
         // If user is not signed in, inform them they must register/login to submit
         if (!currentUserId) {
-          helpStatus.textContent = "You are not signed in — this will be submitted anonymously.";
+          helpStatus.textContent = "You are not signed in â€” this will be submitted anonymously.";
           helpStatus.className = "text-center text-sm text-yellow-400";
           helpStatus.classList.remove('hidden');
           helpSubmitBtn.disabled = false;
@@ -8317,7 +10336,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             // Friendly names for success message
             const typeNames = { suggestion: 'suggestion', bug: 'bug report', idea: 'idea', appeal: 'ban appeal' };
             const friendlyType = typeNames[type] || type;
-            helpStatus.textContent = "✓ Thank you! Your " + friendlyType + " has been submitted.";
+            helpStatus.textContent = "âœ“ Thank you! Your " + friendlyType + " has been submitted.";
             helpStatus.className = "text-center text-sm text-green-400";
             helpStatus.classList.remove('hidden');
 
@@ -8427,7 +10446,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         modAppDismissBtn.addEventListener('click', dismissModAppPopup);
         modAppDismissBtn.addEventListener('touchend', (e) => { e.preventDefault(); dismissModAppPopup(); });
       }
-      // Note: Do NOT dismiss when clicking the backdrop or Apply — only the Dismiss button closes the popup.
+      // Note: Do NOT dismiss when clicking the backdrop or Apply â€” only the Dismiss button closes the popup.
       // Apply button is a normal link (`<a>`) and will open the form in a new tab; we intentionally do not attach a dismiss handler.
       // ======================== END MOD APP POPUP ========================
 
@@ -8437,7 +10456,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
 
       // Leave sidebar Staff Applications link as a normal external link (no JS interception)
 
-      // Header staff link is a normal external link — no JS interception
+      // Header staff link is a normal external link â€” no JS interception
 
       // Global touch-to-click enhancer for iOS/touch devices
       (function(){
@@ -8553,7 +10572,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
       if (saveRecoveryBtn) {
         saveRecoveryBtn.addEventListener('click', async () => {
           const uid = auth.currentUser?.uid;
-          if (!uid) return alert('Not signed in');
+          if (!uid) { showToast('Not signed in', 'error'); return; }
           const val = (settingsRecoveryEmail && settingsRecoveryEmail.value) ? settingsRecoveryEmail.value.trim() : '';
           const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
           if (val && !emailRegex.test(val)) {
@@ -8578,7 +10597,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
       if (clearRecoveryBtn) {
         clearRecoveryBtn.addEventListener('click', async () => {
           const uid = auth.currentUser?.uid;
-          if (!uid) return alert('Not signed in');
+          if (!uid) { showToast('Not signed in', 'error'); return; }
           try {
             await db.ref('userProfiles/' + uid + '/recoveryEmail').set(null);
             await db.ref('userProfiles/' + uid + '/recoveryEmailVerified').set(false);
@@ -8596,7 +10615,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
       // Delete account for current user (with optional message deletion)
       async function performAccountDeletion(deleteMessages) {
         const uid = auth.currentUser?.uid;
-        if (!uid) return alert('Not signed in');
+        if (!uid) { showToast('Not signed in', 'error'); return; }
         try {
           deleteAccountMsg.textContent = 'Deleting...';
           deleteAccountMsg.className = 'text-xs text-yellow-400';
@@ -8673,6 +10692,73 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           blockedUsersModal.classList.add("modal-closed");
         }
       });
+
+      // Canvas Consent Modal (GDPR/CCPA compliant - for canvas fingerprint only)
+      const canvasConsentEnableBtn = document.getElementById("canvasConsentEnableBtn");
+      const canvasConsentSkipBtn = document.getElementById("canvasConsentSkipBtn");
+      const canvasConsentSettingsLink = document.getElementById("canvasConsentSettingsLink");
+      const canvasConsentPrivacyLink = document.getElementById("canvasConsentPrivacyLink");
+
+      if (canvasConsentEnableBtn) {
+        canvasConsentEnableBtn.addEventListener("click", async () => {
+          await grantCanvasConsent(currentUserId);
+          hideCanvasConsentModal();
+          // Regenerate and store fingerprint with canvas
+          if (currentUserId && FINGERPRINT_ENABLED) {
+            try {
+              const fp = await generateBrowserFingerprint();
+              if (fp) {
+                await db.ref('users/' + currentUserId + '/fingerprint').set(fp);
+              }
+            } catch (e) {
+              console.warn('[fingerprint] failed to update with canvas:', e);
+            }
+          }
+        });
+      }
+
+      // Skip/decline button - closes modal, no features are gated
+      if (canvasConsentSkipBtn) {
+        canvasConsentSkipBtn.addEventListener("click", () => {
+          hideCanvasConsentModal();
+          // Mark as declined so we don't keep showing it
+          if (currentUserId) {
+            db.ref('users/' + currentUserId + '/canvasConsentRecord').set({
+              granted: false,
+              declinedAt: firebase.database.ServerValue.TIMESTAMP,
+              version: CANVAS_CONSENT_VERSION,
+              uid: currentUserId
+            }).catch(() => {});
+          }
+        });
+      }
+      
+      // Link to Settings -> Privacy from consent modal
+      if (canvasConsentSettingsLink) {
+        canvasConsentSettingsLink.addEventListener("click", (e) => {
+          e.preventDefault();
+          hideCanvasConsentModal();
+          // Open privacy settings modal
+          const privacyModal = document.getElementById("privacySettingsModal");
+          if (privacyModal) {
+            privacyModal.classList.remove("modal-closed");
+            privacyModal.classList.add("modal-open");
+          }
+        });
+      }
+      
+      // Link to Privacy Policy from consent modal
+      if (canvasConsentPrivacyLink) {
+        canvasConsentPrivacyLink.addEventListener("click", (e) => {
+          e.preventDefault();
+          hideCanvasConsentModal();
+          const privacyModal = document.getElementById("privacyModal");
+          if (privacyModal) {
+            privacyModal.classList.remove("modal-closed");
+            privacyModal.classList.add("modal-open");
+          }
+        });
+      }
 
       // Privacy Settings Modal
       privacySettingsCloseBtn.addEventListener("click", () => {
@@ -8790,7 +10876,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         shareCopyBtn.addEventListener('touchend', (e) => { e.preventDefault(); shareCopyBtn.click(); });
       }
 
-      // Download QR button behavior — fetch the image as a blob then download.
+      // Download QR button behavior â€” fetch the image as a blob then download.
       if (shareDownloadBtn) {
         shareDownloadBtn.addEventListener('click', async (e) => {
           const qr = shareDownloadBtn.dataset.qr || (shareQRCode ? shareQRCode.src : null) || 'https://image2url.com/images/1765859919064-72a6905d-3b5b-4ed0-82e3-fd76963651d4.png';
@@ -8909,6 +10995,11 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           if (allowGroupInvitesToggle) {
             allowGroupInvitesToggle.checked = privacy.allowGroupInvites !== false;
           }
+          // Canvas consent toggle - sync with current state
+          const canvasConsentToggle = document.getElementById("canvasConsentToggle");
+          if (canvasConsentToggle) {
+            canvasConsentToggle.checked = canvasConsentCache === true;
+          }
         } catch (err) {
           console.error("[privacy] error loading settings:", err);
         }
@@ -8918,7 +11009,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
       savePrivacyBtn.addEventListener("click", async () => {
         const uid = auth.currentUser?.uid;
         if (!uid) {
-          alert("Not logged in");
+          showToast("Not logged in", "error");
           return;
         }
 
@@ -8929,6 +11020,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           console.log("[privacy] saving settings for uid:", uid);
           const groupVisibilitySelect = document.getElementById("groupVisibilitySelect");
           const allowGroupInvitesToggle = document.getElementById("allowGroupInvitesToggle");
+          
           await db.ref("userPrivacy/" + uid).set({
             allowFriendRequests: allowFriendRequestsToggle.checked,
             dmPrivacy: dmPrivacySelect ? dmPrivacySelect.value : 'anyone',
@@ -8938,7 +11030,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           });
 
           console.log("[privacy] saved successfully");
-          savePrivacyBtn.textContent = "✓ Saved!";
+          savePrivacyBtn.textContent = "Saved!";
           savePrivacyBtn.style.background = "rgb(34, 197, 94)";
 
           setTimeout(() => {
@@ -8950,11 +11042,38 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           }, 1500);
         } catch (err) {
           console.error("[privacy] error saving:", err);
-          alert("Failed to save privacy settings: " + err.message);
+          showToast("Failed to save privacy settings", "error");
           savePrivacyBtn.textContent = "Save Settings";
           savePrivacyBtn.disabled = false;
         }
       });
+
+      // Canvas consent toggle handler in Privacy Settings
+      const canvasConsentToggle = document.getElementById("canvasConsentToggle");
+      if (canvasConsentToggle) {
+        canvasConsentToggle.addEventListener("change", async () => {
+          const uid = auth.currentUser?.uid;
+          if (!uid) return;
+          
+          if (canvasConsentToggle.checked) {
+            await grantCanvasConsent(uid);
+            showToast('Device identification enabled', 'success');
+          } else {
+            await revokeCanvasConsent(uid);
+          }
+        });
+      }
+      
+      // Learn more link in Privacy Settings
+      const canvasConsentLearnMore = document.getElementById("canvasConsentLearnMore");
+      if (canvasConsentLearnMore) {
+        canvasConsentLearnMore.addEventListener("click", (e) => {
+          e.preventDefault();
+          privacySettingsModal.classList.remove("modal-open");
+          privacySettingsModal.classList.add("modal-closed");
+          showCanvasConsentModal();
+        });
+      }
 
       // ===== DIRECT MESSAGES =====
       function openDmModal() {
@@ -9542,7 +11661,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         // Check for threats, violence, and harassment in DM (don't send if detected)
         for (let pattern of THREAT_PATTERNS) {
           if (pattern.test(text)) {
-            dmError.textContent = "⚠️ Message blocked: Threats or violence are not allowed.";
+            dmError.textContent = " Message blocked: Threats or violence are not allowed.";
             dmInput.value = "";
             return;
           }
@@ -9550,7 +11669,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         
         for (let pattern of HATE_PATTERNS) {
           if (pattern.test(text)) {
-            dmError.textContent = "⚠️ Message blocked: Hateful or harassing language is not allowed.";
+            dmError.textContent = " Message blocked: Hateful or harassing language is not allowed.";
             dmInput.value = "";
             return;
           }
@@ -9559,7 +11678,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         // Filter profanity and detect severe slurs
         text = filterBadWords(text);
         if (typeof text === 'string' && text.startsWith('[FILTERED')) {
-          currentWarningText = '⚠️ Message blocked: Hateful or harassing language is not allowed.';
+          currentWarningText = ' Message blocked: Hateful or harassing language is not allowed.';
           updateStatusBar();
           setTimeout(() => {
             currentWarningText = '';
@@ -9821,7 +11940,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
               }
             } catch (saveErr) {
               console.error("[profile] error saving picture to database:", saveErr);
-              alert("Profile picture saved locally but could not sync to server. Please try again.");
+              showToast("Profile picture saved locally but could not sync to server", "error");
             }
           }
 
@@ -9831,7 +11950,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           console.log("[profile] uploaded successfully:", uploadResult.url);
         } catch (err) {
           console.error("[profile] error uploading:", err);
-          alert("Error uploading image: " + err.message);
+          showToast("Error uploading image", "error");
           uploadPicBtn.disabled = false;
           uploadPicBtn.textContent = "Upload Picture";
           profilePicInput.value = "";
@@ -9900,14 +12019,14 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
               }
             } catch (saveErr) {
               console.error("[profile] error saving banner to database:", saveErr);
-              alert("Banner saved locally but could not sync to server. Please try again.");
+              showToast("Banner saved locally but could not sync to server", "error");
             }
           }
 
           console.log("[profile] banner uploaded successfully:", uploadResult.url);
         } catch (err) {
           console.error("[profile] error uploading banner:", err);
-          alert("Error uploading banner: " + err.message);
+          showToast("Error uploading banner", "error");
           profileBannerInput.value = "";
         }
       });
@@ -9978,7 +12097,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           console.log("[profile] loaded successfully");
         } catch (err) {
           console.error("[profile] error loading profile:", err);
-          alert("Could not load profile. Error: " + err.message);
+          showToast("Could not load profile", "error");
           profileBio.value = "";
           currentUserData = {};
         }
@@ -10234,7 +12353,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         console.log("[admin-profile] isMutedNow:", isMutedNow, "muteData:", muteData);
 
         // Set up button handlers
-        profileBanBtn.textContent = isBannedNow ? "🚪 Unban" : "⛔ Ban";
+        profileBanBtn.textContent = isBannedNow ? " Unban" : " Ban";
         profileBanBtn.onclick = async () => {
           const latestBanSnap = await db.ref("bannedUsers/" + targetUid).once("value");
           const latestBan = latestBanSnap.val();
@@ -10242,7 +12361,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           const latestActive = !!(latestBan && (!latestBan.until || latestBan.until === 9999999999999 || latestBan.until > latestNow));
           if (latestActive) {
             await unbanUser(targetUid);
-            profileBanBtn.textContent = "⛔ Ban";
+            profileBanBtn.textContent = " Ban";
           } else {
             showBanReasonModal(targetUid);
           }
@@ -10255,7 +12374,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             console.log("[admin-profile] unMuting user:", targetUid);
             db.ref("mutedUsers/" + targetUid).remove().then(() => {
               console.log("[admin-profile] user unmuted successfully");
-              profileMuteBtn.textContent = "🔇 Mute";
+              profileMuteBtn.textContent = " Mute";
             }).catch((err) => {
               console.error("[mute] failed to unmute user", err);
             });
@@ -10266,7 +12385,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         };
 
         // Update button text based on mute status
-        profileMuteBtn.textContent = isMutedNow ? "🔊 Unmute" : "🔇 Mute";
+        profileMuteBtn.textContent = isMutedNow ? " Unmute" : " Mute";
 
         profileWarnBtn.onclick = () => {
           showWarnReasonModal(targetUid);
@@ -10329,7 +12448,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           if (sentReqSnap.exists()) {
             sendFriendRequestBtn.disabled = true;
             sendFriendRequestBtn.style.background = "rgb(100, 116, 139)";
-            sendFriendRequestBtn.textContent = "⏳ Pending";
+            sendFriendRequestBtn.textContent = "â³ Pending";
             setFriendRequestStatus("Friend request already sent.", "info");
             return;
           }
@@ -10339,7 +12458,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           if (reverseReqSnap.exists()) {
             sendFriendRequestBtn.disabled = true;
             sendFriendRequestBtn.style.background = "rgb(100, 116, 139)";
-            sendFriendRequestBtn.textContent = "↩ Incoming";
+            sendFriendRequestBtn.textContent = "â†© Incoming";
             setFriendRequestStatus("They sent you a friend request. Check your requests.", "info");
             return;
           }
@@ -10433,7 +12552,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         const uid = auth.currentUser?.uid;
         if (!uid) {
           console.error("[profile] not logged in");
-          alert("Not logged in. Please refresh and log in again.");
+          showToast("Not logged in. Please refresh and log in again.", "error");
           return;
         }
 
@@ -10569,7 +12688,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             }
             
             // Success feedback
-            saveProfileBtn.textContent = "✓ Username Updated!";
+            saveProfileBtn.textContent = "âœ“ Username Updated!";
             saveProfileBtn.style.background = "rgb(34, 197, 94)"; // green
             setTimeout(() => {
               saveProfileBtn.textContent = originalText;
@@ -10611,7 +12730,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             console.log("[profile] saved successfully (no username change)");
             
             // Success feedback
-            saveProfileBtn.textContent = "✓ Profile Saved!";
+            saveProfileBtn.textContent = "Profile Saved!";
             saveProfileBtn.style.background = "rgb(34, 197, 94)"; // green
             setTimeout(() => {
               saveProfileBtn.textContent = originalText;
@@ -10644,9 +12763,9 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           // Show error state
           saveProfileBtn.textContent = buttonText;
           saveProfileBtn.style.background = "rgb(239, 68, 68)"; // red
+          showToast(err.message || "Error saving profile", "error");
 
           setTimeout(() => {
-            alert(err.message || "Error saving profile. Please try again.");
             saveProfileBtn.textContent = originalText;
             saveProfileBtn.style.background = "";
             saveProfileBtn.disabled = false;
@@ -10774,7 +12893,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           }
         } catch (err) {
           logDetailedError("loadFriendRequests", err, { uid });
-          alert("Error loading requests: " + err.message);
+          showToast("Error loading requests", "error");
         }
       }
 
@@ -10841,7 +12960,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           console.log("[friends] looking up target uid for username:", currentViewingUsername);
           const snap = await db.ref("users").orderByChild("username").equalTo(currentViewingUsername).once("value");
           if (!snap.exists()) {
-            alert("User not found");
+            showToast("User not found", "error");
             sendFriendRequestBtn.disabled = false;
             sendFriendRequestBtn.textContent = "Add Friend";
             return;
@@ -10914,7 +13033,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           });
 
           console.log("[friends] request sent successfully");
-          sendFriendRequestBtn.textContent = "✓ Sent!";
+          sendFriendRequestBtn.textContent = "âœ“ Sent!";
           sendFriendRequestBtn.style.background = "rgb(34, 197, 94)";
           
           setFriendRequestStatus("Friend request sent", "success");
@@ -10990,7 +13109,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           loadFriendRequests();
         } catch (err) {
           logDetailedError("acceptFriendRequest", err, { fromUid, currentUid: uid });
-          alert("Error accepting request: " + err.message);
+          showToast("Error accepting request", "error");
         }
       }
 
@@ -11009,7 +13128,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           loadFriendRequests();
         } catch (err) {
           logDetailedError("rejectFriendRequest", err, { fromUid, currentUid: uid });
-          alert("Error rejecting request: " + err.message);
+          showToast("Error rejecting request", "error");
         }
       }
 
@@ -11101,7 +13220,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             infoDiv.className = "flex flex-col flex-1 ml-3";
             infoDiv.innerHTML = `
               <span class="text-sm font-medium text-slate-100">Loading...</span>
-              <span class="text-xs text-slate-400">${isOnline ? '<span class="text-emerald-400">Online</span> • ' : ''}Added ${addedAt}</span>
+              <span class="text-xs text-slate-400">${isOnline ? '<span class="text-emerald-400">Online</span> â€¢ ' : ''}Added ${addedAt}</span>
             `;
             
             const container = document.createElement("div");
@@ -11122,7 +13241,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
                   avatarDiv.innerHTML = friendUsername.charAt(0).toUpperCase();
                   infoDiv.innerHTML = `
                     <span class="text-sm font-medium text-slate-100">${friendUsername}</span>
-                    <span class="text-xs text-slate-400">${isOnline ? '<span class="text-emerald-400">Online</span> • ' : ''}Added ${addedAt}</span>
+                    <span class="text-xs text-slate-400">${isOnline ? '<span class="text-emerald-400">Online</span> â€¢ ' : ''}Added ${addedAt}</span>
                   `;
                   
                   // Load profile picture
@@ -11171,7 +13290,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           }
         } catch (err) {
           logDetailedError("loadFriendsList", err, { uid });
-          alert("Error loading friends: " + err.message);
+          showToast("Error loading friends", "error");
         }
       }
       
@@ -11203,12 +13322,12 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
       blockUserBtn.addEventListener("click", async () => {
         const uid = auth.currentUser?.uid;
         if (!uid || !currentViewingUsername) {
-          alert("No profile selected");
+          showToast("No profile selected", "error");
           return;
         }
 
         if (currentViewingUsername === currentUsername) {
-          alert("You can't block yourself!");
+          showToast("You can't block yourself!", "error");
           return;
         }
 
@@ -11241,10 +13360,10 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             // Re-check friendship status
             checkFriendshipStatus(currentViewingUsername);
 
-            alert("User unblocked successfully");
+            showToast("User unblocked successfully", "success");
           } catch (err) {
             console.error("[block] error unblocking user:", err);
-            alert("Error unblocking user: " + err.message);
+            showToast("Error unblocking user", "error");
             blockUserBtn.disabled = false;
           }
           return;
@@ -11262,7 +13381,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           // Get target UID
           const snap = await db.ref("users").orderByChild("username").equalTo(currentViewingUsername).once("value");
           if (!snap.exists()) {
-            alert("User not found");
+            showToast("User not found", "error");
             blockUserBtn.disabled = false;
             blockUserBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg> Block User';
             return;
@@ -11307,10 +13426,10 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           await loadBlockedUsersCache();
           startMessagesListener();
 
-          alert("User blocked successfully");
+          showToast("User blocked successfully", "success");
         } catch (err) {
           console.error("[block] error blocking user:", err);
-          alert("Error blocking user: " + err.message);
+          showToast("Error blocking user", "error");
           blockUserBtn.disabled = false;
           blockUserBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg> Block User';
         }
@@ -11396,7 +13515,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
                       loadBlockedUsers();
                     } catch (err) {
                       console.error("[block] error unblocking:", err);
-                      alert("Error unblocking user: " + err.message);
+                      showToast("Error unblocking user", "error");
                     }
                   });
                 } catch (err) {
@@ -11413,7 +13532,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           }
         } catch (err) {
           console.error("[block] error loading blocked users:", err);
-          alert("Error loading blocked users: " + err.message);
+          showToast("Error loading blocked users", "error");
         }
       }
 
@@ -11593,7 +13712,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
                 if (friendsSnap.exists()) {
                   addBtn.disabled = true;
                   addBtn.style.background = "rgb(34, 197, 94)";
-                  addBtn.textContent = "✓ Friends";
+                  addBtn.textContent = "âœ“ Friends";
                   return;
                 }
 
@@ -11632,7 +13751,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
                 });
 
                 addBtn.style.background = "rgb(34, 197, 94)";
-                addBtn.textContent = "✓ Sent!";
+                addBtn.textContent = "âœ“ Sent!";
                 
                 setTimeout(() => {
                   addBtn.style.background = "rgb(100, 116, 139)";
@@ -11640,7 +13759,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
                 }, 1500);
               } catch (err) {
                 console.error("[search] error sending request:", err);
-                alert("Error sending friend request: " + err.message);
+                showToast("Error sending friend request", "error");
                 addBtn.disabled = false;
                 addBtn.textContent = "Add Friend";
               }
@@ -11725,12 +13844,17 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         try {
           if (pendingDeleteOptions && pendingDeleteOptions.isDm) {
             await deleteDmMessage(pendingDeleteOptions.threadId, pendingDeleteMessageId, pendingDeleteToken);
+          } else if (pendingDeleteOptions && pendingDeleteOptions.isGroup && pendingDeleteOptions.groupId) {
+            await deleteGroupMessage(pendingDeleteOptions.groupId, pendingDeleteMessageId, pendingDeleteToken);
+          } else if (activeGroupId) {
+            // Fallback: if we're in a group chat but options weren't passed
+            await deleteGroupMessage(activeGroupId, pendingDeleteMessageId, pendingDeleteToken);
           } else {
             await deleteMessage(pendingDeleteMessageId, pendingDeleteToken);
           }
           
           // Show success state
-          confirmDeleteBtn.innerHTML = '✓ Deleted';
+          confirmDeleteBtn.innerHTML = 'âœ“ Deleted';
           confirmDeleteBtn.className = "flex-1 px-4 py-2 bg-green-600 text-white rounded-lg font-medium";
           
           setTimeout(() => {
@@ -11742,7 +13866,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           }, 800);
         } catch (err) {
           // Show error state
-          confirmDeleteBtn.innerHTML = '✗ Failed';
+          confirmDeleteBtn.innerHTML = 'âœ— Failed';
           confirmDeleteBtn.className = "flex-1 px-4 py-2 bg-orange-600 text-white rounded-lg font-medium";
           
           setTimeout(() => {
@@ -11811,7 +13935,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
                 if (existing) existing.remove();
                 const success = document.createElement('div');
                 success.className = 'inline-report-success mt-2 text-sm inline-block rounded px-2 py-1 bg-emerald-200 text-emerald-900 font-medium';
-                success.textContent = 'Report submitted — thank you.';
+                success.textContent = 'Report submitted â€” thank you.';
                 bubbleContainer.appendChild(success);
                 setTimeout(() => {
                   success.classList.add('fade-out');
@@ -11853,7 +13977,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           } catch (uiErr) {
             console.warn('[report] could not show inline error banner', uiErr);
           }
-          alert("Failed to submit report. Please try again or contact support.");
+          showToast("Failed to submit report. Please try again.", "error");
         }
       }
 
@@ -11926,43 +14050,49 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
       const walkthroughSteps = [
         {
           target: null, // Center screen welcome
-          title: "Welcome to Chatra! 👋",
+          title: "Welcome to Chatra! ðŸ‘‹",
           desc: "Let's take a quick 1-minute tour to help you get the most out of Chatra. You can skip this anytime.",
           position: "center"
         },
         {
           target: "#msgInput",
-          title: "Send Messages 💬",
+          title: "Send Messages ðŸ’¬",
           desc: "Type your message here and press Enter or click Send. You can chat with everyone in the Global Chat!",
           position: "top"
         },
         {
           target: "#mediaUploadBtn",
-          title: "Share Media 📷",
+          title: "Share Media ðŸ“·",
           desc: "Click here to upload images or videos to share with others. Supports most common formats.",
           position: "top"
         },
         {
           target: "#menuToggle",
-          title: "Open the Menu ☰",
+          title: "Open the Menu â˜°",
           desc: "Click the menu button (three dots) to access your profile, settings, friends, DMs, Patch Notes, Suggestions & Help (submit suggestions, bug reports, ideas, or ban appeals), and more!",
           position: "bottom"
         },
         {
           target: "#navDMs",
-          title: "Direct Messages 📨",
-          desc: "Click here to switch to Direct Messages. You can access DMs from the DMs tab next to Global Chat or via the Menu — use them for private conversations with friends.",
+          title: "Direct Messages ðŸ“¨",
+          desc: "Click here to switch to Direct Messages. You can access DMs from the DMs tab next to Global Chat or via the Menu â€” use them for private conversations with friends.",
+          position: "bottom"
+        },
+        {
+          target: "#navGroups",
+          title: "Group Chats ðŸ‘¥",
+          desc: "Click here to access Group Chats! Create your own groups, join public ones, or use invite codes to join private groups. Great for chatting with multiple friends at once.",
           position: "bottom"
         },
         {
           target: "#messages",
-          title: "Chat Area 📜",
+          title: "Chat Area ðŸ“œ",
           desc: "Messages appear here. You can reply to messages, react to them, and report inappropriate content.",
           position: "left"
         },
         {
           target: null, // Center screen final
-          title: "You're All Set! 🎉",
+          title: "You're All Set! ðŸŽ‰",
           desc: "That's the basics! Explore the menu for more features like adding friends, customizing your profile, and adjusting settings. Have fun chatting!",
           position: "center"
         }
@@ -12031,7 +14161,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
 
         // Update navigation buttons
         walkthroughPrevBtn.disabled = stepIndex === 0;
-        walkthroughNextBtn.textContent = stepIndex === walkthroughSteps.length - 1 ? "Finish ✓" : "Next →";
+        walkthroughNextBtn.textContent = stepIndex === walkthroughSteps.length - 1 ? "Finish âœ“" : "Next â†’";
 
         // Position highlight and tooltip
         if (step.target && step.position !== "center") {
@@ -12179,3 +14309,4 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
 
       // Expose startWalkthrough for testing
       window.startWalkthrough = startWalkthrough;
+

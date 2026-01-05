@@ -29,8 +29,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         throw err;
       });
     if (!res.ok) throw new Error('Invalid token');
-    // Do NOT rely on verify-token returning email/uid (server avoids leaking).
-    // Treat a successful response as token valid and show the reset form.
+    
+    
     await res.json();
     statusEl.style.display = 'none';
     infoEl.style.display = '';
@@ -71,7 +71,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           throw new Error(err || 'Reset failed');
         }
         const ok = await r.json();
-        // Keep the form visible — only update the confirmation text
+        
         resultEl.textContent = 'Password changed successfully.';
         resultEl.style.display = '';
       } catch (e) {

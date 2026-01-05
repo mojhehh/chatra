@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Simple test script to POST a prompt to the worker /ai endpoint.
-// Usage: node test-ai.js "Hello" [workerUrl]
+
+
 
 const prompt = process.argv[2] || 'Hello from test';
 const workerUrl = process.argv[3] || process.env.WORKER_URL || 'https://chatra.modmojheh.workers.dev';
