@@ -14,7 +14,7 @@
     <meta name="format-detection" content="telephone=no" />
     
     <style>
-      /* Safari/iOS viewport fix */
+      
       :root {
         --vh: 1vh;
         --app-height: 100vh;
@@ -30,14 +30,14 @@
         min-height: var(--app-height, 100vh);
         min-height: -webkit-fill-available;
       }
-      /* Use --vh for elements that need true viewport height */
+      
       .h-screen-safe {
         height: calc(var(--vh, 1vh) * 100);
       }
       @supports (padding-top: env(safe-area-inset-top)) {
         header { padding-top: env(safe-area-inset-top); }
       }
-      /* iOS keyboard open - adjust input areas */
+      
       .ios-device input:focus ~ *,
       .ios-device textarea:focus ~ * {
         transform: translateZ(0);
@@ -47,7 +47,7 @@
 
 
         <script>
-      // Suppress Tailwind CDN production warning BEFORE loading
+      
       window.tailwindConfig = {};
     </script>
     <script src="https://cdn.tailwindcss.com"></script>
@@ -3113,7 +3113,7 @@
       <input type="hidden" name="from_name" value="Chatra Support" />
     </form>
     <script>
-      // Explicitly set worker and reset URLs for local testing
+      
       window.RECOVERY_WORKER_URL = 'https://recovery-modmojheh.modmojheh.workers.dev';
       window.RESET_PAGE_URL = 'http://localhost:8000/reset.html';
     </script>
