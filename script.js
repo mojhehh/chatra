@@ -3393,7 +3393,7 @@
         
         const isMine = msg.fromUid === currentUserId;
         const row = document.createElement('div');
-        row.className = isMine ? 'flex justify-end px-2 items-start' : 'flex justify-start px-2 items-start';
+        row.className = isMine ? 'flex justify-end px-1 items-center' : 'flex justify-start px-1 items-center';
         row.dataset.msgKey = msg.key || '';
 
         // Avatar (match global chat style)
@@ -3408,7 +3408,7 @@
           avatarDiv.style.display = 'none';
         } else {
           // Nudge DM avatar slightly left to match requested offset
-          try { avatarDiv.style.marginLeft = '-6px'; } catch (e) {}
+          try { avatarDiv.style.marginLeft = '-2px'; } catch (e) {}
         }
 
         // Load profile picture async
@@ -7773,8 +7773,8 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
 
         const row = document.createElement("div");
         row.className = isMine 
-          ? "w-full flex mb-2 sm:mb-2 justify-end pr-1 sm:pr-3 gap-2 items-start"
-          : "w-full flex mb-2 sm:mb-2 justify-start pl-1 sm:pl-3 gap-2 items-start";
+          ? "w-full flex mb-2 sm:mb-2 justify-end pr-1 sm:pr-2 gap-2 items-center"
+          : "w-full flex mb-2 sm:mb-2 justify-start pl-1 sm:pl-3 gap-2 items-center";
         
         // Store messageId in dataset for deletion
         if (messageId) {
