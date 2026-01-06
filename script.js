@@ -663,9 +663,6 @@
       
       const AI_BOT_UID = 'aEY7gNeuGcfBErxOHNEQYFzvhpp2';
       
-      const AI_ADMIN_UID = 'aEY7gNeuGcfBErxOHNEQYFzvhpp2';
-      
-      
       let aiProfile = { name: 'Chatra AI', avatar: null, bio: '', username: 'AI' };
       
       
@@ -714,106 +711,9 @@
             aiProfile.avatar = p.avatarUrl || p.profilePic || null;
             aiProfile.bio = p.bio || '';
           }
-          updateAiEditButtonVisibility();
         });
       }
       loadAiBotProfile();
-
-      
-      function ensureAiEditButton() {
-        if (document.getElementById('editAiProfileBtn')) return document.getElementById('editAiProfileBtn');
-        const btn = document.createElement('button');
-        btn.id = 'editAiProfileBtn';
-        btn.textContent = 'Edit AI Profile';
-        btn.style.marginLeft = '8px';
-        btn.className = 'ai-edit-btn';
-        btn.addEventListener('click', async () => {
-          try {
-            const action = prompt("Edit AI profile. Type one of: name, url, upload, bio (cancel to exit)", "name");
-            if (!action) return;
-            const a = action.trim().toLowerCase();
-            if (a === 'name') {
-              const newName = prompt('AI display name:', aiProfile.name || 'AI Assistant');
-              if (newName === null) return;
-              await aiProfileRef.child('name').set(newName.trim() || 'AI Assistant');
-              showToast('AI name updated', 'success');
-              return;
-            }
-            if (a === 'bio') {
-              const newBio = prompt('AI bio/description (optional):', aiProfile.bio || '');
-              if (newBio === null) return;
-              await aiProfileRef.child('bio').set(newBio.trim() || '');
-              showToast('AI bio updated', 'success');
-              return;
-            }
-            if (a === 'url') {
-              const newAvatar = prompt('AI avatar image URL (optional):', aiProfile.avatar || '');
-              if (newAvatar === null) return;
-              await aiProfileRef.child('avatar').set(newAvatar.trim() || null);
-              showToast('AI avatar URL updated', 'success');
-              return;
-            }
-
-            if (a === 'upload') {
-              
-              const uploadWorkerUrl = 'https://chatra.modmojheh.workers.dev';
-              if (!uploadWorkerUrl || uploadWorkerUrl.includes('your-worker-subdomain')) {
-                showToast('Upload worker not configured', 'error');
-                return;
-              }
-
-              const file = await new Promise((resolve) => {
-                const input = document.createElement('input');
-                input.type = 'file';
-                input.accept = 'image/*';
-                input.addEventListener('change', () => resolve(input.files && input.files[0] ? input.files[0] : null));
-                input.click();
-              });
-              if (!file) return;
-
-              try {
-                const processed = await prepareFileForUpload(file);
-                const fd = new FormData();
-                fd.append('file', processed);
-                const res = await fetch(uploadWorkerUrl + '/upload', { method: 'POST', body: fd });
-                let data;
-                try { data = await res.json(); } catch (e) { const txt = await res.text(); throw new Error('Upload failed: ' + txt); }
-                if (!res.ok || !data?.url) throw new Error(data?.error || 'Upload failed');
-                await aiProfileRef.child('avatar').set(data.url);
-                showToast('AI avatar uploaded', 'success');
-              } catch (upErr) {
-                console.error('[AI] upload error', upErr);
-                showToast('AI avatar upload failed: ' + upErr.message, 'error');
-              }
-              return;
-            }
-
-            showToast('Unknown action. Valid: name, url, upload, bio', 'error');
-          } catch (e) {
-            console.error('[AI] error updating profile', e);
-            showToast('Failed to update AI profile', 'error');
-          }
-        });
-
-        
-        try {
-          const container = document.getElementById('chatUserLabel')?.parentElement || document.body;
-          container.appendChild(btn);
-        } catch (e) {
-          document.body.appendChild(btn);
-        }
-        return btn;
-      }
-
-      function updateAiEditButtonVisibility() {
-        const btn = document.getElementById('editAiProfileBtn') || ensureAiEditButton();
-        const uid = auth.currentUser ? auth.currentUser.uid : null;
-        if (uid === AI_ADMIN_UID) {
-          btn.style.display = '';
-        } else {
-          btn.style.display = 'none';
-        }
-      }
 
       
       
@@ -1003,6 +903,7 @@
       let groupMessagesListener = null;
       let groupsPageInitialLoaded = false;
       let cachedGroups = {}; 
+      let groupsPageRef = null;
 
       
       function showToast(message, type = 'info', duration = 4000) {
@@ -1293,7 +1194,7 @@
         
         if (!groupsPageInitialLoaded) {
           groupsPageInitialLoaded = true;
-          loadGroupsPageConversations().catch(() => {});
+          startGroupsPageListener();
         }
       }
       
@@ -1305,6 +1206,55 @@
         
         
         renderGroupsList(cachedGroups, q);
+      }
+
+      function startGroupsPageListener(force = false) {
+        const listEl = document.getElementById('groupsPageConversationList');
+        if (groupsPageRef && !force) {
+          const searchInput = document.getElementById('groupsPageInputSearch');
+          const query = searchInput ? searchInput.value.toLowerCase().trim() : '';
+          renderGroupsList(cachedGroups, query);
+          return;
+        }
+
+        if (groupsPageRef) {
+          groupsPageRef.off('value');
+          groupsPageRef = null;
+        }
+
+        if (listEl) {
+          listEl.innerHTML = '<p class="text-xs text-slate-500 text-center py-4">Loading groups...</p>';
+        }
+
+        groupsPageRef = db.ref('groups');
+        groupsPageRef.on('value', (snap) => {
+          cachedGroups = snap.val() || {};
+          const searchInput = document.getElementById('groupsPageInputSearch');
+          const query = searchInput ? searchInput.value.toLowerCase().trim() : '';
+          renderGroupsList(cachedGroups, query);
+        }, (err) => {
+          console.error('groups page listener error', err);
+          const msg = (err && (err.code || '')).toString().toLowerCase() + ' ' + (err && err.message ? err.message : '');
+          if (listEl && (msg.includes('permission_denied') || msg.includes('permission-denied'))) {
+            const attempts = parseInt(listEl.dataset.groupLoadAttempts || '0', 10) || 0;
+            listEl.dataset.groupLoadAttempts = attempts + 1;
+            listEl.innerHTML = '<p class="text-xs text-yellow-300 text-center py-4">Unable to load groups yet — retrying...</p>';
+            if (attempts < 3) {
+              setTimeout(() => startGroupsPageListener(true), 800 + attempts * 400);
+              return;
+            }
+            listEl.innerHTML = '<p class="text-xs text-red-400 text-center py-4">Permission denied reading groups. Please reload the page or sign in.</p>';
+          } else if (listEl) {
+            listEl.innerHTML = '<p class="text-xs text-red-400 text-center py-4">Failed to load groups</p>';
+          }
+        });
+      }
+
+      function stopGroupsPageListener() {
+        if (groupsPageRef) {
+          groupsPageRef.off('value');
+          groupsPageRef = null;
+        }
       }
       
       
@@ -1330,7 +1280,13 @@
           
           
           const name = info.name || ('Group ' + groupId);
-          if (filterQuery && !name.toLowerCase().includes(filterQuery) && !groupId.toLowerCase().includes(filterQuery)) {
+          const description = info.description || '';
+          if (
+            filterQuery &&
+            !name.toLowerCase().includes(filterQuery) &&
+            !groupId.toLowerCase().includes(filterQuery) &&
+            !description.toLowerCase().includes(filterQuery)
+          ) {
             return;
           }
           
@@ -1566,6 +1522,13 @@
       async function loadGroupsPageConversations() {
         const listEl = document.getElementById('groupsPageConversationList');
         if (!listEl || !currentUserId) return;
+        if (groupsPageRef) {
+          const searchInput = document.getElementById('groupsPageInputSearch');
+          const query = searchInput ? searchInput.value.toLowerCase().trim() : '';
+          renderGroupsList(cachedGroups, query);
+          return;
+        }
+
         listEl.innerHTML = '<p class="text-xs text-slate-500 text-center py-4">Loading groups...</p>';
         try {
           const snap = await db.ref('groups').once('value');
@@ -9145,7 +9108,6 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             })();
 
             
-            try { updateAiEditButtonVisibility(); } catch (e) {  }
           } catch (err) {
             console.error("[auth] error in onAuthStateChanged:", err);
             
@@ -9187,7 +9149,9 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           detachDmInboxListener();
           dmModal.classList.add("modal-closed");
           dmModal.classList.remove("modal-open");
-          try { updateAiEditButtonVisibility(); } catch (e) {  }
+          stopGroupsPageListener();
+          cachedGroups = {};
+          groupsPageInitialLoaded = false;
           
           
           const dmPage = document.getElementById('dmPage');
@@ -14340,4 +14304,3 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
 
       
       window.startWalkthrough = startWalkthrough;
-
