@@ -595,6 +595,8 @@
 
       // Use a per-connection child under presence/<uid>/<connId>
       // so multiple tabs/devices don't race when setting a single value.
+      let presenceHeartbeatInterval = null;
+      
       function setupPresence(uid) {
         console.log('[presence] setupPresence called for uid:', uid);
 
@@ -619,6 +621,16 @@
 
             // remove this connection entry on disconnect only
             presenceRef.onDisconnect().remove();
+            
+            // Start heartbeat to keep presence fresh
+            if (presenceHeartbeatInterval) clearInterval(presenceHeartbeatInterval);
+            presenceHeartbeatInterval = setInterval(() => {
+              if (presenceRef) {
+                presenceRef.update({
+                  lastChanged: firebase.database.ServerValue.TIMESTAMP
+                }).catch(() => {});
+              }
+            }, 30000); // Update every 30 seconds
           }
         });
       }
@@ -629,13 +641,20 @@
       function startOnlineCountListener() {
         console.log('[presence] startOnlineCountListener called');
         
+        const STALE_THRESHOLD = 2 * 60 * 1000; // 2 minutes - if no heartbeat, consider offline
+        
         db.ref('presence').on('value', (snap) => {
           const data = snap.val() || {};
-          console.log('[presence] Raw presence data:', data);
+          const now = Date.now();
           let onlineCount = 0;
           
           
           onlineUsersCache = {};
+          
+          // AI is always considered online
+          onlineUsersCache['aEY7gNeuGcfBErxOHNEQYFzvhpp2'] = true;
+          onlineCount++; // Count AI as online
+          
           Object.entries(data).forEach(([uid, presence]) => {
             try {
               let isOnline = false;
@@ -643,16 +662,24 @@
               // presence may be the old flat object {state: 'online'}
               if (presence && typeof presence === 'object') {
                 if (presence.state === 'online') {
-                  isOnline = true;
+                  // Check if it's stale (old format)
+                  const lastChanged = presence.lastChanged || 0;
+                  if (now - lastChanged < STALE_THRESHOLD) {
+                    isOnline = true;
+                  }
                 } else {
                   // new format: presence/<uid> contains multiple connection children
                   Object.values(presence).forEach((conn) => {
-                    if (conn && conn.state === 'online') isOnline = true;
+                    if (conn && conn.state === 'online') {
+                      const lastChanged = conn.lastChanged || 0;
+                      if (now - lastChanged < STALE_THRESHOLD) {
+                        isOnline = true;
+                      }
+                    }
                   });
                 }
               }
 
-              console.log('[presence] User', uid, 'online?', isOnline);
               if (isOnline) {
                 onlineCount++;
                 onlineUsersCache[uid] = true;
@@ -662,20 +689,58 @@
             }
           });
           
-          console.log('[presence] Online count:', onlineCount);
-          
           
           const countEl = document.getElementById('onlineCount');
-          console.log('[presence] Count element found:', !!countEl);
           if (countEl) {
             countEl.textContent = onlineCount;
+          }
+          
+          // Update staff app popup state if function exists
+          if (typeof updateModAppPopupState === 'function') {
+            updateModAppPopupState();
           }
         }, (err) => {
           console.error('[presence] Error listening to presence:', err);
         });
       }
       
+      // Clean up stale presence entries (run once on load for admins)
+      async function cleanupStalePresence() {
+        try {
+          const snap = await db.ref('presence').once('value');
+          const data = snap.val() || {};
+          const now = Date.now();
+          const STALE_THRESHOLD = 2 * 60 * 1000;
+          
+          for (const [uid, presence] of Object.entries(data)) {
+            if (presence && typeof presence === 'object') {
+              if (presence.state === 'online') {
+                // Old flat format - check if stale
+                const lastChanged = presence.lastChanged || 0;
+                if (now - lastChanged > STALE_THRESHOLD) {
+                  await db.ref('presence/' + uid).remove();
+                }
+              } else {
+                // New format with connection children
+                for (const [connId, conn] of Object.entries(presence)) {
+                  if (conn && conn.state === 'online') {
+                    const lastChanged = conn.lastChanged || 0;
+                    if (now - lastChanged > STALE_THRESHOLD) {
+                      await db.ref('presence/' + uid + '/' + connId).remove();
+                    }
+                  }
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('[presence] cleanup error:', e);
+        }
+      }
+      
       function isUserOnline(uid) {
+        // AI is always online
+        if (uid === 'aEY7gNeuGcfBErxOHNEQYFzvhpp2') return true;
         return onlineUsersCache[uid] === true;
       }
 
@@ -683,6 +748,512 @@
       const AI_BOT_UID = 'aEY7gNeuGcfBErxOHNEQYFzvhpp2';
       
       const AI_ADMIN_UID = 'aEY7gNeuGcfBErxOHNEQYFzvhpp2';
+      
+      // Co-Owner UID (OWNER_UID is defined later in the file)
+      const CO_OWNER_UID = '6n8hjmrUxhMHskX4BG8Ik9boMqa2';
+      
+      // Staff role levels (highest to lowest priority)
+      const STAFF_ROLES = {
+        HEAD_ADMIN: { name: 'Head Admin', color: 'rose', priority: 4, badgeClass: 'bg-rose-500/20 text-rose-300 border border-rose-500' },
+        ADMIN: { name: 'Admin', color: 'orange', priority: 3, badgeClass: 'bg-orange-500/20 text-orange-300 border border-orange-500' },
+        MOD: { name: 'Mod', color: 'emerald', priority: 2, badgeClass: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500' },
+        TRIAL_MOD: { name: 'Trial Mod', color: 'violet', priority: 1, badgeClass: 'bg-violet-500/20 text-violet-300 border border-violet-500' }
+      };
+      
+      // Staff permission limits (in minutes)
+      const STAFF_PERMISSIONS = {
+        TRIAL_MOD: {
+          canWarn: true,
+          canMute: true,
+          maxMuteMinutes: 10, // 10 minutes
+          canBan: false,
+          maxBanMinutes: 0,
+          canAssignRoles: false,
+          canHardwareBan: false
+        },
+        MOD: {
+          canWarn: true,
+          canMute: true,
+          maxMuteMinutes: 1440, // 1 day (24 hours)
+          canBan: false,
+          maxBanMinutes: 0,
+          canAssignRoles: false,
+          canHardwareBan: false
+        },
+        ADMIN: {
+          canWarn: true,
+          canMute: true,
+          maxMuteMinutes: 43200, // 1 month (30 days)
+          canBan: true,
+          maxBanMinutes: 10080, // 1 week (7 days)
+          canAssignRoles: false,
+          canHardwareBan: true
+        },
+        HEAD_ADMIN: {
+          canWarn: true,
+          canMute: true,
+          maxMuteMinutes: Infinity, // Unlimited
+          canBan: true,
+          maxBanMinutes: 43200, // 1 month (30 days)
+          canAssignRoles: true,
+          canHardwareBan: true
+        }
+      };
+      
+      // Cache for staff roles
+      let staffRolesCache = {};
+      let staffRolesLoaded = false;
+      
+      // Load staff roles from database
+      async function loadStaffRoles() {
+        try {
+          const snap = await db.ref('staffRoles').once('value');
+          staffRolesCache = snap.val() || {};
+          staffRolesLoaded = true;
+          console.log('[staff] Loaded staff roles:', Object.keys(staffRolesCache).length, 'users');
+        } catch (e) {
+          console.warn('[staff] Failed to load staff roles:', e);
+        }
+      }
+      
+      // Listen for staff role changes
+      let lastKnownUserRole = null;
+      let roleNotificationShown = false;
+      
+      function startStaffRolesListener() {
+        db.ref('staffRoles').on('value', (snap) => {
+          const prevCache = { ...staffRolesCache };
+          staffRolesCache = snap.val() || {};
+          staffRolesLoaded = true;
+          
+          // Update mod panel visibility when staff roles change
+          if (typeof updateModPanelVisibility === 'function') {
+            updateModPanelVisibility();
+          }
+          
+          // Check if current user's role changed
+          if (currentUserId) {
+            const prevEntry = prevCache[currentUserId];
+            const newEntry = staffRolesCache[currentUserId];
+            const prevRole = typeof prevEntry === 'string' ? prevEntry : prevEntry?.role;
+            const newRole = typeof newEntry === 'string' ? newEntry : newEntry?.role;
+            
+            // Show notification if role changed
+            if (newRole && newRole !== prevRole && !roleNotificationShown) {
+              const role = STAFF_ROLES[newRole];
+              if (role) {
+                const prevPriority = prevRole ? (STAFF_ROLES[prevRole]?.priority || 0) : 0;
+                const newPriority = STAFF_ROLES[newRole]?.priority || 0;
+                
+                if (prevRole && newPriority < prevPriority) {
+                  // This is a demotion - check for demotion reason in staffRoleRemoved
+                  checkRoleRemovalNotification();
+                } else {
+                  // This is promotion or new assignment
+                  showStaffRoleNotification(newRole, role, prevRole ? 'changed' : 'assigned');
+                  // Mark as acknowledged in Firebase
+                  db.ref('staffRoleAcknowledged/' + currentUserId).set({
+                    role: newRole,
+                    acknowledgedAt: firebase.database.ServerValue.TIMESTAMP
+                  }).catch(() => {});
+                }
+              }
+            } else if (!newRole && prevRole && lastKnownUserRole) {
+              // Role was removed entirely - check for removal reason
+              checkRoleRemovalNotification();
+            }
+            
+            lastKnownUserRole = newRole;
+          }
+        }, (err) => {
+          console.warn('[staff] Staff roles listener error:', err);
+        });
+      }
+      
+      // Check for role removal notification with reason
+      async function checkRoleRemovalNotification() {
+        if (!currentUserId) return;
+        
+        try {
+          const removalSnap = await db.ref('staffRoleRemoved/' + currentUserId).once('value');
+          const removalData = removalSnap.val();
+          
+          if (removalData && !removalData.acknowledged) {
+            showStaffRoleRemovedNotification(removalData);
+          } else {
+            // No specific reason provided
+            showStaffRoleRemovedNotification({ previousRole: lastKnownUserRole, reason: 'No reason provided' });
+          }
+        } catch (e) {
+          showToast('Your staff role has been removed', 'info');
+        }
+      }
+      
+      // Show role removed/demoted notification popup
+      function showStaffRoleRemovedNotification(data) {
+        let modal = document.getElementById('staffRoleRemovedModal');
+        if (!modal) {
+          modal = document.createElement('div');
+          modal.id = 'staffRoleRemovedModal';
+          modal.className = 'fixed inset-0 bg-black/80 z-[100] flex items-center justify-center hidden';
+          document.body.appendChild(modal);
+        }
+        
+        const prevRoleName = STAFF_ROLES[data.previousRole]?.name || data.previousRole || 'Staff';
+        const isTermination = !data.newRole; // No new role = terminated from staff
+        const newRoleName = data.newRole ? (STAFF_ROLES[data.newRole]?.name || data.newRole) : null;
+        
+        if (isTermination) {
+          // Termination - removed from staff entirely
+          modal.innerHTML = `
+            <div class="bg-slate-900 border-2 border-red-500 p-8 rounded-2xl w-full max-w-md text-center shadow-2xl">
+              <div class="text-6xl mb-4">😔</div>
+              <h2 class="text-2xl font-bold text-red-400 mb-2">Staff Status Terminated</h2>
+              <p class="text-slate-300 mb-4">Your <span class="font-semibold text-red-300">${escapeHtml(prevRoleName)}</span> role has been removed.</p>
+              <div class="bg-red-950/50 border border-red-800 rounded-lg p-4 mb-6 text-left">
+                <p class="text-xs text-red-400 uppercase tracking-wider mb-1 font-semibold">Reason</p>
+                <p class="text-slate-200">${escapeHtml(data.reason || 'No reason provided')}</p>
+              </div>
+              <p class="text-slate-400 text-sm mb-6">You no longer have access to staff features and the moderation panel.</p>
+              <button id="staffRoleRemovedClose" class="w-full py-3 bg-red-600 hover:bg-red-500 text-white rounded-lg font-semibold transition-colors">
+                I Understand
+              </button>
+            </div>
+          `;
+        } else {
+          // Demotion - moved to a lower role
+          const newRoleColor = {
+            HEAD_ADMIN: 'rose',
+            ADMIN: 'orange',
+            MOD: 'emerald',
+            TRIAL_MOD: 'violet'
+          }[data.newRole] || 'slate';
+          
+          modal.innerHTML = `
+            <div class="bg-slate-900 border-2 border-amber-500 p-8 rounded-2xl w-full max-w-md text-center shadow-2xl">
+              <div class="text-6xl mb-4">📉</div>
+              <h2 class="text-2xl font-bold text-amber-400 mb-2">Role Changed</h2>
+              <p class="text-slate-300 mb-2">Your role has been changed from</p>
+              <div class="flex items-center justify-center gap-3 mb-4">
+                <span class="px-3 py-1.5 rounded-full text-sm font-bold bg-slate-700 text-slate-300 line-through">${escapeHtml(prevRoleName)}</span>
+                <span class="text-slate-500">→</span>
+                <span class="px-3 py-1.5 rounded-full text-sm font-bold bg-${newRoleColor}-500/20 text-${newRoleColor}-300 border border-${newRoleColor}-500">${escapeHtml(newRoleName)}</span>
+              </div>
+              <div class="bg-amber-950/50 border border-amber-800 rounded-lg p-4 mb-6 text-left">
+                <p class="text-xs text-amber-400 uppercase tracking-wider mb-1 font-semibold">Reason</p>
+                <p class="text-slate-200">${escapeHtml(data.reason || 'No reason provided')}</p>
+              </div>
+              <p class="text-slate-400 text-sm mb-6">Your permissions have been updated accordingly.</p>
+              <button id="staffRoleRemovedClose" class="w-full py-3 bg-amber-600 hover:bg-amber-500 text-white rounded-lg font-semibold transition-colors">
+                Got It
+              </button>
+            </div>
+          `;
+        }
+        
+        modal.classList.remove('hidden');
+        
+        const closeBtn = document.getElementById('staffRoleRemovedClose');
+        if (closeBtn) {
+          closeBtn.onclick = async () => {
+            modal.classList.add('hidden');
+            // Mark as acknowledged
+            try {
+              await db.ref('staffRoleRemoved/' + currentUserId).update({ acknowledged: true });
+            } catch (e) {}
+            // Clear the removal record
+            try {
+              await db.ref('staffRoleRemoved/' + currentUserId).remove();
+            } catch (e) {}
+          };
+        }
+        
+        modal.onclick = (e) => {
+          if (e.target === modal) {
+            closeBtn?.click();
+          }
+        };
+      }
+      
+      // Show staff role assignment notification popup
+      function showStaffRoleNotification(roleKey, role, type = 'assigned') {
+        // Create modal if it doesn't exist
+        let modal = document.getElementById('staffRoleNotificationModal');
+        if (!modal) {
+          modal = document.createElement('div');
+          modal.id = 'staffRoleNotificationModal';
+          modal.className = 'fixed inset-0 bg-black/80 z-[100] flex items-center justify-center hidden';
+          document.body.appendChild(modal);
+        }
+        
+        const roleColors = {
+          HEAD_ADMIN: 'rose',
+          ADMIN: 'orange',
+          MOD: 'emerald',
+          TRIAL_MOD: 'violet'
+        };
+        const color = roleColors[roleKey] || 'slate';
+        const isPromotion = type === 'assigned' || type === 'changed';
+        
+        modal.innerHTML = `
+          <div class="bg-slate-900 border-2 border-${color}-500 p-8 rounded-2xl w-full max-w-md text-center shadow-2xl">
+            <div class="text-6xl mb-4">${isPromotion ? '🎉' : '📋'}</div>
+            <h2 class="text-2xl font-bold text-slate-100 mb-2">${isPromotion ? 'Congratulations!' : 'Role Updated'}</h2>
+            <p class="text-slate-300 mb-4">You have been ${type === 'changed' ? 'updated to' : 'promoted to'}</p>
+            <div class="inline-block px-6 py-3 rounded-full text-lg font-bold mb-6 bg-${color}-500/20 text-${color}-300 border-2 border-${color}-500">
+              ${role.name}
+            </div>
+            <p class="text-slate-400 text-sm mb-6">You now have access to the moderation panel and staff features.</p>
+            <button id="staffRoleNotificationClose" class="w-full py-3 bg-${color}-600 hover:bg-${color}-500 text-white rounded-lg font-semibold transition-colors">
+              Got it!
+            </button>
+          </div>
+        `;
+        
+        // Show modal
+        modal.classList.remove('hidden');
+        roleNotificationShown = true;
+        
+        // Wire up close button
+        const closeBtn = document.getElementById('staffRoleNotificationClose');
+        if (closeBtn) {
+          closeBtn.onclick = () => {
+            modal.classList.add('hidden');
+          };
+        }
+        
+        // Close on backdrop click
+        modal.onclick = (e) => {
+          if (e.target === modal) {
+            modal.classList.add('hidden');
+          }
+        };
+      }
+      
+      // Check for unacknowledged role assignment on login
+      async function checkPendingRoleNotification() {
+        if (!currentUserId) return;
+        
+        const staffEntry = staffRolesCache[currentUserId];
+        if (!staffEntry) return;
+        
+        const roleKey = typeof staffEntry === 'string' ? staffEntry : staffEntry?.role;
+        if (!roleKey || !STAFF_ROLES[roleKey]) return;
+        
+        // Check if already acknowledged
+        try {
+          const ackSnap = await db.ref('staffRoleAcknowledged/' + currentUserId).once('value');
+          const ackData = ackSnap.val();
+          
+          if (!ackData || ackData.role !== roleKey) {
+            // Not acknowledged yet, show notification
+            showStaffRoleNotification(roleKey, STAFF_ROLES[roleKey]);
+          }
+        } catch (e) {
+          console.warn('[staff] Error checking role acknowledgment:', e);
+        }
+      }
+      
+      // Get user's staff role (returns null if not staff)
+      function getUserStaffRole(uid) {
+        if (!uid || !staffRolesCache[uid]) return null;
+        const staffEntry = staffRolesCache[uid];
+        // Handle both old format (just string) and new format (object with role property)
+        const roleKey = typeof staffEntry === 'string' ? staffEntry : staffEntry?.role;
+        if (roleKey && STAFF_ROLES[roleKey]) {
+          return { key: roleKey, ...STAFF_ROLES[roleKey] };
+        }
+        return null;
+      }
+      
+      // Get badge HTML for a staff role
+      function getStaffRoleBadge(roleKey, small = false) {
+        const role = STAFF_ROLES[roleKey];
+        if (!role) return '';
+        
+        const colors = {
+          rose: 'bg-rose-500/15 text-rose-100 border-rose-400/40',
+          orange: 'bg-orange-500/15 text-orange-100 border-orange-400/40',
+          emerald: 'bg-emerald-500/15 text-emerald-100 border-emerald-400/40',
+          violet: 'bg-violet-500/15 text-violet-100 border-violet-400/40'
+        };
+        
+        const colorClass = colors[role.color] || 'bg-slate-500/15 text-slate-100 border-slate-400/40';
+        const sizeClass = small ? 'text-[9px] px-1.5 py-0.5' : 'text-[10px] px-2 py-0.5';
+        
+        return '<span class="ml-1 ' + sizeClass + ' rounded-full ' + colorClass + ' border">' + role.name + '</span>';
+      }
+      
+      // Get permissions for current user
+      function getCurrentUserPermissions() {
+        const uid = currentUserId;
+        
+        // Owner and Co-Owner have full permissions
+        if (uid === 'u5yKqiZvioWuBGcGK3SWUBpUVrc2' || uid === '6n8hjmrUxhMHskX4BG8Ik9boMqa2') {
+          return {
+            canWarn: true,
+            canMute: true,
+            maxMuteMinutes: Infinity,
+            canBan: true,
+            maxBanMinutes: Infinity,
+            canAssignRoles: true,
+            canHardwareBan: true,
+            isOwner: uid === 'u5yKqiZvioWuBGcGK3SWUBpUVrc2',
+            isCoOwner: uid === '6n8hjmrUxhMHskX4BG8Ik9boMqa2'
+          };
+        }
+        
+        // Check staff role
+        const staffRole = getUserStaffRole(uid);
+        if (staffRole && STAFF_PERMISSIONS[staffRole.key]) {
+          return { ...STAFF_PERMISSIONS[staffRole.key], staffRole: staffRole.key };
+        }
+        
+        // Legacy admin check
+        if (isAdmin) {
+          return STAFF_PERMISSIONS.ADMIN;
+        }
+        
+        // No permissions
+        return {
+          canWarn: false,
+          canMute: false,
+          maxMuteMinutes: 0,
+          canBan: false,
+          maxBanMinutes: 0,
+          canAssignRoles: false,
+          canHardwareBan: false
+        };
+      }
+      
+      // Check if current user is any kind of staff
+      function isCurrentUserStaff() {
+        const uid = currentUserId;
+        if (!uid) return false;
+        
+        // Owner or Co-Owner
+        if (uid === 'u5yKqiZvioWuBGcGK3SWUBpUVrc2' || uid === '6n8hjmrUxhMHskX4BG8Ik9boMqa2') return true;
+        
+        // Has staff role
+        if (staffRolesCache[uid]) return true;
+        
+        // Legacy admin
+        if (isAdmin) return true;
+        
+        return false;
+      }
+      
+      // Check if user can perform action with given duration
+      function canPerformMute(minutes) {
+        const perms = getCurrentUserPermissions();
+        if (!perms.canMute) return false;
+        if (perms.maxMuteMinutes === Infinity) return true;
+        return minutes <= perms.maxMuteMinutes;
+      }
+      
+      function canPerformBan(minutes) {
+        const perms = getCurrentUserPermissions();
+        if (!perms.canBan) return false;
+        if (perms.maxBanMinutes === Infinity) return true;
+        return minutes <= perms.maxBanMinutes;
+      }
+      
+      // Check if user can manage (assign/remove) another user's role
+      function canManageStaffRole(targetUid, targetRoleKey = null) {
+        const perms = getCurrentUserPermissions();
+        const uid = currentUserId;
+        
+        // Owner can manage anyone
+        if (uid === 'u5yKqiZvioWuBGcGK3SWUBpUVrc2') return true;
+        
+        // Co-Owner can manage anyone except owner
+        if (uid === '6n8hjmrUxhMHskX4BG8Ik9boMqa2') {
+          return targetUid !== 'u5yKqiZvioWuBGcGK3SWUBpUVrc2';
+        }
+        
+        // Head Admin can manage lower roles
+        const myRole = getUserStaffRole(uid);
+        if (myRole?.key === 'HEAD_ADMIN') {
+          // Can't assign Head Admin role
+          if (targetRoleKey === 'HEAD_ADMIN') return false;
+          
+          // Check target's current role
+          const targetRole = getUserStaffRole(targetUid);
+          if (!targetRole) return true; // Can assign to non-staff
+          
+          // Can only manage lower priority roles
+          return targetRole.priority < myRole.priority;
+        }
+        
+        return false;
+      }
+      
+      // Assign staff role to user (only Owner, Co-Owner, Head Admin can do this)
+      async function assignStaffRole(targetUid, roleKey, username = null, reason = null) {
+        const perms = getCurrentUserPermissions();
+        
+        // Check basic permission
+        if (!perms.canAssignRoles && !canManageStaffRole(targetUid, roleKey)) {
+          showToast('You do not have permission to assign roles', 'error');
+          return false;
+        }
+        
+        // Additional check for Head Admins
+        if (!perms.isOwner && !perms.isCoOwner) {
+          if (!canManageStaffRole(targetUid, roleKey)) {
+            showToast('You can only manage lower-ranked staff', 'error');
+            return false;
+          }
+        }
+        
+        if (roleKey && !STAFF_ROLES[roleKey]) {
+          showToast('Invalid role', 'error');
+          return false;
+        }
+        
+        try {
+          if (roleKey) {
+            // Get username if not provided
+            let targetUsername = username;
+            if (!targetUsername) {
+              const userSnap = await db.ref('users/' + targetUid + '/username').once('value');
+              targetUsername = userSnap.val() || 'Unknown';
+            }
+            
+            await db.ref('staffRoles/' + targetUid).set({
+              role: roleKey,
+              username: targetUsername,
+              assignedBy: currentUserId,
+              assignedAt: firebase.database.ServerValue.TIMESTAMP
+            });
+            showToast('Assigned ' + STAFF_ROLES[roleKey].name + ' role', 'success');
+          } else {
+            // Get the previous role before removing
+            const prevSnap = await db.ref('staffRoles/' + targetUid).once('value');
+            const prevData = prevSnap.val();
+            const prevRole = typeof prevData === 'string' ? prevData : prevData?.role;
+            
+            // Store removal reason
+            if (reason || prevRole) {
+              await db.ref('staffRoleRemoved/' + targetUid).set({
+                previousRole: prevRole || 'Unknown',
+                reason: reason || 'No reason provided',
+                removedBy: currentUserId,
+                removedAt: firebase.database.ServerValue.TIMESTAMP,
+                acknowledged: false
+              });
+            }
+            
+            await db.ref('staffRoles/' + targetUid).remove();
+            showToast('Removed staff role', 'success');
+          }
+          return true;
+        } catch (e) {
+          console.error('[staff] Failed to assign role:', e);
+          showToast('Failed to assign role: ' + (e.message || 'Permission denied'), 'error');
+          return false;
+        }
+      }
       
       
       let aiProfile = { name: 'Chatra AI', avatar: null, bio: '', username: 'AI' };
@@ -1748,6 +2319,10 @@
             
             (async () => {
               let botReply = null;
+              
+              // Show AI typing indicator
+              setAiTyping(true);
+              
               addToAiMemory(currentUserId, 'user', aiQuery, currentUsername);
               const conversationHistory = getAiMemory(currentUserId);
               const talkingToUsername = getAiUsername(currentUserId) || currentUsername || 'User';
@@ -1787,6 +2362,9 @@
                 });
               } catch (e) {
                 console.error('[AI] failed to post group message', e);
+              } finally {
+                // Clear AI typing indicator
+                setAiTyping(false);
               }
             })();
           }
@@ -3735,6 +4313,14 @@
         
         
         startOnlineCountListener();
+        
+        // Start listening for staff roles
+        startStaffRolesListener();
+        
+        // Check for pending role notification (delayed to ensure staffRoles loaded)
+        setTimeout(() => {
+          checkPendingRoleNotification();
+        }, 2000);
 
         
 
@@ -4858,17 +5444,8 @@
           isAdmin = snap.exists();
           console.log("[checkAdmin] Admin check for uid", uid, "- exists:", isAdmin, "- snap.val():", snap.val());
           
-          
-          const modPanelBtn = document.getElementById("adminModPanelBtn");
-          if (modPanelBtn) {
-            if (isAdmin) {
-              modPanelBtn.classList.remove("hidden");
-              modPanelBtn.classList.add("flex");
-            } else {
-              modPanelBtn.classList.add("hidden");
-              modPanelBtn.classList.remove("flex");
-            }
-          }
+          // Show mod panel button for staff OR legacy admins
+          updateModPanelVisibility();
           
           if (isAdmin) {
             
@@ -4877,17 +5454,49 @@
             } catch (e) {
               console.warn("[admin] failed to refresh admin controls", e);
             }
+            
+            // Clean up stale presence entries
+            cleanupStalePresence();
           }
         };
         adminRef.on("value", adminListener);
       }
+      
+      // Update mod panel button visibility based on staff status
+      function updateModPanelVisibility() {
+        const modPanelBtn = document.getElementById("adminModPanelBtn");
+        if (modPanelBtn) {
+          if (isCurrentUserStaff()) {
+            modPanelBtn.classList.remove("hidden");
+            modPanelBtn.classList.add("flex");
+          } else {
+            modPanelBtn.classList.add("hidden");
+            modPanelBtn.classList.remove("flex");
+          }
+        }
+      }
 
       function banUser(uid, durationMinutes = null, reason = "Rule break") {
-        if (!isAdmin || !uid) return;
+        const perms = getCurrentUserPermissions();
+        if (!perms.canBan || !uid) {
+          showToast('You do not have permission to ban users', 'error');
+          return;
+        }
 
         if (durationMinutes === "permanent") {
-          
+          // Only owner/co-owner can permanent ban
+          if (!perms.isOwner && !perms.isCoOwner) {
+            showToast('Only Owner/Co-Owner can permanently ban', 'error');
+            return;
+          }
           deleteUserAccount(uid, reason);
+          return;
+        }
+        
+        // Check duration limit
+        const minutes = durationMinutes || 60;
+        if (perms.maxBanMinutes !== Infinity && minutes > perms.maxBanMinutes) {
+          showToast('You can only ban for up to ' + perms.maxBanMinutes + ' minutes (' + Math.round(perms.maxBanMinutes / 1440) + ' days)', 'error');
           return;
         }
 
@@ -4902,7 +5511,8 @@
       }
 
       async function deleteUserAccount(uid, reason = "Permanent ban") {
-        if (!isAdmin || !uid) return;
+        const perms = getCurrentUserPermissions();
+        if ((!perms.canBan && !isAdmin) || !uid) return;
         
         try {
           console.log("[ban] deleting account for uid:", uid);
@@ -5110,6 +5720,7 @@
         const modPanelTabBanned = document.getElementById("modPanelTabBanned");
         const modPanelTabMuted = document.getElementById("modPanelTabMuted");
         const modPanelTabHardware = document.getElementById("modPanelTabHardware");
+        const modPanelTabStaff = document.getElementById("modPanelTabStaff");
         const modPanelContent = document.getElementById("modPanelContent");
         
         if (!modPanelBtn || !modPanelModal) return;
@@ -5117,10 +5728,50 @@
         modPanelBtn.onclick = () => {
           modPanelModal.classList.remove("hidden");
           
-          if (modPanelUnbanAllBtn && currentUserId === OWNER_UID) {
-            modPanelUnbanAllBtn.classList.remove("hidden");
+          const perms = getCurrentUserPermissions();
+          
+          // Show/hide tabs based on permissions
+          if (modPanelUnbanAllBtn) {
+            if (currentUserId === OWNER_UID) {
+              modPanelUnbanAllBtn.classList.remove("hidden");
+            } else {
+              modPanelUnbanAllBtn.classList.add("hidden");
+            }
           }
-          loadModPanelTab('banned');
+          
+          // Hide banned tab if user can't ban
+          if (modPanelTabBanned) {
+            if (perms.canBan) {
+              modPanelTabBanned.classList.remove("hidden");
+            } else {
+              modPanelTabBanned.classList.add("hidden");
+            }
+          }
+          
+          // Hide hardware tab if user can't hardware ban
+          if (modPanelTabHardware) {
+            if (perms.canHardwareBan) {
+              modPanelTabHardware.classList.remove("hidden");
+            } else {
+              modPanelTabHardware.classList.add("hidden");
+            }
+          }
+          
+          // Show staff tab only if can assign roles
+          if (modPanelTabStaff) {
+            if (perms.canAssignRoles) {
+              modPanelTabStaff.classList.remove("hidden");
+            } else {
+              modPanelTabStaff.classList.add("hidden");
+            }
+          }
+          
+          // Start with muted tab if can't see banned
+          if (perms.canBan) {
+            loadModPanelTab('banned');
+          } else {
+            loadModPanelTab('muted');
+          }
         };
         
         modPanelCloseBtn.onclick = () => {
@@ -5166,26 +5817,31 @@
         
         const setTab = (tab) => {
           modPanelCurrentTab = tab;
-          [modPanelTabBanned, modPanelTabMuted, modPanelTabHardware].forEach(btn => {
-            btn.classList.remove('bg-red-600', 'bg-yellow-600', 'bg-purple-600', 'text-white');
+          const allTabs = [modPanelTabBanned, modPanelTabMuted, modPanelTabHardware, modPanelTabStaff].filter(t => t);
+          allTabs.forEach(btn => {
+            btn.classList.remove('bg-red-600', 'bg-yellow-600', 'bg-purple-600', 'bg-rose-600', 'text-white');
             btn.classList.add('bg-slate-700', 'text-slate-300');
           });
-          if (tab === 'banned') {
+          if (tab === 'banned' && modPanelTabBanned) {
             modPanelTabBanned.classList.remove('bg-slate-700', 'text-slate-300');
             modPanelTabBanned.classList.add('bg-red-600', 'text-white');
-          } else if (tab === 'muted') {
+          } else if (tab === 'muted' && modPanelTabMuted) {
             modPanelTabMuted.classList.remove('bg-slate-700', 'text-slate-300');
             modPanelTabMuted.classList.add('bg-yellow-600', 'text-white');
-          } else if (tab === 'hardware') {
+          } else if (tab === 'hardware' && modPanelTabHardware) {
             modPanelTabHardware.classList.remove('bg-slate-700', 'text-slate-300');
             modPanelTabHardware.classList.add('bg-purple-600', 'text-white');
+          } else if (tab === 'staff' && modPanelTabStaff) {
+            modPanelTabStaff.classList.remove('bg-slate-700', 'text-slate-300');
+            modPanelTabStaff.classList.add('bg-rose-600', 'text-white');
           }
           loadModPanelTab(tab);
         };
         
-        modPanelTabBanned.onclick = () => setTab('banned');
-        modPanelTabMuted.onclick = () => setTab('muted');
-        modPanelTabHardware.onclick = () => setTab('hardware');
+        if (modPanelTabBanned) modPanelTabBanned.onclick = () => setTab('banned');
+        if (modPanelTabMuted) modPanelTabMuted.onclick = () => setTab('muted');
+        if (modPanelTabHardware) modPanelTabHardware.onclick = () => setTab('hardware');
+        if (modPanelTabStaff) modPanelTabStaff.onclick = () => setTab('staff');
       }
       
       async function loadModPanelTab(tab) {
@@ -5199,11 +5855,271 @@
             await loadMutedUsers();
           } else if (tab === 'hardware') {
             await loadHardwareBans();
+          } else if (tab === 'staff') {
+            await loadStaffManagement();
           }
         } catch (e) {
           modPanelContent.innerHTML = '<div class="text-center py-8 text-red-400">Error loading data</div>';
           console.error("[modPanel] load error:", e);
         }
+      }
+      
+      // Load staff management tab
+      async function loadStaffManagement() {
+        const modPanelContent = document.getElementById("modPanelContent");
+        const perms = getCurrentUserPermissions();
+        
+        if (!perms.canAssignRoles) {
+          modPanelContent.innerHTML = '<div class="text-center py-8 text-red-400">You do not have permission to manage staff</div>';
+          return;
+        }
+        
+        // Get all users with staff roles
+        const staffData = staffRolesCache || {};
+        const staffUids = Object.keys(staffData).filter(uid => staffData[uid]?.role);
+        
+        // Build UI
+        let html = '<div class="space-y-4">';
+        
+        // Add new staff section
+        html += '<div class="bg-slate-800/50 rounded-lg p-4 border border-slate-700">';
+        html += '<h4 class="text-sm font-semibold text-slate-200 mb-3">Assign Staff Role</h4>';
+        html += '<div class="flex gap-2 flex-wrap relative">';
+        html += '<div class="relative flex-1 min-w-[150px]">';
+        html += '<input type="text" id="staffAssignUsername" placeholder="Start typing username..." autocomplete="off" class="w-full px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-sm text-slate-100 placeholder-slate-500 focus:border-rose-500 focus:outline-none">';
+        html += '<div id="staffUsernameSuggestions" class="absolute top-full left-0 right-0 bg-slate-900 border border-slate-600 rounded-lg mt-1 max-h-48 overflow-y-auto hidden z-50 shadow-xl"></div>';
+        html += '</div>';
+        html += '<select id="staffAssignRole" class="px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-sm text-slate-100">';
+        html += '<option value="TRIAL_MOD">Trial Mod</option>';
+        html += '<option value="MOD">Mod</option>';
+        html += '<option value="ADMIN">Admin</option>';
+        html += '<option value="HEAD_ADMIN">Head Admin</option>';
+        html += '</select>';
+        html += '<button id="staffAssignBtn" class="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-sm font-medium transition-colors">Assign</button>';
+        html += '</div>';
+        html += '<input type="hidden" id="staffAssignUid">';
+        html += '</div>';
+        
+        // Current staff list
+        html += '<h4 class="text-sm font-semibold text-slate-200 mt-4 mb-2">Current Staff (' + staffUids.length + ')</h4>';
+        
+        if (staffUids.length === 0) {
+          html += '<div class="text-center py-4 text-slate-500 text-sm">No staff members assigned yet</div>';
+        } else {
+          // Fetch usernames for staff
+          const userSnap = await db.ref('users').once('value');
+          const users = userSnap.val() || {};
+          
+          // Sort by priority (highest first)
+          staffUids.sort((a, b) => {
+            const roleA = STAFF_ROLES[staffData[a]?.role]?.priority || 0;
+            const roleB = STAFF_ROLES[staffData[b]?.role]?.priority || 0;
+            return roleB - roleA;
+          });
+          
+          for (const uid of staffUids) {
+            const roleKey = staffData[uid]?.role;
+            const role = STAFF_ROLES[roleKey];
+            const username = staffData[uid]?.username || users[uid]?.username || 'Unknown';
+            
+            if (!role) continue;
+            
+            const roleColors = {
+              HEAD_ADMIN: 'border-rose-500/40 bg-rose-500/10',
+              ADMIN: 'border-orange-500/40 bg-orange-500/10',
+              MOD: 'border-emerald-500/40 bg-emerald-500/10',
+              TRIAL_MOD: 'border-violet-500/40 bg-violet-500/10'
+            };
+            
+            html += '<div class="flex items-center justify-between p-3 rounded-lg border ' + (roleColors[roleKey] || 'border-slate-700 bg-slate-800/50') + '">';
+            html += '<div class="flex items-center gap-3">';
+            html += '<span class="text-slate-100 font-medium">' + escapeHtml(username) + '</span>';
+            html += getStaffRoleBadge(roleKey);
+            html += '</div>';
+            html += '<div class="flex gap-2">';
+            html += '<select class="staff-role-select px-2 py-1 bg-slate-900 border border-slate-600 rounded text-xs text-slate-100" data-uid="' + uid + '" data-username="' + escapeHtml(username) + '" data-current-role="' + roleKey + '">';
+            html += '<option value="TRIAL_MOD"' + (roleKey === 'TRIAL_MOD' ? ' selected' : '') + '>Trial Mod</option>';
+            html += '<option value="MOD"' + (roleKey === 'MOD' ? ' selected' : '') + '>Mod</option>';
+            html += '<option value="ADMIN"' + (roleKey === 'ADMIN' ? ' selected' : '') + '>Admin</option>';
+            html += '<option value="HEAD_ADMIN"' + (roleKey === 'HEAD_ADMIN' ? ' selected' : '') + '>Head Admin</option>';
+            html += '</select>';
+            html += '<button class="staff-remove-btn px-2 py-1 bg-red-600 hover:bg-red-500 text-white rounded text-xs transition-colors" data-uid="' + uid + '" data-username="' + escapeHtml(username) + '">Remove</button>';
+            html += '</div>';
+            html += '</div>';
+          }
+        }
+        
+        html += '</div>';
+        modPanelContent.innerHTML = html;
+        
+        // Wire up event handlers
+        const assignBtn = document.getElementById('staffAssignBtn');
+        const assignUsername = document.getElementById('staffAssignUsername');
+        const assignRole = document.getElementById('staffAssignRole');
+        const assignUidInput = document.getElementById('staffAssignUid');
+        const suggestionsDiv = document.getElementById('staffUsernameSuggestions');
+        
+        // Username auto-complete as user types
+        let usersCache = null;
+        let searchTimeout = null;
+        
+        if (assignUsername && suggestionsDiv) {
+          assignUsername.oninput = async () => {
+            const query = assignUsername.value.trim().toLowerCase();
+            
+            clearTimeout(searchTimeout);
+            
+            if (query.length < 2) {
+              suggestionsDiv.classList.add('hidden');
+              suggestionsDiv.innerHTML = '';
+              assignUidInput.value = '';
+              return;
+            }
+            
+            // Debounce search
+            searchTimeout = setTimeout(async () => {
+              // Fetch users if not cached
+              if (!usersCache) {
+                try {
+                  const snap = await db.ref('users').once('value');
+                  usersCache = snap.val() || {};
+                } catch (e) {
+                  console.error('[staff] Failed to fetch users for autocomplete:', e);
+                  return;
+                }
+              }
+              
+              // Search usernames
+              const matches = [];
+              for (const [uid, data] of Object.entries(usersCache)) {
+                const username = data?.username || '';
+                if (username.toLowerCase().includes(query)) {
+                  matches.push({ uid, username });
+                  if (matches.length >= 10) break; // Limit results
+                }
+              }
+              
+              if (matches.length === 0) {
+                suggestionsDiv.innerHTML = '<div class="px-3 py-2 text-slate-500 text-sm">No users found</div>';
+                suggestionsDiv.classList.remove('hidden');
+                return;
+              }
+              
+              suggestionsDiv.innerHTML = matches.map(m => 
+                '<div class="staff-username-suggestion px-3 py-2 hover:bg-slate-700 cursor-pointer text-sm text-slate-200 transition-colors" data-uid="' + m.uid + '" data-username="' + escapeHtml(m.username) + '">' + escapeHtml(m.username) + '</div>'
+              ).join('');
+              suggestionsDiv.classList.remove('hidden');
+              
+              // Wire up click handlers for suggestions
+              document.querySelectorAll('.staff-username-suggestion').forEach(el => {
+                el.onclick = () => {
+                  assignUsername.value = el.dataset.username;
+                  assignUidInput.value = el.dataset.uid;
+                  suggestionsDiv.classList.add('hidden');
+                };
+              });
+            }, 150); // Debounce delay
+          };
+          
+          // Hide suggestions when clicking outside
+          document.addEventListener('click', (e) => {
+            if (!e.target.closest('#staffAssignUsername') && !e.target.closest('#staffUsernameSuggestions')) {
+              suggestionsDiv.classList.add('hidden');
+            }
+          });
+        }
+        
+        if (assignBtn) {
+          assignBtn.onclick = async () => {
+            const username = assignUsername.value.trim();
+            const roleKey = assignRole.value;
+            let targetUid = assignUidInput.value;
+            
+            if (!username) {
+              showToast('Please enter a username', 'error');
+              return;
+            }
+            
+            // Look up UID by username if not already set via autocomplete
+            if (!targetUid) {
+              try {
+                const lookupSnap = await db.ref('users').orderByChild('username').equalTo(username).once('value');
+                const lookupData = lookupSnap.val();
+                if (lookupData) {
+                  targetUid = Object.keys(lookupData)[0];
+                }
+              } catch (e) {
+                console.error('[staff] lookup error:', e);
+              }
+            }
+            
+            if (!targetUid) {
+              showToast('User not found', 'error');
+              return;
+            }
+            
+            await assignStaffRole(targetUid, roleKey, username);
+            assignUsername.value = '';
+            assignUidInput.value = '';
+            loadStaffManagement(); // Refresh
+          };
+        }
+        
+        // Wire up role change selects
+        document.querySelectorAll('.staff-role-select').forEach(select => {
+          select.onchange = async (e) => {
+            const uid = e.target.dataset.uid;
+            const newRole = e.target.value;
+            const oldRole = e.target.dataset.currentRole;
+            const username = e.target.dataset.username;
+            
+            // Check if this is a demotion
+            const oldPriority = STAFF_ROLES[oldRole]?.priority || 0;
+            const newPriority = STAFF_ROLES[newRole]?.priority || 0;
+            
+            if (newPriority < oldPriority) {
+              // This is a demotion - prompt for reason
+              const reason = prompt('Demoting ' + (username || 'this user') + ' from ' + (STAFF_ROLES[oldRole]?.name || oldRole) + ' to ' + (STAFF_ROLES[newRole]?.name || newRole) + '.\n\nEnter a reason (will be shown to them):');
+              if (reason === null) {
+                // Cancelled - reset the select
+                e.target.value = oldRole;
+                return;
+              }
+              
+              // Store demotion reason
+              try {
+                await db.ref('staffRoleRemoved/' + uid).set({
+                  previousRole: oldRole,
+                  newRole: newRole,
+                  reason: reason.trim() || 'No reason provided',
+                  removedBy: currentUserId,
+                  removedAt: firebase.database.ServerValue.TIMESTAMP,
+                  acknowledged: false
+                });
+              } catch (e) {
+                console.warn('[staff] Could not store demotion reason:', e);
+              }
+            }
+            
+            await assignStaffRole(uid, newRole, username);
+            loadStaffManagement(); // Refresh
+          };
+        });
+        
+        // Wire up remove buttons
+        document.querySelectorAll('.staff-remove-btn').forEach(btn => {
+          btn.onclick = async (e) => {
+            const uid = e.target.dataset.uid;
+            const username = e.target.dataset.username || 'this staff member';
+            
+            // Show reason prompt
+            const reason = prompt('Remove ' + username + ' from staff?\n\nEnter a reason (will be shown to them):');
+            if (reason === null) return; // Cancelled
+            
+            await assignStaffRole(uid, null, null, reason.trim() || 'No reason provided');
+            loadStaffManagement(); // Refresh
+          };
+        });
       }
       
       async function loadBannedUsers() {
@@ -5594,7 +6510,18 @@
       }
 
       function muteUser(uid, minutes = 10, reason = "Rule break") {
-        if (!isAdmin || !uid) return;
+        const perms = getCurrentUserPermissions();
+        if (!perms.canMute || !uid) {
+          showToast('You do not have permission to mute users', 'error');
+          return;
+        }
+        
+        // Check if duration exceeds permission
+        if (perms.maxMuteMinutes !== Infinity && minutes > perms.maxMuteMinutes) {
+          showToast('You can only mute for up to ' + perms.maxMuteMinutes + ' minutes', 'error');
+          return;
+        }
+        
         const until = Date.now() + minutes * 60 * 1000;
         firebase.database().ref("mutedUsers/" + uid).set({
           until: until,
@@ -6077,6 +7004,17 @@
       
       let lastTypingText = "";
       let currentWarningText = "";
+      let aiTypingActive = false;
+      
+      function setAiTyping(isTyping) {
+        aiTypingActive = isTyping;
+        if (isTyping) {
+          lastTypingText = "Chatra AI is typing…";
+        } else if (lastTypingText === "Chatra AI is typing…") {
+          lastTypingText = "";
+        }
+        updateStatusBar();
+      }
 
       function updateStatusBar() {
         const parts = [];
@@ -7623,7 +8561,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
 
       function escapeHtml(str) {
         if (!str) return "";
-        return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+        return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
       }
 
       function scrollToMessage(messageId) {
@@ -7796,8 +8734,8 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
 
         const column = document.createElement("div");
         column.className = isMine
-          ? "flex flex-col max-w-[80%] sm:max-w-[60%] gap-1 items-end"
-          : "flex flex-col max-w-[80%] sm:max-w-[60%] gap-1 items-start";
+          ? "flex flex-col max-w-[80%] sm:max-w-[60%] gap-1 items-end w-auto"
+          : "flex flex-col max-w-[80%] sm:max-w-[60%] gap-1 items-start w-auto";
 
         
         const avatarDiv = document.createElement("div");
@@ -7855,12 +8793,19 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           const nameLabel = document.createElement("div");
           nameLabel.className =
             "text-[10px] sm:text-xs text-slate-400 px-3 font-medium cursor-pointer hover:text-slate-300 transition-colors";
+          
+          // Check for Owner, Co-Owner, or Staff role
+          const userStaffRole = msg.userId ? getUserStaffRole(msg.userId) : null;
+          
           if (isOwnerMessage) {
             const ownerBadge = '<span class="ml-1 text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-100 border border-amber-400/40">Owner</span>';
             nameLabel.innerHTML = '<span class="inline-flex items-center gap-1">' + '<span class="mention-insert" data-username="' + escapeHtml(username) + '">' + escapeHtml(username) + '</span>' + ownerBadge + '</span>';
           } else if (isStaffMessage) {
             const staffBadge = '<span class="ml-1 text-[9px] px-1.5 py-0.5 rounded-full bg-sky-500/15 text-sky-100 border border-sky-400/40">Co Owner</span>';
             nameLabel.innerHTML = '<span class="inline-flex items-center gap-1">' + '<span class="mention-insert" data-username="' + escapeHtml(username) + '">' + escapeHtml(username) + '</span>' + staffBadge + '</span>';
+          } else if (userStaffRole) {
+            const roleBadge = getStaffRoleBadge(userStaffRole.key, true);
+            nameLabel.innerHTML = '<span class="inline-flex items-center gap-1">' + '<span class="mention-insert" data-username="' + escapeHtml(username) + '">' + escapeHtml(username) + '</span>' + roleBadge + '</span>';
           } else {
             nameLabel.innerHTML = '<span class="mention-insert" data-username="' + escapeHtml(username) + '">' + escapeHtml(username) + '</span>';
           }
@@ -7901,7 +8846,8 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
 
         
         bubble.style.display = "inline-block";
-        bubble.style.maxWidth = "100%";
+        bubble.style.width = "auto";
+        bubble.style.minWidth = "fit-content";
 
         
         if (msg.replyTo && msg.replyTo.messageId) {
@@ -8841,24 +9787,21 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             const now = Date.now();
             db.ref("typingStatus").once("value", (snap) => {
               const data = snap.val() || {};
-              const updates = {};
               
               for (const uid in data) {
                 if (!Object.prototype.hasOwnProperty.call(data, uid)) continue;
                 const entry = data[uid];
                 
+                // Only clean up stale entries (>10 seconds old)
                 if (entry && entry.ts && (now - entry.ts) > 10000) {
-                  updates[uid] = null;
+                  // Update each uid individually to respect per-uid write permissions
+                  db.ref("typingStatus/" + uid).remove().catch(err => {
+                    // Ignore permission denied - only admins can clean up other users' typing status
+                    if (!err.message?.includes("PERMISSION_DENIED")) {
+                      console.warn("[typing] cleanup error:", err);
+                    }
+                  });
                 }
-              }
-              
-              if (Object.keys(updates).length > 0) {
-                db.ref("typingStatus").update(updates).catch(err => {
-                  
-                  if (!err.message?.includes("PERMISSION_DENIED")) {
-                    console.warn("[typing] cleanup error:", err);
-                  }
-                });
               }
             });
           }, TYPING_CLEANUP_INTERVAL);
@@ -9480,6 +10423,9 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           (async () => {
             let botReply = null;
             
+            // Show AI typing indicator
+            setAiTyping(true);
+            
             addToAiMemory(uid, 'user', aiQuery, currentUsername);
             const conversationHistory = getAiMemory(uid);
             const talkingToUsername = getAiUsername(uid) || currentUsername || 'User';
@@ -9524,6 +10470,9 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
               await db.ref('messages').push(botMessage);
             } catch (e) {
               console.error('[AI] failed to post bot message', e);
+            } finally {
+              // Clear AI typing indicator
+              setAiTyping(false);
             }
           })();
         }
@@ -10449,9 +11398,60 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
       const modAppPopup = document.getElementById('modAppPopup');
       const modAppApplyBtn = document.getElementById('modAppApplyBtn');
       const modAppDismissBtn = document.getElementById('modAppDismissBtn');
+      const modAppDismissBtn2 = document.getElementById('modAppDismissBtn2');
+      const modAppProgressBar = document.getElementById('modAppProgressBar');
+      const modAppOnlineCount = document.getElementById('modAppOnlineCount');
+      const modAppLockedContent = document.getElementById('modAppLockedContent');
+      const modAppUnlockedContent = document.getElementById('modAppUnlockedContent');
+      const modAppPopupTitle = document.getElementById('modAppPopupTitle');
+      const modAppPopupDesc = document.getElementById('modAppPopupDesc');
+      
+      const STAFF_APP_UNLOCK_THRESHOLD = 20;
+      
+      function getOnlineUserCount() {
+        return Object.keys(onlineUsersCache).length;
+      }
+      
+      function isStaffAppsUnlocked() {
+        return getOnlineUserCount() >= STAFF_APP_UNLOCK_THRESHOLD;
+      }
+      
+      function updateModAppPopupState() {
+        const onlineCount = getOnlineUserCount();
+        const unlocked = onlineCount >= STAFF_APP_UNLOCK_THRESHOLD;
+        const progress = Math.min((onlineCount / STAFF_APP_UNLOCK_THRESHOLD) * 100, 100);
+        
+        if (modAppProgressBar) {
+          modAppProgressBar.style.width = progress + '%';
+        }
+        if (modAppOnlineCount) {
+          modAppOnlineCount.textContent = onlineCount + ' online';
+        }
+        
+        if (unlocked) {
+          if (modAppPopupTitle) {
+            modAppPopupTitle.textContent = 'Staff Applications Open!';
+          }
+          if (modAppPopupDesc) {
+            modAppPopupDesc.innerHTML = 'Help keep Chatra welcoming — apply to join the staff team.';
+          }
+          if (modAppLockedContent) modAppLockedContent.classList.add('hidden');
+          if (modAppUnlockedContent) modAppUnlockedContent.classList.remove('hidden');
+        } else {
+          if (modAppPopupTitle) {
+            modAppPopupTitle.textContent = 'Staff Applications Coming Soon!';
+          }
+          if (modAppPopupDesc) {
+            modAppPopupDesc.innerHTML = 'Staff applications will unlock when <span class="font-semibold text-sky-300">20 people</span> are online.';
+          }
+          if (modAppLockedContent) modAppLockedContent.classList.remove('hidden');
+          if (modAppUnlockedContent) modAppUnlockedContent.classList.add('hidden');
+        }
+      }
 
       function openModAppPopup() {
         if (modAppPopup) {
+          updateModAppPopupState();
           modAppPopup.classList.remove('modal-closed');
           modAppPopup.classList.add('modal-open');
           modAppPopup.style.zIndex = '99999';
@@ -10499,6 +11499,10 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         modAppDismissBtn.addEventListener('click', dismissModAppPopup);
         modAppDismissBtn.addEventListener('touchend', (e) => { e.preventDefault(); dismissModAppPopup(); });
       }
+      if (modAppDismissBtn2) {
+        modAppDismissBtn2.addEventListener('click', dismissModAppPopup);
+        modAppDismissBtn2.addEventListener('touchend', (e) => { e.preventDefault(); dismissModAppPopup(); });
+      }
       
       
       
@@ -10507,9 +11511,70 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
       const sidePanelModApp = document.getElementById('sidePanelModApp');
       const headerStaffApp = document.getElementById('headerStaffApp');
 
+      // Intercept clicks on staff app links to check if unlocked
+      function handleStaffAppClick(e) {
+        if (!isStaffAppsUnlocked()) {
+          e.preventDefault();
+          e.stopPropagation();
+          openModAppPopup();
+          return false;
+        }
+        // If unlocked, allow the link to work normally
+        return true;
+      }
       
-
+      if (sidePanelModApp) {
+        sidePanelModApp.addEventListener('click', handleStaffAppClick);
+        sidePanelModApp.addEventListener('touchend', function(e) {
+          if (!isStaffAppsUnlocked()) {
+            e.preventDefault();
+            e.stopPropagation();
+            openModAppPopup();
+          }
+        });
+      }
       
+      if (headerStaffApp) {
+        headerStaffApp.addEventListener('click', handleStaffAppClick);
+        headerStaffApp.addEventListener('touchend', function(e) {
+          if (!isStaffAppsUnlocked()) {
+            e.preventDefault();
+            e.stopPropagation();
+            openModAppPopup();
+          }
+        });
+      }
+      
+      // Admin function to reset everyone's modAppPopupDismissed state
+      // Call from console: resetAllModAppPopupStates()
+      window.resetAllModAppPopupStates = async function() {
+        if (currentUserId !== OWNER_UID) {
+          console.error('[admin] Only owner can reset popup states');
+          return;
+        }
+        
+        try {
+          const snap = await db.ref('userSettings').once('value');
+          const settings = snap.val() || {};
+          const updates = {};
+          
+          for (const uid of Object.keys(settings)) {
+            if (settings[uid] && settings[uid].modAppPopupDismissed) {
+              updates[uid + '/modAppPopupDismissed'] = null;
+            }
+          }
+          
+          if (Object.keys(updates).length > 0) {
+            await db.ref('userSettings').update(updates);
+            console.log('[admin] Reset modAppPopupDismissed for', Object.keys(updates).length, 'users');
+            showToast('Reset staff app popup for all users', 'success');
+          } else {
+            console.log('[admin] No users had dismissed the popup');
+          }
+        } catch (e) {
+          console.error('[admin] Failed to reset popup states:', e);
+        }
+      };
 
       
       (function(){
@@ -12183,11 +13248,17 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         viewProfileBio.textContent = "Loading...";
         viewProfilePic.innerHTML = generateDefaultAvatar(username);
         
+        // Reset staff badge
+        const viewProfileBadge = document.getElementById('viewProfileBadge');
+        if (viewProfileBadge) {
+          viewProfileBadge.classList.add('hidden');
+          viewProfileBadge.textContent = '';
+        }
         
+        // Reset online status dot - bigger and better styled
         const onlineStatusEl = document.getElementById('viewProfileOnlineStatus');
         if (onlineStatusEl) {
-          
-          onlineStatusEl.className = 'h-3 w-3 rounded-full bg-slate-500';
+          onlineStatusEl.className = 'h-4 w-4 rounded-full bg-slate-500 ring-2 ring-slate-800 shadow-lg';
           onlineStatusEl.title = 'Offline';
         }
 
@@ -12276,11 +13347,35 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
 
               const uid = profile?.uid;
               if (uid) {
+                // Show staff badge if user has a staff role
+                const viewProfileBadge = document.getElementById('viewProfileBadge');
+                if (viewProfileBadge) {
+                  const staffRole = getUserStaffRole(uid);
+                  const ownerUid = 'u5yKqiZvioWuBGcGK3SWUBpUVrc2';
+                  const coOwnerUid = '6n8hjmrUxhMHskX4BG8Ik9boMqa2';
+                  
+                  if (uid === ownerUid) {
+                    viewProfileBadge.textContent = 'Owner';
+                    viewProfileBadge.className = 'px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wide shadow-lg bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-900';
+                    viewProfileBadge.classList.remove('hidden');
+                  } else if (uid === coOwnerUid) {
+                    viewProfileBadge.textContent = 'Co-Owner';
+                    viewProfileBadge.className = 'px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wide shadow-lg bg-gradient-to-r from-purple-500 to-pink-500 text-white';
+                    viewProfileBadge.classList.remove('hidden');
+                  } else if (staffRole) {
+                    viewProfileBadge.textContent = staffRole.name;
+                    viewProfileBadge.className = `px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wide shadow-lg ${staffRole.badgeClass}`;
+                    viewProfileBadge.classList.remove('hidden');
+                  } else {
+                    viewProfileBadge.classList.add('hidden');
+                  }
+                }
                 
+                // Update online status with better styling
                 const onlineStatusEl = document.getElementById('viewProfileOnlineStatus');
                 if (onlineStatusEl) {
                   const isOnline = isUserOnline(uid);
-                  onlineStatusEl.className = `h-3 w-3 rounded-full ${isOnline ? 'bg-emerald-500' : 'bg-slate-500'}`;
+                  onlineStatusEl.className = `h-4 w-4 rounded-full ring-2 ring-slate-800 shadow-lg ${isOnline ? 'bg-emerald-500' : 'bg-slate-500'}`;
                   onlineStatusEl.title = isOnline ? 'Online' : 'Offline';
                 }
                 
@@ -12341,16 +13436,21 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         const profileClearHwBanBtn = document.getElementById("profileClearHwBanBtn");
         const now = Date.now();
         const ownerUid = "u5yKqiZvioWuBGcGK3SWUBpUVrc2";
-        const staffUid = "6n8hjmrUxhMHskX4BG8Ik9boMqa2";
+        const coOwnerUid = "6n8hjmrUxhMHskX4BG8Ik9boMqa2";
 
-        console.log("[admin-profile] isAdmin:", isAdmin, "targetUsername:", targetUsername);
+        // Get current user's permissions
+        const perms = getCurrentUserPermissions();
+        const isStaff = isCurrentUserStaff() || isAdmin;
 
-        if (!isAdmin) {
+        console.log("[admin-profile] isAdmin:", isAdmin, "isStaff:", isStaff, "targetUsername:", targetUsername);
+
+        // Hide admin actions if not staff/admin
+        if (!isStaff) {
           profileAdminActions.classList.add("hidden");
           return;
         }
 
-        
+        // Look up target user
         const snap = await db.ref("users").orderByChild("username").equalTo(targetUsername).once("value");
         if (!snap.exists()) {
           console.log("[admin-profile] target user not found");
@@ -12361,29 +13461,49 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         const targetUid = Object.keys(snap.val())[0];
         console.log("[admin-profile] targetUid:", targetUid, "currentUserId:", currentUserId);
 
-        
+        // Can't moderate yourself
         if (targetUid === currentUserId) {
           profileAdminActions.classList.add("hidden");
           return;
         }
 
-        
+        // Can't moderate the owner
         if (targetUid === ownerUid) {
           profileAdminActions.classList.add("hidden");
           return;
         }
 
-        
-        if (currentUserId === staffUid && targetUid === staffUid) {
+        // Co-owner can't moderate themselves
+        if (currentUserId === coOwnerUid && targetUid === coOwnerUid) {
           profileAdminActions.classList.add("hidden");
           return;
         }
 
+        // Get target user's staff role to check hierarchy
+        const targetStaffRole = getUserStaffRole(targetUid);
+        const currentStaffRole = getUserStaffRole(currentUserId);
         
+        // Check if target is co-owner (only owner can moderate co-owner)
+        if (targetUid === coOwnerUid && currentUserId !== ownerUid) {
+          profileAdminActions.classList.add("hidden");
+          return;
+        }
+        
+        // Staff hierarchy check - can only moderate lower ranks (unless owner/co-owner)
+        if (targetStaffRole && currentUserId !== ownerUid && currentUserId !== coOwnerUid) {
+          const currentPriority = currentStaffRole?.priority || 0;
+          const targetPriority = targetStaffRole?.priority || 0;
+          if (targetPriority >= currentPriority) {
+            // Can't moderate same or higher rank
+            profileAdminActions.classList.add("hidden");
+            return;
+          }
+        }
+
         console.log("[admin-profile] showing admin actions for", targetUsername);
         profileAdminActions.classList.remove("hidden");
 
-        
+        // Check ban status
         const banSnap = await db.ref("bannedUsers/" + targetUid).once("value");
         const banData = banSnap.val();
         const banExpired = banData && banData.until && banData.until <= now;
@@ -12392,50 +13512,75 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         }
         const isBannedNow = !!(banData && (!banData.until || banData.until === 9999999999999 || banData.until > now));
 
-        
+        // Check mute status
         const muteSnap = await db.ref("mutedUsers/" + targetUid).once("value");
         const muteData = muteSnap.val();
         const isMutedNow = muteData && muteData.until && muteData.until > Date.now();
         console.log("[admin-profile] isMutedNow:", isMutedNow, "muteData:", muteData);
 
-        
-        profileBanBtn.textContent = isBannedNow ? " Unban" : " Ban";
-        profileBanBtn.onclick = async () => {
-          const latestBanSnap = await db.ref("bannedUsers/" + targetUid).once("value");
-          const latestBan = latestBanSnap.val();
-          const latestNow = Date.now();
-          const latestActive = !!(latestBan && (!latestBan.until || latestBan.until === 9999999999999 || latestBan.until > latestNow));
-          if (latestActive) {
-            await unbanUser(targetUid);
-            profileBanBtn.textContent = " Ban";
+        // Show/hide buttons based on permissions
+        if (profileBanBtn) {
+          if (perms.canBan) {
+            profileBanBtn.classList.remove("hidden");
+            profileBanBtn.textContent = isBannedNow ? "🔓 Unban" : "🚫 Ban";
+            profileBanBtn.onclick = async () => {
+              const latestBanSnap = await db.ref("bannedUsers/" + targetUid).once("value");
+              const latestBan = latestBanSnap.val();
+              const latestNow = Date.now();
+              const latestActive = !!(latestBan && (!latestBan.until || latestBan.until === 9999999999999 || latestBan.until > latestNow));
+              if (latestActive) {
+                await unbanUser(targetUid);
+                profileBanBtn.textContent = "🚫 Ban";
+              } else {
+                showBanReasonModal(targetUid);
+              }
+            };
           } else {
-            showBanReasonModal(targetUid);
+            profileBanBtn.classList.add("hidden");
           }
-        };
+        }
 
-        profileMuteBtn.onclick = () => {
-          console.log("[admin-profile] mute button clicked, isMutedNow:", isMutedNow);
-          if (isMutedNow) {
-            
-            console.log("[admin-profile] unMuting user:", targetUid);
-            db.ref("mutedUsers/" + targetUid).remove().then(() => {
-              console.log("[admin-profile] user unmuted successfully");
-              profileMuteBtn.textContent = " Mute";
-            }).catch((err) => {
-              console.error("[mute] failed to unmute user", err);
-            });
+        if (profileMuteBtn) {
+          if (perms.canMute) {
+            profileMuteBtn.classList.remove("hidden");
+            profileMuteBtn.textContent = isMutedNow ? "🔊 Unmute" : "🔇 Mute";
+            profileMuteBtn.onclick = () => {
+              console.log("[admin-profile] mute button clicked, isMutedNow:", isMutedNow);
+              if (isMutedNow) {
+                console.log("[admin-profile] unMuting user:", targetUid);
+                db.ref("mutedUsers/" + targetUid).remove().then(() => {
+                  console.log("[admin-profile] user unmuted successfully");
+                  profileMuteBtn.textContent = "🔇 Mute";
+                }).catch((err) => {
+                  console.error("[mute] failed to unmute user", err);
+                });
+              } else {
+                showMuteReasonModal(targetUid);
+              }
+            };
           } else {
-            
-            showMuteReasonModal(targetUid);
+            profileMuteBtn.classList.add("hidden");
           }
-        };
+        }
 
-        
-        profileMuteBtn.textContent = isMutedNow ? " Unmute" : " Mute";
+        if (profileWarnBtn) {
+          if (perms.canWarn) {
+            profileWarnBtn.classList.remove("hidden");
+            profileWarnBtn.onclick = () => {
+              showWarnReasonModal(targetUid);
+            };
+          } else {
+            profileWarnBtn.classList.add("hidden");
+          }
+        }
 
-        profileWarnBtn.onclick = () => {
-          showWarnReasonModal(targetUid);
-        };
+        if (profileClearHwBanBtn) {
+          if (perms.canHardwareBan) {
+            profileClearHwBanBtn.classList.remove("hidden");
+          } else {
+            profileClearHwBanBtn.classList.add("hidden");
+          }
+        }
       }
 
       
