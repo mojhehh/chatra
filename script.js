@@ -592,18 +592,22 @@
       
       let presenceRef = null;
       let connectedRef = null;
-      
+
+      // Use a per-connection child under presence/<uid>/<connId>
+      // so multiple tabs/devices don't race when setting a single value.
       function setupPresence(uid) {
         console.log('[presence] setupPresence called for uid:', uid);
-        
-        presenceRef = db.ref('presence/' + uid);
+
+        // create a new connection entry under the user's presence node
+        const connRef = db.ref('presence/' + uid).push();
+        presenceRef = connRef; // this ref points to presence/<uid>/<connId>
         connectedRef = db.ref('.info/connected');
-        
+
         connectedRef.on('value', (snap) => {
           console.log('[presence] .info/connected value:', snap.val());
           if (snap.val() === true) {
-            
-            console.log('[presence] Setting online status for', uid);
+
+            console.log('[presence] Setting online status for', uid, 'conn:', connRef.key);
             presenceRef.set({
               state: 'online',
               lastChanged: firebase.database.ServerValue.TIMESTAMP
@@ -612,12 +616,9 @@
             }).catch((err) => {
               console.error('[presence] Error setting online status:', err);
             });
-            
-            
-            presenceRef.onDisconnect().set({
-              state: 'offline',
-              lastChanged: firebase.database.ServerValue.TIMESTAMP
-            });
+
+            // remove this connection entry on disconnect only
+            presenceRef.onDisconnect().remove();
           }
         });
       }
@@ -636,10 +637,28 @@
           
           onlineUsersCache = {};
           Object.entries(data).forEach(([uid, presence]) => {
-            console.log('[presence] User', uid, 'state:', presence.state);
-            if (presence.state === 'online') {
-              onlineCount++;
-              onlineUsersCache[uid] = true;
+            try {
+              let isOnline = false;
+
+              // presence may be the old flat object {state: 'online'}
+              if (presence && typeof presence === 'object') {
+                if (presence.state === 'online') {
+                  isOnline = true;
+                } else {
+                  // new format: presence/<uid> contains multiple connection children
+                  Object.values(presence).forEach((conn) => {
+                    if (conn && conn.state === 'online') isOnline = true;
+                  });
+                }
+              }
+
+              console.log('[presence] User', uid, 'online?', isOnline);
+              if (isOnline) {
+                onlineCount++;
+                onlineUsersCache[uid] = true;
+              }
+            } catch (e) {
+              console.warn('[presence] failed to evaluate user', uid, e);
             }
           });
           
@@ -3555,7 +3574,7 @@
 
           const deleteBtn = document.createElement('button');
           
-          deleteBtn.className = 'absolute -top-3 -right-3 z-20 w-7 h-7 rounded-full bg-slate-600 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center hover:bg-red-500 active:bg-red-500 text-sm cursor-pointer';
+          deleteBtn.className = 'absolute -top-1 -right-1 z-20 w-7 h-7 rounded-full bg-slate-600 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center hover:bg-red-500 active:bg-red-500 text-sm cursor-pointer';
           deleteBtn.textContent = '🗑️';
           deleteBtn.title = 'Delete message';
           attachActionHandler(deleteBtn, () => {
@@ -3597,7 +3616,7 @@
           
           if (isAdmin) {
             const adminDeleteBtn = document.createElement('button');
-            adminDeleteBtn.className = 'absolute -top-3 -right-3 z-20 w-7 h-7 rounded-full bg-red-600 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center hover:bg-red-700 active:bg-red-700 text-sm cursor-pointer';
+            adminDeleteBtn.className = 'absolute -top-1 -right-1 z-20 w-7 h-7 rounded-full bg-red-600 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center hover:bg-red-700 active:bg-red-700 text-sm cursor-pointer';
             adminDeleteBtn.textContent = '🗑️';
             adminDeleteBtn.title = 'Admin delete';
             if (typeof attachActionHandler === 'function') {
@@ -5485,10 +5504,6 @@
             return;
           }
 
-          
-
-                
-                try { updateScrollToBottomBtn(); } catch (_) {}
           clearExpiredBan(uid, data);
 
           const now = Date.now();
