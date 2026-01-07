@@ -1068,14 +1068,45 @@
             </svg>
           </div>
 
-          <h3 class="text-lg font-bold bg-gradient-to-r from-blue-300 via-sky-300 to-sky-200 bg-clip-text text-transparent mb-1">
-            Staff Applications Open!
+          <h3 id="modAppPopupTitle" class="text-lg font-bold bg-gradient-to-r from-blue-300 via-sky-300 to-sky-200 bg-clip-text text-transparent mb-1">
+            Staff Applications Coming Soon!
           </h3>
-          <p class="text-slate-300 text-sm mb-4">
-            Help keep Chatra welcoming — apply to join the staff team.
+          <p id="modAppPopupDesc" class="text-slate-300 text-sm mb-4">
+            Staff applications will unlock when <span class="font-semibold text-sky-300">20 people</span> are online.
           </p>
+          
+          <!-- Progress bar for online users -->
+          <div class="mb-4">
+            <div class="flex justify-between text-xs text-slate-400 mb-1">
+              <span id="modAppOnlineCount">0</span>
+              <span>20 needed</span>
+            </div>
+            <div class="w-full h-2 bg-slate-700/50 rounded-full overflow-hidden">
+              <div id="modAppProgressBar" class="h-full bg-gradient-to-r from-blue-600 to-sky-400 transition-all duration-500" style="width: 0%"></div>
+            </div>
+          </div>
 
-          <div class="flex flex-col gap-2">
+          <div id="modAppLockedContent" class="flex flex-col gap-2">
+            <div
+              id="modAppLockedBtn"
+              class="w-full py-2.5 px-4 bg-slate-700/50 text-slate-400 font-semibold rounded-lg flex items-center justify-center gap-2 text-sm cursor-not-allowed"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                <path d="M7 11V7a5 5 0 0110 0v4"/>
+              </svg>
+              <span>Locked</span>
+            </div>
+            <button
+              id="modAppDismissBtn"
+              class="w-full py-2 px-4 text-slate-300 hover:text-white hover:bg-blue-800/40 rounded-lg transition-colors text-sm"
+            >
+              Got it
+            </button>
+          </div>
+          
+          <!-- Unlocked content (hidden by default) -->
+          <div id="modAppUnlockedContent" class="flex flex-col gap-2 hidden">
             <a
               href="https://forms.gle/NZHq8S977xicHhNP9"
               target="_blank"
@@ -1086,13 +1117,13 @@
               <span>Apply Now</span>
             </a>
             <button
-              id="modAppDismissBtn"
+              id="modAppDismissBtn2"
               class="w-full py-2 px-4 text-slate-300 hover:text-white hover:bg-blue-800/40 rounded-lg transition-colors text-sm"
             >
               Maybe Later
             </button>
           </div>
-          <p class="text-xs text-slate-400 mt-3">You can also revisit the staff application link anytime from the three-lines menu.</p>
+          <p class="text-xs text-slate-400 mt-3">You can also check staff applications from the three-lines menu.</p>
         </div>
       </div>
     </div>
@@ -1555,11 +1586,12 @@
             </div>
 
             
-            <div class="flex items-center justify-center gap-2 mt-16 mb-2">
-              <span id="viewProfileOnlineStatus" class="h-3 w-3 rounded-full bg-slate-500" title="Offline"></span>
+            <div class="flex items-center justify-center gap-3 mt-16 mb-2">
+              <span id="viewProfileOnlineStatus" class="h-4 w-4 rounded-full bg-slate-500 ring-2 ring-slate-800 shadow-lg" title="Offline"></span>
               <h2 id="viewProfileName" class="text-2xl font-bold text-slate-100">
                 Username
               </h2>
+              <span id="viewProfileBadge" class="hidden px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wide shadow-lg"></span>
             </div>
 
             
@@ -1904,15 +1936,18 @@
         </div>
         
         
-        <div class="flex gap-2 mb-4 border-b border-slate-700 pb-2">
+        <div class="flex gap-2 mb-4 border-b border-slate-700 pb-2 flex-wrap">
           <button id="modPanelTabBanned" class="px-4 py-2 rounded-t-lg bg-red-600 text-white font-medium text-sm transition-colors">
-            🚫 Banned Users
+            🚫 Banned
           </button>
           <button id="modPanelTabMuted" class="px-4 py-2 rounded-t-lg bg-slate-700 hover:bg-slate-600 text-slate-300 font-medium text-sm transition-colors">
-            🔇 Muted Users
+            🔇 Muted
           </button>
           <button id="modPanelTabHardware" class="px-4 py-2 rounded-t-lg bg-slate-700 hover:bg-slate-600 text-slate-300 font-medium text-sm transition-colors">
-            🖥️ Hardware Bans
+            🖥️ Hardware
+          </button>
+          <button id="modPanelTabStaff" class="px-4 py-2 rounded-t-lg bg-slate-700 hover:bg-slate-600 text-slate-300 font-medium text-sm transition-colors hidden">
+            👑 Staff
           </button>
         </div>
         
