@@ -751,7 +751,8 @@
       }
 
       
-      const AI_BOT_UID = 'aEY7gNeuGcfBErxOHNEQYFzvhpp2';
+      const 
+      AI_BOT_UID = 'aEY7gNeuGcfBErxOHNEQYFzvhpp2';
       
       const AI_ADMIN_UID = 'aEY7gNeuGcfBErxOHNEQYFzvhpp2';
       
@@ -8845,7 +8846,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         const textLength = (msg.text || "").length;
         const isSmallMessage = textLength <= 2;
         const padding = isSmallMessage ? "px-3 py-1.5" : "px-3 py-2";
-        const isAiMessage = msg.userId === AI_BOT_UID;
+        const isAiMessage = msg.userId === AI_BOT_UID || msg.isAiResponse === true || msg.aiUserId === AI_BOT_UID;
         const aiClass = isAiMessage ? ' ai-message' : '';
         
         
@@ -10471,7 +10472,9 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             try {
               const botMessage = {
                 user: 'Chatra AI',
-                userId: AI_BOT_UID,
+                userId: uid, // Use the authenticated user's UID to pass Firebase rules
+                isAiResponse: true, // Flag to identify this as an AI response
+                aiUserId: AI_BOT_UID, // Store the AI's UID for display purposes
                 text: botReply,
                 time: firebase.database.ServerValue.TIMESTAMP
               };
