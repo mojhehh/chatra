@@ -1649,7 +1649,7 @@
       }
 
       async function loadUserSettings() {
-        if (!currentUserId) return { theme: "dark", messageSize: "medium", fastMode: false, ratingOptOut: false, ratingLastPrompt: 0 };
+        if (!currentUserId) return { theme: "dark", messageSize: "medium", fastMode: true, ratingOptOut: false, ratingLastPrompt: 0 };
         userSettingsRef = db.ref("userSettings/" + currentUserId);
         try {
           const snap = await userSettingsRef.once("value");
@@ -1663,7 +1663,7 @@
           };
         } catch (err) {
           console.warn("[settings] failed to load user settings", err);
-          return { theme: "dark", messageSize: "medium", fastMode: false, ratingOptOut: false, ratingLastPrompt: 0 };
+          return { theme: "dark", messageSize: "medium", fastMode: true, ratingOptOut: false, ratingLastPrompt: 0 };
         }
       }
 
@@ -8722,14 +8722,24 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
       }
 
       
+      // Hidden marker for AI messages (zero-width space + special sequence)
+      const AI_MSG_MARKER = '\u200B\u2063AI\u2063\u200B';
+      
       function createMessageRow(msg, messageId = null, containerEl = null) {
         const myName = currentUsername || null;
-        const isMine = myName && msg.user === myName;
-        const username = msg.user || "Unknown";
+        // Check if this is an AI message - detect by hidden marker in text or legacy fields
+        const hasAiMarker = msg.text && msg.text.startsWith(AI_MSG_MARKER);
+        const isAiMsg = hasAiMarker || msg.isAiResponse === true || msg.aiUserId === AI_BOT_UID || msg.userId === AI_BOT_UID;
+        // Strip AI marker from text for display
+        if (hasAiMarker && msg.text) {
+          msg.text = msg.text.substring(AI_MSG_MARKER.length);
+        }
+        const isMine = !isAiMsg && myName && msg.user === myName;
+        const username = isAiMsg ? 'Chatra AI' : (msg.user || "Unknown");
         const ownerUid = "u5yKqiZvioWuBGcGK3SWUBpUVrc2";
-        const isOwnerMessage = msg.userId === ownerUid;
+        const isOwnerMessage = !isAiMsg && msg.userId === ownerUid;
         const staffUid = "6n8hjmrUxhMHskX4BG8Ik9boMqa2";
-        const isStaffMessage = msg.userId === staffUid;
+        const isStaffMessage = !isAiMsg && msg.userId === staffUid;
 
         const row = document.createElement("div");
         row.className = isMine 
@@ -8749,8 +8759,22 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
 
         
         const avatarDiv = document.createElement("div");
-        avatarDiv.className = "h-7 w-7 sm:h-8 sm:w-8 rounded-full bg-gradient-to-br from-sky-500 to-sky-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0 cursor-pointer hover:opacity-80 transition-opacity overflow-hidden";
-        avatarDiv.innerHTML = '<svg width="100%" height="100%" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>';
+        // AI messages get a purple gradient avatar, will load actual profile pic
+        if (isAiMsg) {
+          avatarDiv.className = "h-7 w-7 sm:h-8 sm:w-8 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0 cursor-pointer hover:opacity-80 transition-opacity overflow-hidden";
+          avatarDiv.innerHTML = '<span class="text-sm">🤖</span>';
+          // Load AI's actual profile picture
+          if (aiProfile.avatar) {
+            const aiImg = document.createElement("img");
+            aiImg.className = "h-full w-full object-cover";
+            aiImg.src = aiProfile.avatar;
+            aiImg.onerror = () => { avatarDiv.innerHTML = '<span class="text-sm">🤖</span>'; };
+            aiImg.onload = () => { avatarDiv.innerHTML = ''; avatarDiv.appendChild(aiImg); };
+          }
+        } else {
+          avatarDiv.className = "h-7 w-7 sm:h-8 sm:w-8 rounded-full bg-gradient-to-br from-sky-500 to-sky-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0 cursor-pointer hover:opacity-80 transition-opacity overflow-hidden";
+          avatarDiv.innerHTML = '<svg width="100%" height="100%" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>';
+        }
         avatarDiv.style.minWidth = "1.75rem";
         avatarDiv.style.minHeight = "1.75rem";
 
@@ -8758,37 +8782,45 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         const localMessagesDiv = containerEl || messagesDiv;
 
         
-        setTimeout(() => {
-          fetchUserProfile(username).then(profile => {
-                if (profile?.profilePic && avatarDiv.innerHTML.includes("svg")) {
-              try {
-                const img = document.createElement("img");
-                img.className = "h-full w-full object-cover";
-                
-                img.crossOrigin = "anonymous";
-                img.onerror = () => {
+        // Only fetch profile for non-AI messages
+        if (!isAiMsg) {
+          setTimeout(() => {
+            fetchUserProfile(username).then(profile => {
+                  if (profile?.profilePic && avatarDiv.innerHTML.includes("svg")) {
+                try {
+                  const img = document.createElement("img");
+                  img.className = "h-full w-full object-cover";
                   
-                  console.debug("[avatar] failed to load", profile.profilePic);
-                };
-                img.onload = () => {
+                  img.crossOrigin = "anonymous";
+                  img.onerror = () => {
+                    
+                    console.debug("[avatar] failed to load", profile.profilePic);
+                  };
+                  img.onload = () => {
+                    
+                    if (avatarDiv.innerHTML.includes("svg") || avatarDiv.querySelector("img")?.src !== img.src) {
+                      avatarDiv.innerHTML = "";
+                      avatarDiv.appendChild(img);
+                    }
+                  };
                   
-                  if (avatarDiv.innerHTML.includes("svg") || avatarDiv.querySelector("img")?.src !== img.src) {
-                    avatarDiv.innerHTML = "";
-                    avatarDiv.appendChild(img);
-                  }
-                };
-                
                 img.src = profile.profilePic;
               } catch (e) {
                 
                 console.debug("[avatar] error creating img", e);
               }
             }
+            // Apply frame if user has one (skip in fast mode for performance)
+            const isFastMode = localStorage.getItem('fastMode') === 'true';
+            if (!isFastMode && profile && profile.frameType && profile.frameType !== 'none') {
+              applyFrameToAvatar(avatarDiv, profile);
+            }
           }).catch((err) => {
             
             console.debug("[avatar] fetch error", err);
           });
         }, 50);
+        } // End of if (!isAiMsg)
 
         
         avatarDiv.addEventListener("click", () => {
@@ -8807,7 +8839,11 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           // Check for Owner, Co-Owner, or Staff role
           const userStaffRole = msg.userId ? getUserStaffRole(msg.userId) : null;
           
-          if (isOwnerMessage) {
+          // isAiMsg is already defined at top of function
+          if (isAiMsg) {
+            const aiBadge = '<span class="ml-1 text-[9px] px-1.5 py-0.5 rounded-full bg-purple-500/20 text-purple-200 border border-purple-400/40">🤖 AI</span>';
+            nameLabel.innerHTML = '<span class="inline-flex items-center gap-1">' + '<span class="mention-insert" data-username="AI">' + escapeHtml('Chatra AI') + '</span>' + aiBadge + '</span>';
+          } else if (isOwnerMessage) {
             const ownerBadge = '<span class="ml-1 text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-100 border border-amber-400/40">Owner</span>';
             nameLabel.innerHTML = '<span class="inline-flex items-center gap-1">' + '<span class="mention-insert" data-username="' + escapeHtml(username) + '">' + escapeHtml(username) + '</span>' + ownerBadge + '</span>';
           } else if (isStaffMessage) {
@@ -8846,8 +8882,8 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         const textLength = (msg.text || "").length;
         const isSmallMessage = textLength <= 2;
         const padding = isSmallMessage ? "px-3 py-1.5" : "px-3 py-2";
-        const isAiMessage = msg.userId === AI_BOT_UID || msg.isAiResponse === true || msg.aiUserId === AI_BOT_UID;
-        const aiClass = isAiMessage ? ' ai-message' : '';
+        // Use the already-computed isAiMsg from above (includes marker detection)
+        const aiClass = isAiMsg ? ' ai-message' : '';
         
         
         bubble.className = isMine
@@ -10470,15 +10506,19 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             addToAiMemory(uid, 'assistant', botReply, currentUsername);
 
             try {
+              // Use hidden marker to identify AI messages without extra fields that Firebase rejects
+              const AI_MSG_MARKER = '\u200B\u2063AI\u2063\u200B';
               const botMessage = {
-                user: 'Chatra AI',
+                user: username, // Use actual username to pass Firebase validation
                 userId: uid, // Use the authenticated user's UID to pass Firebase rules
-                isAiResponse: true, // Flag to identify this as an AI response
-                aiUserId: AI_BOT_UID, // Store the AI's UID for display purposes
-                text: botReply,
+                text: AI_MSG_MARKER + botReply, // Prefix with hidden marker for client-side AI detection
                 time: firebase.database.ServerValue.TIMESTAMP
               };
-              if (aiProfile.avatar) botMessage.avatar = aiProfile.avatar;
+              
+              // Wait 600ms to ensure rate limit passes (Firebase rule requires 500ms between messages)
+              // Admins are exempt from rate limit, but this ensures it works for everyone
+              await new Promise(resolve => setTimeout(resolve, 600));
+              
               await db.ref('messages').push(botMessage);
             } catch (e) {
               console.error('[AI] failed to post bot message', e);
@@ -10936,6 +10976,135 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
       const profileBio = document.getElementById("profileBio");
       const profileUsername = document.getElementById("profileUsername");
       const profilePicPreview = document.getElementById("profilePicPreview");
+
+      // ===== ANIMATED PROFILE FRAMES =====
+      const frameSelector = document.getElementById("frameSelector");
+      const frameCustomizer = document.getElementById("frameCustomizer");
+      const framePrimaryColor = document.getElementById("framePrimaryColor");
+      const frameSecondaryColor = document.getElementById("frameSecondaryColor");
+      const frameSpeed = document.getElementById("frameSpeed");
+      
+      let selectedFrame = 'none';
+      let frameSettings = {
+        type: 'none',
+        primaryColor: '#38bdf8',
+        secondaryColor: '#a855f7',
+        speed: 1
+      };
+
+      // Frame selector click handler
+      if (frameSelector) {
+        frameSelector.addEventListener('click', (e) => {
+          const option = e.target.closest('.frame-option');
+          if (!option) return;
+          
+          // Update selection
+          frameSelector.querySelectorAll('.frame-option').forEach(opt => opt.classList.remove('selected'));
+          option.classList.add('selected');
+          
+          selectedFrame = option.dataset.frame;
+          frameSettings.type = selectedFrame;
+          
+          // Show/hide customizer for customizable frames
+          if (selectedFrame !== 'none' && selectedFrame !== 'rainbow' && selectedFrame !== 'fire') {
+            frameCustomizer?.classList.remove('hidden');
+          } else {
+            frameCustomizer?.classList.add('hidden');
+          }
+          
+          // Update preview
+          updateFramePreview();
+        });
+      }
+
+      // Color and speed change handlers
+      if (framePrimaryColor) {
+        framePrimaryColor.addEventListener('input', () => {
+          frameSettings.primaryColor = framePrimaryColor.value;
+          updateFramePreview();
+        });
+      }
+      if (frameSecondaryColor) {
+        frameSecondaryColor.addEventListener('input', () => {
+          frameSettings.secondaryColor = frameSecondaryColor.value;
+          updateFramePreview();
+        });
+      }
+      if (frameSpeed) {
+        frameSpeed.addEventListener('input', () => {
+          frameSettings.speed = parseFloat(frameSpeed.value);
+          updateFramePreview();
+        });
+      }
+
+      function updateFramePreview() {
+        if (!profilePicPreview) return;
+        
+        // Remove all frame classes
+        profilePicPreview.classList.remove(
+          'profile-frame-glow', 'profile-frame-spin', 'profile-frame-pulse',
+          'profile-frame-rainbow', 'profile-frame-fire', 'profile-frame-electric', 'profile-frame-gradient'
+        );
+        
+        // Apply CSS variables
+        profilePicPreview.style.setProperty('--frame-primary', frameSettings.primaryColor);
+        profilePicPreview.style.setProperty('--frame-secondary', frameSettings.secondaryColor);
+        profilePicPreview.style.setProperty('--frame-speed', frameSettings.speed);
+        
+        // Add selected frame class
+        if (frameSettings.type !== 'none') {
+          profilePicPreview.classList.add(`profile-frame-${frameSettings.type}`);
+        }
+      }
+
+      function loadFrameSettings(data) {
+        if (!data) return;
+        
+        frameSettings = {
+          type: data.frameType || 'none',
+          primaryColor: data.framePrimaryColor || '#38bdf8',
+          secondaryColor: data.frameSecondaryColor || '#a855f7',
+          speed: data.frameSpeed || 1
+        };
+        selectedFrame = frameSettings.type;
+        
+        // Update UI
+        if (frameSelector) {
+          frameSelector.querySelectorAll('.frame-option').forEach(opt => {
+            opt.classList.toggle('selected', opt.dataset.frame === selectedFrame);
+          });
+        }
+        if (framePrimaryColor) framePrimaryColor.value = frameSettings.primaryColor;
+        if (frameSecondaryColor) frameSecondaryColor.value = frameSettings.secondaryColor;
+        if (frameSpeed) frameSpeed.value = frameSettings.speed;
+        
+        // Show customizer if needed
+        if (selectedFrame !== 'none' && selectedFrame !== 'rainbow' && selectedFrame !== 'fire') {
+          frameCustomizer?.classList.remove('hidden');
+        } else {
+          frameCustomizer?.classList.add('hidden');
+        }
+        
+        updateFramePreview();
+      }
+
+      // Apply frame to any avatar element
+      function applyFrameToAvatar(element, frameData) {
+        if (!element || !frameData) return;
+        
+        element.classList.remove(
+          'profile-frame-glow', 'profile-frame-spin', 'profile-frame-pulse',
+          'profile-frame-rainbow', 'profile-frame-fire', 'profile-frame-electric', 'profile-frame-gradient'
+        );
+        
+        if (frameData.frameType && frameData.frameType !== 'none') {
+          element.style.setProperty('--frame-primary', frameData.framePrimaryColor || '#38bdf8');
+          element.style.setProperty('--frame-secondary', frameData.frameSecondaryColor || '#a855f7');
+          element.style.setProperty('--frame-speed', frameData.frameSpeed || 1);
+          element.classList.add(`profile-frame-${frameData.frameType}`);
+        }
+      }
+      // ===== END ANIMATED PROFILE FRAMES =====
 
       
       let activeProfileListeners = [];
@@ -13217,6 +13386,10 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           currentUserData = { ...data };
           originalProfilePic = data.profilePic || null;
           originalProfilePicDeleteToken = data.profilePicDeleteToken || null;
+          
+          // Load frame settings
+          loadFrameSettings(data);
+          
           console.log("[profile] loaded successfully");
         } catch (err) {
           console.error("[profile] error loading profile:", err);
@@ -13348,6 +13521,18 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
               } else {
                 viewProfilePic.innerHTML = generateDefaultAvatar(username);
               }
+            }
+            
+            // Apply profile frame if user has one
+            const isFastMode = localStorage.getItem('fastMode') === 'true';
+            if (!isFastMode && profile?.frameType && profile.frameType !== 'none') {
+              applyFrameToAvatar(viewProfilePic, profile);
+            } else {
+              // Clear any existing frame classes
+              viewProfilePic.classList.remove(
+                'profile-frame-glow', 'profile-frame-spin', 'profile-frame-pulse',
+                'profile-frame-rainbow', 'profile-frame-fire', 'profile-frame-electric', 'profile-frame-gradient'
+              );
             }
 
             viewProfileBio.textContent = profile?.bio || "No bio yet";
@@ -13845,6 +14030,11 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
               profileBanner: currentUserData.profileBanner || null,
               profileBannerFileId: currentUserData.profileBannerFileId || null,
               profilePicDeleteToken: currentUserData.profilePicDeleteToken || null,
+              // Frame settings
+              frameType: frameSettings.type || 'none',
+              framePrimaryColor: frameSettings.primaryColor || '#38bdf8',
+              frameSecondaryColor: frameSettings.secondaryColor || '#a855f7',
+              frameSpeed: frameSettings.speed || 1,
               createdAt: currentUserData.createdAt || firebase.database.ServerValue.TIMESTAMP,
               updatedAt: firebase.database.ServerValue.TIMESTAMP,
             };
@@ -13912,6 +14102,11 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
               profileBanner: currentUserData.profileBanner || null,
               profileBannerFileId: currentUserData.profileBannerFileId || null,
               profilePicDeleteToken: currentUserData.profilePicDeleteToken || null,
+              // Frame settings
+              frameType: frameSettings.type || 'none',
+              framePrimaryColor: frameSettings.primaryColor || '#38bdf8',
+              frameSecondaryColor: frameSettings.secondaryColor || '#a855f7',
+              frameSpeed: frameSettings.speed || 1,
               createdAt: currentUserData.createdAt || firebase.database.ServerValue.TIMESTAMP,
               updatedAt: firebase.database.ServerValue.TIMESTAMP,
             };
