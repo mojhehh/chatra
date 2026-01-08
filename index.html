@@ -3150,8 +3150,11 @@
     </form>
     <script>
       
-      window.RECOVERY_WORKER_URL = 'https://recovery-modmojheh.modmojheh.workers.dev';
-      window.RESET_PAGE_URL = 'http://localhost:8000/reset.html';
+      (function() {
+        const isLocalhost = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+        window.RECOVERY_WORKER_URL = window.RECOVERY_WORKER_URL || 'https://recovery-modmojheh.modmojheh.workers.dev';
+        window.RESET_PAGE_URL = window.RESET_PAGE_URL || (isLocalhost ? 'http://localhost:8000/reset.html' : location.origin + '/reset.html');
+      })();
     </script>
     <script src="script.js"></script>
 
