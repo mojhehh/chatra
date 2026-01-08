@@ -160,10 +160,16 @@
       const db = firebase.database();
 
       
-      
-      
-      
-      
+      // ============================================================================
+      // FINGERPRINTING SECURITY NOTES:
+      // - FINGERPRINT_ENABLED defaults to true; consider false for stricter privacy
+      // - FINGERPRINT_FAIL_CLOSED controls behavior when fingerprint checks fail
+      // - Client-side ban checks (banTargetFingerprint, checkFingerprintBan) should
+      //   ideally be verified server-side via Cloud Functions or RTDB rules
+      // - Consent state (hasDeviceConsent, checkCanvasConsentFromFirebase) is read
+      //   client-side but stored server-side; consider adding server-side validation
+      // - TODO: Add server-enforced retention/erasure policies and version fields
+      // ============================================================================
       
       const FINGERPRINT_ENABLED = true; 
       
@@ -5244,8 +5250,7 @@
         if (!activeInlineReport) return;
         const { container } = activeInlineReport;
         if (container && container.parentElement) container.parentElement.removeChild(container);
-          const wrapper = document.createElement('div');
-          wrapper.className = 'inline-report-anim mt-2 rounded-lg border border-amber-500/50 bg-amber-500/10 p-2 flex flex-col gap-2';
+        activeInlineReport = null;
       }
 
       function openInlineReport(messageId, messageData, reportedUsername, bubbleContainer) {
@@ -5510,6 +5515,10 @@
         });
       }
 
+      // SECURITY NOTE: deleteUserAccount performs destructive writes based on client-side isAdmin/perms check.
+      // For production, move authorization to Firebase RTDB/Firestore rules or a Cloud Function that validates
+      // auth.uid against /admins or custom claims before allowing writes to protected paths.
+      // The isAdmin flag here should be treated as a UI hint only.
       async function deleteUserAccount(uid, reason = "Permanent ban") {
         const perms = getCurrentUserPermissions();
         if ((!perms.canBan && !isAdmin) || !uid) return;
