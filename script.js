@@ -4265,16 +4265,19 @@
         if (msg.text) {
           const textEl = document.createElement('span');
           textEl.className = 'message-text-reveal font-medium';
-          // Strip AI prefix and zero-width characters from all messages (security)
+          // Only strip AI marker from actual AI bot messages (verified by UID)
           let displayText = msg.text;
-          // Remove AI marker
-          if (displayText.startsWith('\u200B\u2063AI\u2063\u200B')) {
-            displayText = displayText.substring(7);
+          const isFromAiBot = msg.userId === 'aEY7gNeuGcfBErxOHNEQYFzvhpp2';
+          if (isFromAiBot) {
+            // Remove AI marker
+            if (displayText.startsWith('\u200B\u2063AI\u2063\u200B')) {
+              displayText = displayText.substring(7);
+            }
+            // Strip any AI prefix patterns
+            displayText = displayText.replace(/^[\u200B\u200C\u200D\u2063\uFEFF]*AI[\u200B\u200C\u200D\u2063\uFEFF]*/gi, '');
+            // Remove leading zero-width chars
+            displayText = displayText.replace(/^[\u200B\u200C\u200D\u2063\uFEFF]+/, '').trim();
           }
-          // Strip any AI prefix patterns
-          displayText = displayText.replace(/^[\u200B\u200C\u200D\u2063\uFEFF]*AI[\u200B\u200C\u200D\u2063\uFEFF]*/gi, '');
-          // Remove leading zero-width chars
-          displayText = displayText.replace(/^[\u200B\u200C\u200D\u2063\uFEFF]+/, '').trim();
           textEl.textContent = displayText;
           bubble.appendChild(textEl);
         }
@@ -9018,8 +9021,11 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
       function createMessageRow(msg, messageId = null, containerEl = null) {
         const myName = currentUsername || null;
         
-        // Strip AI markers FIRST before any checks (security + display fix)
-        if (msg.text) {
+        // Check if this is an AI message first (by UID)
+        const isAiMsg = msg.isAiResponse === true || msg.aiUserId === AI_BOT_UID || msg.userId === AI_BOT_UID;
+        
+        // ONLY strip AI markers from actual AI bot messages (verified by UID)
+        if (isAiMsg && msg.text) {
           // Remove the exact AI message marker
           if (msg.text.startsWith(AI_MSG_MARKER)) {
             msg.text = msg.text.substring(AI_MSG_MARKER.length);
@@ -9029,10 +9035,6 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           // Also strip any standalone zero-width characters that might be visible
           msg.text = msg.text.replace(/^[\u200B\u200C\u200D\u2063\uFEFF]+/, '');
         }
-        
-        // Check if this is an AI message - detect by hidden marker in text or legacy fields
-        const hasAiMarker = false; // Already stripped above
-        const isAiMsg = msg.isAiResponse === true || msg.aiUserId === AI_BOT_UID || msg.userId === AI_BOT_UID;
         const isMine = !isAiMsg && myName && msg.user === myName;
         const username = isAiMsg ? 'Chatra AI' : (msg.user || "Unknown");
         const ownerUid = "u5yKqiZvioWuBGcGK3SWUBpUVrc2";
@@ -10598,13 +10600,8 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           return;
         }
         
-        // Security: Strip any AI markers/prefixes from user input to prevent impersonation
-        const AI_IMPERSONATION_MARKER = '\u200B\u2063AI\u2063\u200B';
-        if (text.startsWith(AI_IMPERSONATION_MARKER)) {
-          text = text.substring(AI_IMPERSONATION_MARKER.length);
-        }
-        text = text.replace(/^[\u200B\u200C\u200D\u2063\uFEFF]*AI[\u200B\u200C\u200D\u2063\uFEFF]*/gi, '').trim();
-        text = text.replace(/^[\u200B\u200C\u200D\u2063\uFEFF]+/, '').trim();
+        // Don't strip anything from user input - users can type "AI" normally
+        // The AI marker is only added by the bot itself, and we verify by UID
         if (text === "" && !pendingMediaUrl) return;
         
         // /remove command - owner only
