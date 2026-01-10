@@ -10872,12 +10872,12 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             addToAiMemory(uid, 'assistant', botReply, currentUsername);
 
             try {
-              // Use hidden marker to identify AI messages without extra fields that Firebase rejects
-              const AI_MSG_MARKER = '\u200B\u2063AI\u2063\u200B';
+              // Mark as AI response with special field
               const botMessage = {
-                user: username, // Use actual username to pass Firebase validation
-                userId: uid, // Use the authenticated user's UID to pass Firebase rules
-                text: AI_MSG_MARKER + botReply, // Prefix with hidden marker for client-side AI detection
+                user: 'Chatra AI', // Display name for AI
+                userId: AI_BOT_UID, // AI bot's UID for proper display
+                isAiResponse: true, // Flag to identify AI messages
+                text: botReply,
                 time: firebase.database.ServerValue.TIMESTAMP
               };
               
