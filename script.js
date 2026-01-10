@@ -113,10 +113,24 @@
       }
       
       // Strip "AI" prefix from AI responses (e.g., "AIHello!" -> "Hello!")
+      // This is the exact marker we're using
+      const AI_MSG_MARKER_CLEAN = '\u200B\u2063AI\u2063\u200B';
+      
       function cleanAiResponse(text) {
         if (!text) return text;
-        // Remove leading "AI" prefix (including zero-width characters)
-        return text.replace(/^[\u200B\u200C\u200D\uFEFF]*AI[\u200B\u200C\u200D\uFEFF]*/i, '').trim();
+        
+        // First remove the exact marker if present
+        if (text.startsWith(AI_MSG_MARKER_CLEAN)) {
+          text = text.substring(AI_MSG_MARKER_CLEAN.length);
+        }
+        
+        // Remove any AI prefix patterns (including zero-width characters)
+        text = text.replace(/^[\u200B\u200C\u200D\u2063\uFEFF]*AI[\u200B\u200C\u200D\u2063\uFEFF]*/gi, '');
+        
+        // Remove standalone zero-width characters at start
+        text = text.replace(/^[\u200B\u200C\u200D\u2063\uFEFF]+/, '');
+        
+        return text.trim();
       }
 
       
@@ -4251,11 +4265,16 @@
         if (msg.text) {
           const textEl = document.createElement('span');
           textEl.className = 'message-text-reveal font-medium';
-          // Strip AI prefix if present (from AI bot messages)
+          // Strip AI prefix and zero-width characters from all messages (security)
           let displayText = msg.text;
-          if (msg.fromUid === AI_BOT_UID || msg.fromUsername === 'Chatra AI') {
-            displayText = displayText.replace(/^[\u200B\u200C\u200D\u2063\uFEFF]*AI[\u200B\u200C\u200D\u2063\uFEFF]*/i, '').trim();
+          // Remove AI marker
+          if (displayText.startsWith('\u200B\u2063AI\u2063\u200B')) {
+            displayText = displayText.substring(7);
           }
+          // Strip any AI prefix patterns
+          displayText = displayText.replace(/^[\u200B\u200C\u200D\u2063\uFEFF]*AI[\u200B\u200C\u200D\u2063\uFEFF]*/gi, '');
+          // Remove leading zero-width chars
+          displayText = displayText.replace(/^[\u200B\u200C\u200D\u2063\uFEFF]+/, '').trim();
           textEl.textContent = displayText;
           bubble.appendChild(textEl);
         }
@@ -8994,22 +9013,26 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
       const AI_MSG_MARKER = '\u200B\u2063AI\u2063\u200B';
       
       // Regex to strip any AI prefix including zero-width characters
-      const AI_PREFIX_REGEX = /^[\u200B\u200C\u200D\u2063\uFEFF]*AI[\u200B\u200C\u200D\u2063\uFEFF]*/i;
+      const AI_PREFIX_REGEX = /^[\u200B\u200C\u200D\u2063\uFEFF]*AI[\u200B\u200C\u200D\u2063\uFEFF]*/gi;
       
       function createMessageRow(msg, messageId = null, containerEl = null) {
         const myName = currentUsername || null;
-        // Check if this is an AI message - detect by hidden marker in text or legacy fields
-        const hasAiMarker = msg.text && (msg.text.startsWith(AI_MSG_MARKER) || AI_PREFIX_REGEX.test(msg.text));
-        const isAiMsg = hasAiMarker || msg.isAiResponse === true || msg.aiUserId === AI_BOT_UID || msg.userId === AI_BOT_UID;
-        // Strip AI marker from text for display - handle both exact marker and any variations
-        if (isAiMsg && msg.text) {
-          // First try exact marker removal
+        
+        // Strip AI markers FIRST before any checks (security + display fix)
+        if (msg.text) {
+          // Remove the exact AI message marker
           if (msg.text.startsWith(AI_MSG_MARKER)) {
             msg.text = msg.text.substring(AI_MSG_MARKER.length);
           }
-          // Then clean any remaining AI prefix patterns
+          // Strip any AI prefix patterns (case insensitive, global)
           msg.text = msg.text.replace(AI_PREFIX_REGEX, '').trim();
+          // Also strip any standalone zero-width characters that might be visible
+          msg.text = msg.text.replace(/^[\u200B\u200C\u200D\u2063\uFEFF]+/, '');
         }
+        
+        // Check if this is an AI message - detect by hidden marker in text or legacy fields
+        const hasAiMarker = false; // Already stripped above
+        const isAiMsg = msg.isAiResponse === true || msg.aiUserId === AI_BOT_UID || msg.userId === AI_BOT_UID;
         const isMine = !isAiMsg && myName && msg.user === myName;
         const username = isAiMsg ? 'Chatra AI' : (msg.user || "Unknown");
         const ownerUid = "u5yKqiZvioWuBGcGK3SWUBpUVrc2";
@@ -10574,6 +10597,15 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           }, 3000);
           return;
         }
+        
+        // Security: Strip any AI markers/prefixes from user input to prevent impersonation
+        const AI_IMPERSONATION_MARKER = '\u200B\u2063AI\u2063\u200B';
+        if (text.startsWith(AI_IMPERSONATION_MARKER)) {
+          text = text.substring(AI_IMPERSONATION_MARKER.length);
+        }
+        text = text.replace(/^[\u200B\u200C\u200D\u2063\uFEFF]*AI[\u200B\u200C\u200D\u2063\uFEFF]*/gi, '').trim();
+        text = text.replace(/^[\u200B\u200C\u200D\u2063\uFEFF]+/, '').trim();
+        if (text === "" && !pendingMediaUrl) return;
         
         // /remove command - owner only
         const ownerUid = 'u5yKqiZvioWuBGcGK3SWUBpUVrc2';
