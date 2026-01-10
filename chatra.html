@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Chatra – Development Pause</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  
+  <link rel="stylesheet" href="style.css" />
+
+  
+  <script src="https://cdn.tailwindcss.com" crossorigin="anonymous"></script>
+
+  
+  <script src="https://www.gstatic.com/firebasejs/12.7.0/firebase-app-compat.js" crossorigin="anonymous"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.7.0/firebase-database-compat.js" crossorigin="anonymous"></script>
+</head>
+
+<body class="bg-slate-950 text-slate-100 min-h-screen flex items-center justify-center">
+
+  
+  <div class="bg-orb bg-orb-blue w-[420px] h-[420px] top-[-120px] left-[-120px]"></div>
+  <div class="bg-orb bg-orb-purple w-[520px] h-[520px] bottom-[-160px] right-[-160px]"></div>
+
+  
+  <div class="glass-card max-w-lg w-full mx-4 p-6 space-y-4">
+
+    <h1 class="text-xl font-bold text-center">
+      🚧 Development Pause
+    </h1>
+
+    <p class="text-sm text-slate-300 leading-relaxed">
+      Chatra is temporarily paused for development.
+      I’m taking a short break for a couple of days or up to a week to rest and plan the next improvements.
+      Development will resume soon.
+    </p>
+
+    <p class="text-sm text-slate-300 leading-relaxed">
+      Development <strong>is not cancelled</strong>.
+      When I return, work will gradually resume with fixes, improvements, and new features.
+    </p>
+
+    <p class="text-sm text-slate-300 leading-relaxed">
+      Thank you for your patience and support.
+      If you have ideas for Chatra or other websites,
+      feel free to submit them below.
+    </p>
+
+    
+    <button
+      onclick="goToChat()"
+      class="w-full py-2 rounded-xl bg-sky-500 hover:bg-sky-600 text-slate-950 font-semibold"
+    >
+      Go to Main Chat Page
+    </button>
+
+    
+    <div class="border-t border-slate-800 my-4"></div>
+
+    
+    <div>
+      <h2 class="text-sm font-semibold mb-2">
+        💡 Website / Feature Ideas
+      </h2>
+
+      <textarea
+        id="ideaInput"
+        rows="3"
+        maxlength="2000"
+        placeholder="Type your idea here..."
+        class="w-full rounded-xl p-3 bg-slate-900 border border-slate-700 text-slate-100 placeholder-slate-400 focus:outline-none focus:border-sky-400"
+      ></textarea>
+
+      <button
+        onclick="submitIdea()"
+        class="mt-2 w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 font-medium"
+      >
+        Submit Idea
+      </button>
+
+      <p id="ideaStatus" class="text-xs text-slate-400 mt-2 hidden">
+        Idea saved. Thanks!
+      </p>
+    </div>
+
+  </div>
+
+  
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyC945jY7UEh4sOOuuk7OMZVXeIh333kxVk",
+      authDomain: "chat-app-710f0.firebaseapp.com",
+      projectId: "chat-app-710f0",
+      storageBucket: "chat-app-710f0.appspot.com",
+      messagingSenderId: "225892837672",
+      appId: "1:225892837672:web:f190f3585c4ffbd0f1c81d",
+      databaseURL: "https://chat-app-710f0-default-rtdb.firebaseio.com"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    const MAX_IDEA_LENGTH = 2000;
+
+    function goToChat() {
+      try {
+        localStorage.setItem('skipRedirect', 'true');
+      } catch (e) {
+        
+      }
+      window.location.href = "index.html";
+    }
+
+    function submitIdea() {
+      const input = document.getElementById("ideaInput");
+      const status = document.getElementById("ideaStatus");
+      const text = input.value.trim();
+
+      if (!text) return;
+
+      if (text.length > MAX_IDEA_LENGTH) {
+        status.textContent = "❌ Idea too long (max " + MAX_IDEA_LENGTH + " characters)";
+        status.classList.remove("hidden");
+        return;
+      }
+
+      db.ref("ideas").push({
+        text: text,
+        time: Date.now()
+      })
+      .then(() => {
+        input.value = "";
+        status.textContent = "✅ Idea saved. Thanks!";
+        status.classList.remove("hidden");
+        setTimeout(() => status.classList.add("hidden"), 2000);
+      })
+      .catch((err) => {
+        status.textContent = "❌ Failed to save idea. Please try again.";
+        status.classList.remove("hidden");
+        console.error("Failed to save idea:", err);
+      });
+    }
+  </script>
+
+</body>
+</html>
