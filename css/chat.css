@@ -1,0 +1,155 @@
+/* Chat message styles */
+
+.message-text-reveal {
+  font-weight: 600;
+}
+
+.message-bubble-anim {
+  animation: slide-up-fade 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.message-bubble-anim {
+  display: inline-block !important;
+  width: auto !important;
+  min-width: fit-content !important;
+  max-width: 100% !important;
+  padding: 0.5rem 0.75rem !important;
+  border-radius: 12px !important;
+  font-size: 13px !important;
+  line-height: 1.35 !important;
+  word-break: break-word !important;
+  box-sizing: border-box !important;
+  vertical-align: middle !important;
+  flex-shrink: 0 !important;
+}
+
+.message-text-reveal {
+  display: inline !important;
+  white-space: pre-wrap !important;
+}
+
+.message-bubble-anim.mine {
+  background: linear-gradient(135deg, #0ea5e9, #0369a1) !important;
+  color: #ffffff !important;
+  align-self: flex-end !important;
+  border-radius: 16px 16px 6px 16px !important;
+}
+
+.message-bubble-anim:not(.mine) {
+  background: rgba(30,41,59,0.9) !important;
+  color: #e6eef9 !important;
+  border: 1px solid rgba(148,163,184,0.06) !important;
+  border-radius: 16px 16px 16px 6px !important;
+  align-self: flex-start !important;
+}
+
+/* AI Message Styling */
+.message-bubble-anim.ai-message {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(99, 102, 241, 0.2)) !important;
+  border: 1px solid rgba(139, 92, 246, 0.3) !important;
+  box-shadow: 0 2px 12px rgba(139, 92, 246, 0.15) !important;
+}
+
+body.light-mode .message-bubble-anim.ai-message {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(99, 102, 241, 0.15)) !important;
+  border-color: rgba(139, 92, 246, 0.25) !important;
+}
+
+.message-bubble-anim.mine {
+  animation: bounce-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.message-text-reveal {
+  animation: text-reveal 0.35s ease-out;
+}
+
+/* Inline report styles */
+.inline-report-anim {
+  animation: report-slide 0.14s ease-out;
+}
+
+.inline-report-success,
+.inline-report-error {
+  transition: opacity 0.6s ease, transform 0.4s ease;
+}
+.inline-report-success.fade-out,
+.inline-report-error.fade-out {
+  opacity: 0;
+  transform: translateY(-6px) scale(0.995);
+}
+
+/* Mention highlight in messages */
+.mention-highlight {
+  background: rgba(56, 189, 248, 0.2);
+  color: #38bdf8;
+  padding: 1px 4px;
+  border-radius: 4px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.mention-highlight:hover {
+  background: rgba(56, 189, 248, 0.35);
+}
+.mention-highlight.mention-me {
+  background: rgba(251, 191, 36, 0.25);
+  color: #fbbf24;
+}
+.mention-highlight.mention-me:hover {
+  background: rgba(251, 191, 36, 0.4);
+}
+
+/* Mentioned message styling */
+.message-bubble-anim.mentioned {
+  background: linear-gradient(90deg, #f59e0b, #d97706) !important;
+  color: #fff !important;
+  border-color: rgba(249, 115, 22, 0.6) !important;
+  box-shadow: 0 6px 16px rgba(217, 119, 6, 0.18) !important;
+}
+
+.message-bubble-anim.mentioned .message-text-reveal {
+  color: #fff !important;
+  font-weight: 800 !important;
+  font-size: 1.08em !important;
+  line-height: 1.35 !important;
+  letter-spacing: 0.2px !important;
+  text-shadow: 0 4px 18px rgba(0,0,0,0.6) !important;
+}
+
+.message-bubble-anim.mentioned {
+  animation: mention-glow 2.4s ease-in-out infinite;
+  padding: 0.6rem 1rem !important;
+  border-radius: 16px !important;
+}
+
+.mention-from {
+  display: inline-block;
+  margin: 0 6px;
+  color: #f59e0b;
+  font-weight: 700;
+  animation: mention-fade 1.2s ease-in-out 0s 3;
+}
+
+/* Light mode mentions */
+body.light-mode .mention-highlight {
+  background: rgba(14, 165, 233, 0.15);
+  color: #0284c7;
+}
+body.light-mode .mention-highlight:hover {
+  background: rgba(14, 165, 233, 0.25);
+}
+body.light-mode .mention-highlight.mention-me {
+  background: rgba(245, 158, 11, 0.2);
+  color: #d97706;
+}
+
+/* Reply preview styling */
+.reply-preview.reply-to-me {
+  background: linear-gradient(90deg, rgba(56,189,248,0.06), rgba(56,189,248,0.03));
+  border-left-color: rgba(56,189,248,0.9) !important;
+  box-shadow: 0 0 10px rgba(56,189,248,0.25);
+}
+.reply-preview.reply-to-me p {
+  color: #bfebff !important;
+  text-shadow: 0 0 6px rgba(56,189,248,0.9);
+}

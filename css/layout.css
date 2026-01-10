@@ -1,0 +1,183 @@
+/* Layout styles - Nav tabs, scrollbars, message positioning */
+
+/* Nav tab styles */
+.nav-tab {
+  color: rgba(148, 163, 184, 0.8);
+  background: transparent;
+}
+.nav-tab:hover {
+  color: rgba(226, 232, 240, 1);
+  background: rgba(51, 65, 85, 0.5);
+}
+.nav-tab.active {
+  color: #fff;
+  background: rgba(14, 165, 233, 0.3);
+  box-shadow: 0 0 8px rgba(14, 165, 233, 0.3);
+}
+
+body.light-mode .nav-tab {
+  color: rgba(71, 85, 105, 0.8);
+}
+body.light-mode .nav-tab:hover {
+  color: #1e293b;
+  background: rgba(148, 163, 184, 0.2);
+}
+body.light-mode .nav-tab.active {
+  color: #0369a1;
+  background: rgba(14, 165, 233, 0.15);
+}
+
+/* Scrollbar styles */
+#messages,
+.overflow-y-auto,
+.overflow-y-scroll,
+.glass-card,
+#helpModal .glass-card,
+#settingsModal,
+#profileModal,
+#patchNotesModal .glass-card,
+#termsModal .glass-card,
+#privacyModal .glass-card {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(56, 97, 150, 0.7) rgba(15, 23, 42, 0.4);
+  -webkit-overflow-scrolling: touch;
+}
+#messages::-webkit-scrollbar,
+.overflow-y-auto::-webkit-scrollbar,
+.overflow-y-scroll::-webkit-scrollbar,
+.glass-card::-webkit-scrollbar {
+  width: 8px;
+}
+#messages::-webkit-scrollbar-track,
+.overflow-y-auto::-webkit-scrollbar-track,
+.overflow-y-scroll::-webkit-scrollbar-track,
+.glass-card::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.4);
+  border-radius: 4px;
+}
+
+#guidelinesModal .glass-card {
+  border-left: 4px solid rgba(56, 189, 248, 0.35);
+}
+
+#messages::-webkit-scrollbar-thumb,
+.overflow-y-auto::-webkit-scrollbar-thumb,
+.overflow-y-scroll::-webkit-scrollbar-thumb,
+.glass-card::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(56, 97, 150, 0.8) 0%, rgba(30, 64, 110, 0.9) 100%);
+  border-radius: 4px;
+  border: 1px solid rgba(56, 130, 180, 0.3);
+}
+#messages::-webkit-scrollbar-thumb:hover,
+.overflow-y-auto::-webkit-scrollbar-thumb:hover,
+.overflow-y-scroll::-webkit-scrollbar-thumb:hover,
+.glass-card::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(66, 120, 180, 0.9) 0%, rgba(40, 84, 140, 1) 100%);
+}
+
+body.light-mode #messages,
+body.light-mode .overflow-y-auto,
+body.light-mode .overflow-y-scroll,
+body.light-mode .glass-card {
+  scrollbar-color: rgba(56, 97, 150, 0.5) rgba(226, 232, 240, 0.6);
+}
+body.light-mode #messages::-webkit-scrollbar-track,
+body.light-mode .overflow-y-auto::-webkit-scrollbar-track,
+body.light-mode .overflow-y-scroll::-webkit-scrollbar-track,
+body.light-mode .glass-card::-webkit-scrollbar-track {
+  background: rgba(226, 232, 240, 0.6);
+}
+body.light-mode #messages::-webkit-scrollbar-thumb,
+body.light-mode .overflow-y-auto::-webkit-scrollbar-thumb,
+body.light-mode .overflow-y-scroll::-webkit-scrollbar-thumb,
+body.light-mode .glass-card::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(56, 97, 150, 0.6) 0%, rgba(30, 64, 110, 0.7) 100%);
+}
+
+/* Background orbs */
+.bg-orb {
+  position: fixed;
+  border-radius: 9999px;
+  filter: blur(80px);
+  opacity: 0.08;
+  pointer-events: none;
+  z-index: -10;
+}
+.bg-orb-blue {
+  background: radial-gradient(circle, rgba(56, 189, 248, 0.4), transparent 60%);
+  animation: float-slow 20s ease-in-out infinite alternate;
+}
+.bg-orb-purple {
+  background: radial-gradient(circle, rgba(129, 140, 248, 0.35), transparent 60%);
+  animation: float-medium 24s ease-in-out infinite alternate;
+}
+.bg-orb-pink {
+  background: radial-gradient(circle, rgba(236, 72, 153, 0.3), transparent 60%);
+  animation: float-fast 26s ease-in-out infinite alternate;
+}
+
+/* Message action buttons positioning */
+.relative.group, .relative.group * { box-sizing: border-box; }
+.relative.group { position: relative; }
+
+.relative.group > button {
+  position: absolute !important;
+  width: 28px !important;
+  height: 28px !important;
+  padding: 0 !important;
+  border-radius: 9999px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: rgba(56,65,85,0.9) !important;
+  color: #fff !important;
+  border: 1px solid rgba(100,116,139,0.18) !important;
+  box-shadow: 0 6px 18px rgba(2,6,23,0.28) !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transition: opacity 120ms ease, transform 80ms ease !important;
+  transform: none !important;
+  z-index: 60 !important;
+}
+
+.relative.group:hover > button,
+.relative.group.touch-active > button,
+.relative.group:focus-within > button {
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+
+.relative.group > button[title="Report message"] {
+  top: -8px !important;
+  left: -8px !important;
+}
+
+.relative.group > button[title="Delete message"],
+.relative.group > button[title="Admin delete"] {
+  top: -8px !important;
+  right: -8px !important;
+  left: auto !important;
+}
+
+.relative.group > button[title="Edit message"] {
+  top: -8px !important;
+  right: 28px !important;
+  left: auto !important;
+}
+
+.relative.group > button[title="Reply"] {
+  bottom: -6px !important;
+  right: 4px !important;
+  left: auto !important;
+}
+
+.relative.group > button[title="Reply"][class*="left-0"] {
+  bottom: -6px !important;
+  left: 4px !important;
+  right: auto !important;
+}
+
+.relative.group > button[title="Reply"],
+.relative.group > button[title="Report message"] {
+  z-index: 80 !important;
+}

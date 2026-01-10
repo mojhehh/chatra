@@ -1,0 +1,109 @@
+/* Mention autocomplete styles */
+
+.mention-autocomplete {
+  position: absolute; 
+  left: auto;
+  right: auto;
+  top: auto;
+  max-height: 200px;
+  overflow-y: auto;
+  background: rgba(30, 41, 59, 0.98);
+  border: 1px solid rgba(100, 116, 139, 0.4);
+  border-radius: 12px;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.4);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  z-index: 99999; 
+  margin-bottom: 8px;
+  animation: mention-slide-up 0.15s ease-out;
+  
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+}
+
+.mention-autocomplete::-webkit-scrollbar {
+  width: 6px;
+}
+.mention-autocomplete::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.5);
+  border-radius: 3px;
+}
+
+.mention-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  cursor: pointer;
+  transition: background 0.12s ease;
+  
+  -webkit-tap-highlight-color: rgba(56, 189, 248, 0.3);
+  touch-action: manipulation;
+}
+.mention-item:first-child {
+  border-radius: 11px 11px 0 0;
+}
+.mention-item:last-child {
+  border-radius: 0 0 11px 11px;
+}
+.mention-item:only-child {
+  border-radius: 11px;
+}
+.mention-item:hover,
+.mention-item.selected,
+.mention-item:active {
+  background: rgba(56, 189, 248, 0.15);
+}
+.mention-item.selected {
+  background: rgba(56, 189, 248, 0.25);
+}
+
+.mention-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #0ea5e9, #0284c7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: white;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+.mention-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.mention-info {
+  flex: 1;
+  min-width: 0;
+}
+.mention-username {
+  font-size: 14px;
+  font-weight: 600;
+  color: #f1f5f9;
+}
+.mention-hint {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+/* Light mode mention autocomplete */
+body.light-mode .mention-autocomplete {
+  background: rgba(248, 250, 252, 0.98);
+  border-color: rgba(148, 163, 184, 0.3);
+}
+body.light-mode .mention-item:hover,
+body.light-mode .mention-item.selected {
+  background: rgba(14, 165, 233, 0.1);
+}
+body.light-mode .mention-username {
+  color: #1e293b;
+}
+body.light-mode .mention-hint {
+  color: #64748b;
+}

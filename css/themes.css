@@ -1,0 +1,112 @@
+/* Light mode theme overrides */
+
+body.light-mode {
+  background-color: #f8fafc;
+  color: #1e293b;
+}
+
+body.light-mode .glass-card {
+  background: rgba(248, 250, 252, 0.8);
+  border-color: rgba(30, 41, 59, 0.15);
+}
+
+body.light-mode .glass-card:hover {
+  border-color: rgba(30, 41, 59, 0.25);
+}
+
+body.light-mode #chatInterface .glass-card {
+  background: rgba(248, 250, 252, 0.95);
+  color: #1e293b;
+}
+
+body.light-mode #messages {
+  background-color: #f1f5f9;
+  color: #1e293b;
+}
+
+body.light-mode .message-bubble-anim:not(.mine) {
+  background-color: #e2e8f0 !important;
+  color: #1e293b !important;
+  border-color: #cbd5e1 !important;
+}
+
+body.light-mode .message-bubble-anim.mine {
+  background: linear-gradient(to bottom right, #0ea5e9, #0284c7) !important;
+  color: white !important;
+}
+
+body.light-mode .text-slate-100,
+body.light-mode .text-slate-200,
+body.light-mode .text-slate-300 {
+  color: #1e293b !important;
+}
+
+body.light-mode .text-slate-400 {
+  color: #64748b !important;
+}
+
+body.light-mode .bg-slate-950,
+body.light-mode .bg-slate-900 {
+  background-color: #f1f5f9 !important;
+}
+
+body.light-mode .bg-slate-800,
+body.light-mode .bg-slate-800\/80 {
+  background-color: #e2e8f0 !important;
+}
+
+body.light-mode .bg-slate-700 {
+  background-color: #cbd5e1 !important;
+}
+
+body.light-mode .bg-slate-700\/50 {
+  background-color: rgba(203, 213, 225, 0.5) !important;
+}
+
+body.light-mode .hover\:bg-slate-700:hover,
+body.light-mode .hover\:bg-slate-600:hover {
+  background-color: #cbd5e1 !important;
+}
+
+body.light-mode .border-slate-600\/60,
+body.light-mode .border-slate-700,
+body.light-mode .border-slate-800\/50 {
+  border-color: #cbd5e1 !important;
+}
+
+body.light-mode input,
+body.light-mode textarea {
+  background-color: #f1f5f9 !important;
+  color: #1e293b !important;
+  border-color: #cbd5e1 !important;
+}
+
+body.light-mode input::placeholder,
+body.light-mode textarea::placeholder {
+  color: #94a3b8 !important;
+}
+
+body.light-mode input:focus,
+body.light-mode textarea:focus {
+  border-color: #0ea5e9 !important;
+}
+
+body.light-mode .shadow-inner {
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1) !important;
+}
+
+body.light-mode #settingsMenu,
+body.light-mode #settingsModal,
+body.light-mode #profileModal {
+  background: rgba(248, 250, 252, 0.95);
+  border-color: rgba(30, 41, 59, 0.2);
+}
+
+body.light-mode .input-shell {
+  background-color: #e2e8f0 !important;
+  border-color: #cbd5e1 !important;
+}
+
+body.light-mode .input-shell:focus-within {
+  border-color: #0ea5e9 !important;
+}
