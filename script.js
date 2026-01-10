@@ -1397,6 +1397,66 @@
         }
       }
       
+      // Web search functionality using Cloudflare Worker + Google CSE
+      const SEARCH_WORKER_URL = 'https://chatra-search.modmojheh.workers.dev';
+      
+      async function performWebSearch(query) {
+        try {
+          const response = await fetch(SEARCH_WORKER_URL + '/search', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query })
+          });
+          
+          if (!response.ok) {
+            console.warn('[search] worker returned', response.status);
+            return null;
+          }
+          
+          const data = await response.json();
+          return data;
+        } catch (e) {
+          console.warn('[search] failed:', e);
+          return null;
+        }
+      }
+      
+      function displaySearchResults(query, results) {
+        if (!results || !results.results || results.results.length === 0) {
+          showToast('No search results found for: ' + query, 'info');
+          return;
+        }
+        
+        // Create a modal to display search results
+        const modal = document.createElement('div');
+        modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4';
+        modal.innerHTML = `
+          <div class="bg-slate-800 rounded-lg max-w-2xl w-full max-h-[80vh] overflow-y-auto border border-slate-700">
+            <div class="sticky top-0 bg-slate-800 border-b border-slate-700 p-4 flex justify-between items-center">
+              <h3 class="text-lg font-bold text-white">Search Results for: ${escapeHtml(query)}</h3>
+              <button class="text-slate-400 hover:text-white transition-colors" id="closeSearchBtn">✕</button>
+            </div>
+            <div class="p-4 space-y-4">
+              ${results.results.map((result, i) => `
+                <div class="border border-slate-700 rounded p-3 hover:bg-slate-700/50 transition-colors">
+                  <a href="${escapeHtml(result.link)}" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300 font-semibold break-words">
+                    ${escapeHtml(result.title)}
+                  </a>
+                  <p class="text-xs text-slate-400 mt-1">${escapeHtml(result.displayLink)}</p>
+                  <p class="text-sm text-slate-300 mt-2 line-clamp-2">${escapeHtml(result.snippet)}</p>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+        
+        document.body.appendChild(modal);
+        document.getElementById('closeSearchBtn').addEventListener('click', () => modal.remove());
+        modal.addEventListener('click', (e) => {
+          if (e.target === modal) modal.remove();
+        });
+      }
+      
       
       let aiProfile = { name: 'Chatra AI', avatar: null, bio: '', username: 'AI' };
       
@@ -1432,7 +1492,7 @@
           chatContext = `a direct message with ${activeDMTarget.username || 'a user'}`;
         }
         
-        // Prepend system context about Chatra with chat awareness
+        // Prepend system context about Chatra with chat awareness and web search capability
         const systemContext = {
           role: 'system',
           content: `You are Chatra AI, the intelligent assistant for Chatra - a vibrant, modern real-time chat platform. You are currently in ${chatContext}.
@@ -1447,12 +1507,23 @@ Chatra is a feature-rich social messaging app where users can:
 - See who's online with real-time presence indicators
 - Enjoy smooth animations and a beautiful dark/light theme interface
 
+IMPORTANT WEB SEARCH CAPABILITY:
+You have the ability to search the web for current information! Use this when:
+- User asks about recent events, news, or current information
+- You're unsure about current facts or need up-to-date information
+- User asks "What's trending?" or similar current event questions
+- You want to provide the most accurate, recent information
+
+TO SEARCH THE WEB: Include [SEARCH: your query here] in your response. The system will automatically search and show results to the user. For example:
+- User: "What's the latest AI news?" → You: "Let me search for the latest AI news for you. [SEARCH: latest AI news 2026]"
+- User: "Who won the latest championship?" → You: "[SEARCH: latest championship winner 2026] Let me find that for you."
+
 IMPORTANT: In your responses, acknowledge where the conversation is happening. For example:
 - "In this Global Chat, ..." when in the main chat
 - "In this ${chatContext === 'Global Chat' ? 'Global Chat' : 'group or DM'}, ..." to show context awareness
 - This helps users understand their location in Chatra
 
-As Chatra AI, you're here to help users with questions, provide creative assistance, have friendly conversations, and make their experience on Chatra amazing. You're helpful, friendly, knowledgeable, and always aware of the chat context. Be conversational and engaging!`
+As Chatra AI, you're here to help users with questions, provide creative assistance, have friendly conversations, and make their experience on Chatra amazing. You're helpful, friendly, knowledgeable, and always aware of the chat context. You can search the web when needed to provide the best information. Be conversational and engaging!`
         };
         
         return [systemContext, ...history];
@@ -9377,7 +9448,26 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           const textSpan = document.createElement("span");
           textSpan.className = "message-text-reveal inline-block font-medium";
           
-          textSpan.innerHTML = renderTextWithMentions(msg.text, isMine);
+          // Check for web search trigger [SEARCH: query]
+          let displayText = msg.text;
+          let searchQuery = null;
+          const searchMatch = msg.text.match(/\[SEARCH:\s*(.+?)\]/);
+          
+          if (searchMatch && isAiMsg) {
+            searchQuery = searchMatch[1].trim();
+            // Remove the search trigger from display
+            displayText = msg.text.replace(/\[SEARCH:\s*.+?\]\s*/g, '').trim();
+            
+            // Perform search asynchronously
+            setTimeout(async () => {
+              const results = await performWebSearch(searchQuery);
+              if (results) {
+                displaySearchResults(searchQuery, results);
+              }
+            }, 500);
+          }
+          
+          textSpan.innerHTML = renderTextWithMentions(displayText, isMine);
           
           
           textSpan.querySelectorAll('.mention-highlight').forEach(mentionEl => {
