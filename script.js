@@ -10505,6 +10505,12 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             "[auth] user is null, stopping listeners and showing login"
           );
 
+          // Reset login button state
+          if (loginBtn) {
+            loginBtn.textContent = 'Login';
+            loginBtn.disabled = false;
+          }
+          
           stopMessagesListener();
           stopTypingListener();
           stopRatingPromptLoop();
@@ -10898,7 +10904,8 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
                 userId: AI_BOT_UID, // AI bot's UID for proper display
                 isAiResponse: true, // Flag to identify AI messages
                 text: botReply,
-                time: firebase.database.ServerValue.TIMESTAMP
+                time: firebase.database.ServerValue.TIMESTAMP,
+                timestamp: Date.now() // Include server-side timestamp for compatibility
               };
               
               // Wait 600ms to ensure rate limit passes (Firebase rule requires 500ms between messages)
@@ -10908,6 +10915,20 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
               await db.ref('messages').push(botMessage);
             } catch (e) {
               console.error('[AI] failed to post bot message', e);
+              // Silently retry after a delay
+              setTimeout(async () => {
+                try {
+                  await db.ref('messages').push({
+                    user: 'Chatra AI',
+                    userId: AI_BOT_UID,
+                    isAiResponse: true,
+                    text: botReply,
+                    time: firebase.database.ServerValue.TIMESTAMP
+                  });
+                } catch (retryErr) {
+                  console.error('[AI] retry failed:', retryErr);
+                }
+              }, 1000);
             } finally {
               // Clear AI typing indicator
               setAiTyping(false);
@@ -14281,7 +14302,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             sendFriendRequestBtn.disabled = true;
             sendFriendRequestBtn.style.background = "rgb(100, 116, 139)";
             sendFriendRequestBtn.textContent = "â†© Incoming";
-            setFriendRequestStatus("They sent you a friend request. Check your requests.", "info");
+            setFriendRequestStatus("They sent you a friend request. Accept?", "info");
             return;
           }
 
@@ -14852,7 +14873,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           console.log("[friends] checking for reverse request at: friendRequests/" + uid + "/incoming/" + targetUid);
           const reverseReq = await db.ref("friendRequests/" + uid + "/incoming/" + targetUid).once("value");
           if (reverseReq.exists()) {
-            setFriendRequestStatus("They already sent you a friend request. Check your requests.", "info");
+            setFriendRequestStatus("They already sent you a friend request. Accept?", "info");
             sendFriendRequestBtn.disabled = false;
             sendFriendRequestBtn.textContent = "Add Friend";
             return;
