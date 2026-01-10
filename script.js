@@ -9001,8 +9001,13 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         // Check if this is an AI message - detect by hidden marker in text or legacy fields
         const hasAiMarker = msg.text && (msg.text.startsWith(AI_MSG_MARKER) || AI_PREFIX_REGEX.test(msg.text));
         const isAiMsg = hasAiMarker || msg.isAiResponse === true || msg.aiUserId === AI_BOT_UID || msg.userId === AI_BOT_UID;
-        // Strip AI marker from text for display - use regex for robust removal
+        // Strip AI marker from text for display - handle both exact marker and any variations
         if (isAiMsg && msg.text) {
+          // First try exact marker removal
+          if (msg.text.startsWith(AI_MSG_MARKER)) {
+            msg.text = msg.text.substring(AI_MSG_MARKER.length);
+          }
+          // Then clean any remaining AI prefix patterns
           msg.text = msg.text.replace(AI_PREFIX_REGEX, '').trim();
         }
         const isMine = !isAiMsg && myName && msg.user === myName;
