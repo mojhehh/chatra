@@ -1,9 +1,10 @@
 /**
  * Cloudflare Worker for Google Custom Search Engine (CSE)
- * Securely handles web search requests
+ * Securely handles web search requests with image support
  */
 
-const GOOGLE_API_KEY = 'AIzaSyASLs2SO1wkYn2NTCJvVuLaWdecgjE7HJU';
+// Get API key from environment secrets
+const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY || 'AIzaSyASLs2SO1wkYn2NTCJvVuLaWdecgjE7HJU';
 const CSE_ID = '5177a9432d0184383';
 
 const ALLOWED_ORIGINS = [
@@ -40,7 +41,7 @@ async function handleRequest(request) {
 
   try {
     const body = await request.json();
-    const { query } = body;
+    const { query, searchImages } = body;
 
     if (!query || typeof query !== 'string' || query.trim().length === 0) {
       return new Response(JSON.stringify({ error: 'Query required' }), {
@@ -55,12 +56,18 @@ async function handleRequest(request) {
     searchUrl.searchParams.append('cx', CSE_ID);
     searchUrl.searchParams.append('key', GOOGLE_API_KEY);
     searchUrl.searchParams.append('num', '10'); // Return 10 results
+    
+    // If image search requested, set searchType=image
+    if (searchImages === true) {
+      searchUrl.searchParams.append('searchType', 'image');
+      searchUrl.searchParams.append('num', '20'); // More images
+    }
 
     const response = await fetch(searchUrl.toString());
     
     if (!response.ok) {
       console.error('Google CSE API error:', response.status, response.statusText);
-      return new Response(JSON.stringify({ error: 'Search failed' }), {
+      return new Response(JSON.stringify({ error: 'Search failed', status: response.status }), {
         status: response.status,
         headers: { 'Content-Type': 'application/json' }
       });
@@ -69,14 +76,34 @@ async function handleRequest(request) {
     const data = await response.json();
 
     // Transform results for frontend
-    const results = (data.items || []).map(item => ({
-      title: item.title,
-      link: item.link,
-      snippet: item.snippet,
-      displayLink: item.displayLink
-    }));
+    let results = [];
+    
+    if (searchImages) {
+      // Image search results
+      results = (data.items || []).map(item => ({
+        title: item.title,
+        link: item.link,
+        image: item.image?.thumbnailLink || item.image?.link,
+        source: item.displayLink,
+        originalImage: item.image?.contextLink
+      }));
+    } else {
+      // Web search results
+      results = (data.items || []).map(item => ({
+        title: item.title,
+        link: item.link,
+        snippet: item.snippet,
+        displayLink: item.displayLink,
+        image: item.pagemap?.cse_image?.[0]?.src // Include image if available
+      }));
+    }
 
-    return new Response(JSON.stringify({ query, results, total: data.queries?.request?.[0]?.totalResults || 0 }), {
+    return new Response(JSON.stringify({ 
+      query, 
+      results, 
+      total: data.queries?.request?.[0]?.totalResults || 0,
+      searchType: searchImages ? 'image' : 'web'
+    }), {
       status: 200,
       headers: {
         'Content-Type': 'application/json',

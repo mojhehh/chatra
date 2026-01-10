@@ -1400,12 +1400,12 @@
       // Web search functionality using Cloudflare Worker + Google CSE
       const SEARCH_WORKER_URL = 'https://chatra-search.modmojheh.workers.dev';
       
-      async function performWebSearch(query) {
+      async function performWebSearch(query, searchImages = false) {
         try {
           const response = await fetch(SEARCH_WORKER_URL + '/search', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ query })
+            body: JSON.stringify({ query, searchImages })
           });
           
           if (!response.ok) {
@@ -1427,30 +1427,68 @@
           return;
         }
         
+        const isImageSearch = results.searchType === 'image';
+        
         // Create a modal to display search results
         const modal = document.createElement('div');
         modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4';
-        modal.innerHTML = `
-          <div class="bg-slate-800 rounded-lg max-w-2xl w-full max-h-[80vh] overflow-y-auto border border-slate-700">
-            <div class="sticky top-0 bg-slate-800 border-b border-slate-700 p-4 flex justify-between items-center">
-              <h3 class="text-lg font-bold text-white">Search Results for: ${escapeHtml(query)}</h3>
-              <button class="text-slate-400 hover:text-white transition-colors" id="closeSearchBtn">✕</button>
-            </div>
-            <div class="p-4 space-y-4">
-              ${results.results.map((result, i) => `
-                <div class="border border-slate-700 rounded p-3 hover:bg-slate-700/50 transition-colors">
-                  <a href="${escapeHtml(result.link)}" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300 font-semibold break-words">
-                    ${escapeHtml(result.title)}
-                  </a>
-                  <p class="text-xs text-slate-400 mt-1">${escapeHtml(result.displayLink)}</p>
-                  <p class="text-sm text-slate-300 mt-2 line-clamp-2">${escapeHtml(result.snippet)}</p>
-                </div>
-              `).join('')}
-            </div>
-          </div>
-        `;
         
+        let resultsHTML = '';
+        
+        if (isImageSearch) {
+          // Image grid layout
+          resultsHTML = `
+            <div class="bg-slate-800 rounded-lg max-w-4xl w-full max-h-[80vh] overflow-y-auto border border-slate-700">
+              <div class="sticky top-0 bg-slate-800 border-b border-slate-700 p-4 flex justify-between items-center">
+                <h3 class="text-lg font-bold text-white">Image Results for: ${escapeHtml(query)}</h3>
+                <button class="text-slate-400 hover:text-white transition-colors" id="closeSearchBtn">✕</button>
+              </div>
+              <div class="p-4 grid grid-cols-2 sm:grid-cols-3 gap-3 auto-rows-max">
+                ${results.results.map((result, i) => `
+                  <a href="${escapeHtml(result.originalImage || result.link)}" target="_blank" rel="noopener noreferrer" 
+                     class="group relative overflow-hidden rounded border border-slate-700 hover:border-slate-600 transition-colors">
+                    <img src="${escapeHtml(result.image)}" alt="${escapeHtml(result.title)}" 
+                         class="w-full h-auto object-cover group-hover:opacity-75 transition-opacity"
+                         loading="lazy" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22200%22 height=%22150%22%3E%3Crect fill=%22%23374151%22 width=%22200%22 height=%22150%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 font-size=%2214%22 fill=%22%239CA3AF%22 text-anchor=%22middle%22 dominant-baseline=%22middle%22%3EImage not available%3C/text%3E%3C/svg%3E'">
+                    <div class="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+                      <span class="text-white text-2xl opacity-0 group-hover:opacity-100 transition-opacity">🔗</span>
+                    </div>
+                    <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black to-transparent p-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <p class="text-xs text-white line-clamp-2">${escapeHtml(result.title)}</p>
+                      <p class="text-[10px] text-gray-300">${escapeHtml(result.source)}</p>
+                    </div>
+                  </a>
+                `).join('')}
+              </div>
+            </div>
+          `;
+        } else {
+          // Web results with optional images
+          resultsHTML = `
+            <div class="bg-slate-800 rounded-lg max-w-3xl w-full max-h-[80vh] overflow-y-auto border border-slate-700">
+              <div class="sticky top-0 bg-slate-800 border-b border-slate-700 p-4 flex justify-between items-center">
+                <h3 class="text-lg font-bold text-white">Search Results for: ${escapeHtml(query)}</h3>
+                <button class="text-slate-400 hover:text-white transition-colors" id="closeSearchBtn">✕</button>
+              </div>
+              <div class="p-4 space-y-4">
+                ${results.results.map((result, i) => `
+                  <div class="border border-slate-700 rounded p-3 hover:bg-slate-700/50 transition-colors">
+                    ${result.image ? `<div class="mb-2 rounded overflow-hidden max-h-48"><img src="${escapeHtml(result.image)}" alt="" class="w-full h-auto object-cover max-h-48" onerror="this.style.display='none'"></div>` : ''}
+                    <a href="${escapeHtml(result.link)}" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300 font-semibold break-words">
+                      ${escapeHtml(result.title)}
+                    </a>
+                    <p class="text-xs text-slate-400 mt-1">${escapeHtml(result.displayLink)}</p>
+                    <p class="text-sm text-slate-300 mt-2 line-clamp-3">${escapeHtml(result.snippet)}</p>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          `;
+        }
+        
+        modal.innerHTML = resultsHTML;
         document.body.appendChild(modal);
+        
         document.getElementById('closeSearchBtn').addEventListener('click', () => modal.remove());
         modal.addEventListener('click', (e) => {
           if (e.target === modal) modal.remove();
@@ -1508,15 +1546,24 @@ Chatra is a feature-rich social messaging app where users can:
 - Enjoy smooth animations and a beautiful dark/light theme interface
 
 IMPORTANT WEB SEARCH CAPABILITY:
-You have the ability to search the web for current information! Use this when:
+You have the ability to search the web for current information AND images! Use web search when:
 - User asks about recent events, news, or current information
 - You're unsure about current facts or need up-to-date information
 - User asks "What's trending?" or similar current event questions
 - You want to provide the most accurate, recent information
 
+Use image search when:
+- User asks for images of something (e.g., "Show me images of...")
+- You need visual information to enhance your response
+- User asks for inspiration or visual examples
+
 TO SEARCH THE WEB: Include [SEARCH: your query here] in your response. The system will automatically search and show results to the user. For example:
-- User: "What's the latest AI news?" → You: "Let me search for the latest AI news for you. [SEARCH: latest AI news 2026]"
+- User: "What's the latest AI news?" → You: "Let me search for the latest AI news. [SEARCH: latest AI news 2026]"
 - User: "Who won the latest championship?" → You: "[SEARCH: latest championship winner 2026] Let me find that for you."
+
+TO SEARCH FOR IMAGES: Include [IMAGE_SEARCH: your query here] in your response. For example:
+- User: "Show me pictures of exotic cats" → You: "Here are some exotic cats for you! [IMAGE_SEARCH: exotic cats]"
+- User: "Find me cute dog photos" → You: "[IMAGE_SEARCH: cute puppies] Here are adorable dogs!"
 
 IMPORTANT: In your responses, acknowledge where the conversation is happening. For example:
 - "In this Global Chat, ..." when in the main chat
@@ -9448,19 +9495,33 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           const textSpan = document.createElement("span");
           textSpan.className = "message-text-reveal inline-block font-medium";
           
-          // Check for web search trigger [SEARCH: query]
+          // Check for web search trigger [SEARCH: query] or [IMAGE_SEARCH: query]
           let displayText = msg.text;
           let searchQuery = null;
-          const searchMatch = msg.text.match(/\[SEARCH:\s*(.+?)\]/);
+          let isImageSearch = false;
           
-          if (searchMatch && isAiMsg) {
-            searchQuery = searchMatch[1].trim();
-            // Remove the search trigger from display
+          const imageSearchMatch = msg.text.match(/\[IMAGE_SEARCH:\s*(.+?)\]/);
+          const webSearchMatch = msg.text.match(/\[SEARCH:\s*(.+?)\]/);
+          
+          if (imageSearchMatch && isAiMsg) {
+            searchQuery = imageSearchMatch[1].trim();
+            isImageSearch = true;
+            displayText = msg.text.replace(/\[IMAGE_SEARCH:\s*.+?\]\s*/g, '').trim();
+            
+            // Perform image search asynchronously
+            setTimeout(async () => {
+              const results = await performWebSearch(searchQuery, true);
+              if (results) {
+                displaySearchResults(searchQuery, results);
+              }
+            }, 500);
+          } else if (webSearchMatch && isAiMsg) {
+            searchQuery = webSearchMatch[1].trim();
             displayText = msg.text.replace(/\[SEARCH:\s*.+?\]\s*/g, '').trim();
             
-            // Perform search asynchronously
+            // Perform web search asynchronously
             setTimeout(async () => {
-              const results = await performWebSearch(searchQuery);
+              const results = await performWebSearch(searchQuery, false);
               if (results) {
                 displaySearchResults(searchQuery, results);
               }
