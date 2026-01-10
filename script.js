@@ -4251,7 +4251,12 @@
         if (msg.text) {
           const textEl = document.createElement('span');
           textEl.className = 'message-text-reveal font-medium';
-          textEl.textContent = msg.text;
+          // Strip AI prefix if present (from AI bot messages)
+          let displayText = msg.text;
+          if (msg.fromUid === AI_BOT_UID || msg.fromUsername === 'Chatra AI') {
+            displayText = displayText.replace(/^[\u200B\u200C\u200D\u2063\uFEFF]*AI[\u200B\u200C\u200D\u2063\uFEFF]*/i, '').trim();
+          }
+          textEl.textContent = displayText;
           bubble.appendChild(textEl);
         }
 
@@ -8988,14 +8993,17 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
       // Hidden marker for AI messages (zero-width space + special sequence)
       const AI_MSG_MARKER = '\u200B\u2063AI\u2063\u200B';
       
+      // Regex to strip any AI prefix including zero-width characters
+      const AI_PREFIX_REGEX = /^[\u200B\u200C\u200D\u2063\uFEFF]*AI[\u200B\u200C\u200D\u2063\uFEFF]*/i;
+      
       function createMessageRow(msg, messageId = null, containerEl = null) {
         const myName = currentUsername || null;
         // Check if this is an AI message - detect by hidden marker in text or legacy fields
-        const hasAiMarker = msg.text && msg.text.startsWith(AI_MSG_MARKER);
+        const hasAiMarker = msg.text && (msg.text.startsWith(AI_MSG_MARKER) || AI_PREFIX_REGEX.test(msg.text));
         const isAiMsg = hasAiMarker || msg.isAiResponse === true || msg.aiUserId === AI_BOT_UID || msg.userId === AI_BOT_UID;
-        // Strip AI marker from text for display
-        if (hasAiMarker && msg.text) {
-          msg.text = msg.text.substring(AI_MSG_MARKER.length);
+        // Strip AI marker from text for display - use regex for robust removal
+        if (isAiMsg && msg.text) {
+          msg.text = msg.text.replace(AI_PREFIX_REGEX, '').trim();
         }
         const isMine = !isAiMsg && myName && msg.user === myName;
         const username = isAiMsg ? 'Chatra AI' : (msg.user || "Unknown");
