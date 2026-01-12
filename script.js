@@ -113,10 +113,24 @@
       }
       
       // Strip "AI" prefix from AI responses (e.g., "AIHello!" -> "Hello!")
+      // This is the exact marker we're using
+      const AI_MSG_MARKER_CLEAN = '\u200B\u2063AI\u2063\u200B';
+      
       function cleanAiResponse(text) {
         if (!text) return text;
-        // Remove leading "AI" prefix (including zero-width characters)
-        return text.replace(/^[\u200B\u200C\u200D\uFEFF]*AI[\u200B\u200C\u200D\uFEFF]*/i, '').trim();
+        
+        // First remove the exact marker if present
+        if (text.startsWith(AI_MSG_MARKER_CLEAN)) {
+          text = text.substring(AI_MSG_MARKER_CLEAN.length);
+        }
+        
+        // Remove any AI prefix patterns (including zero-width characters)
+        text = text.replace(/^[\u200B\u200C\u200D\u2063\uFEFF]*AI[\u200B\u200C\u200D\u2063\uFEFF]*/gi, '');
+        
+        // Remove standalone zero-width characters at start
+        text = text.replace(/^[\u200B\u200C\u200D\u2063\uFEFF]+/, '');
+        
+        return text.trim();
       }
 
       
@@ -1383,6 +1397,104 @@
         }
       }
       
+      // Web search functionality using Cloudflare Worker + Google CSE
+      const SEARCH_WORKER_URL = 'https://chatra-search.modmojheh.workers.dev';
+      
+      async function performWebSearch(query, searchImages = false) {
+        try {
+          const response = await fetch(SEARCH_WORKER_URL + '/search', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query, searchImages })
+          });
+          
+          if (!response.ok) {
+            console.warn('[search] worker returned', response.status);
+            return null;
+          }
+          
+          const data = await response.json();
+          return data;
+        } catch (e) {
+          console.warn('[search] failed:', e);
+          return null;
+        }
+      }
+      
+      function displaySearchResults(query, results) {
+        if (!results || !results.results || results.results.length === 0) {
+          showToast('No search results found for: ' + query, 'info');
+          return;
+        }
+        
+        const isImageSearch = results.searchType === 'image';
+        
+        // Create a modal to display search results
+        const modal = document.createElement('div');
+        modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4';
+        
+        let resultsHTML = '';
+        
+        if (isImageSearch) {
+          // Image grid layout
+          resultsHTML = `
+            <div class="bg-slate-800 rounded-lg max-w-4xl w-full max-h-[80vh] overflow-y-auto border border-slate-700">
+              <div class="sticky top-0 bg-slate-800 border-b border-slate-700 p-4 flex justify-between items-center">
+                <h3 class="text-lg font-bold text-white">Image Results for: ${escapeHtml(query)}</h3>
+                <button class="text-slate-400 hover:text-white transition-colors" id="closeSearchBtn">✕</button>
+              </div>
+              <div class="p-4 grid grid-cols-2 sm:grid-cols-3 gap-3 auto-rows-max">
+                ${results.results.map((result, i) => `
+                  <a href="${escapeHtml(result.originalImage || result.link)}" target="_blank" rel="noopener noreferrer" 
+                     class="group relative overflow-hidden rounded border border-slate-700 hover:border-slate-600 transition-colors">
+                    <img src="${escapeHtml(result.image)}" alt="${escapeHtml(result.title)}" 
+                         class="w-full h-auto object-cover group-hover:opacity-75 transition-opacity"
+                         loading="lazy" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22200%22 height=%22150%22%3E%3Crect fill=%22%23374151%22 width=%22200%22 height=%22150%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 font-size=%2214%22 fill=%22%239CA3AF%22 text-anchor=%22middle%22 dominant-baseline=%22middle%22%3EImage not available%3C/text%3E%3C/svg%3E'">
+                    <div class="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+                      <span class="text-white text-2xl opacity-0 group-hover:opacity-100 transition-opacity">🔗</span>
+                    </div>
+                    <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black to-transparent p-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <p class="text-xs text-white line-clamp-2">${escapeHtml(result.title)}</p>
+                      <p class="text-[10px] text-gray-300">${escapeHtml(result.source)}</p>
+                    </div>
+                  </a>
+                `).join('')}
+              </div>
+            </div>
+          `;
+        } else {
+          // Web results with optional images
+          resultsHTML = `
+            <div class="bg-slate-800 rounded-lg max-w-3xl w-full max-h-[80vh] overflow-y-auto border border-slate-700">
+              <div class="sticky top-0 bg-slate-800 border-b border-slate-700 p-4 flex justify-between items-center">
+                <h3 class="text-lg font-bold text-white">Search Results for: ${escapeHtml(query)}</h3>
+                <button class="text-slate-400 hover:text-white transition-colors" id="closeSearchBtn">✕</button>
+              </div>
+              <div class="p-4 space-y-4">
+                ${results.results.map((result, i) => `
+                  <div class="border border-slate-700 rounded p-3 hover:bg-slate-700/50 transition-colors">
+                    ${result.image ? `<div class="mb-2 rounded overflow-hidden max-h-48"><img src="${escapeHtml(result.image)}" alt="" class="w-full h-auto object-cover max-h-48" onerror="this.style.display='none'"></div>` : ''}
+                    <a href="${escapeHtml(result.link)}" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300 font-semibold break-words">
+                      ${escapeHtml(result.title)}
+                    </a>
+                    <p class="text-xs text-slate-400 mt-1">${escapeHtml(result.displayLink)}</p>
+                    <p class="text-sm text-slate-300 mt-2 line-clamp-3">${escapeHtml(result.snippet)}</p>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          `;
+        }
+        
+        modal.innerHTML = resultsHTML;
+        document.body.appendChild(modal);
+        
+        document.getElementById('closeSearchBtn').addEventListener('click', () => modal.remove());
+        modal.addEventListener('click', (e) => {
+          if (e.target === modal) modal.remove();
+        });
+      }
+      
       
       let aiProfile = { name: 'Chatra AI', avatar: null, bio: '', username: 'AI' };
       
@@ -1407,7 +1519,61 @@
       
       function getAiMemory(userId) {
         const memEntry = aiConversationMemory.get(userId);
-        return memEntry ? memEntry.history : [];
+        const history = memEntry ? memEntry.history : [];
+        
+        // Determine chat context
+        let chatContext = "Global Chat";
+        if (currentPage === 'groups' && currentGroupId) {
+          const groupName = groupsList.find(g => g.id === currentGroupId)?.name || currentGroupId;
+          chatContext = `the ${groupName} group`;
+        } else if (currentPage === 'dms' && activeDMTarget) {
+          chatContext = `a direct message with ${activeDMTarget.username || 'a user'}`;
+        }
+        
+        // Prepend system context about Chatra with chat awareness and web search capability
+        const systemContext = {
+          role: 'system',
+          content: `You are Chatra AI, the intelligent assistant for Chatra - a vibrant, modern real-time chat platform. You are currently in ${chatContext}.
+
+Chatra is a feature-rich social messaging app where users can:
+- Chat in the public Global Chat with everyone online
+- Create and join Groups for topic-based discussions
+- Send Direct Messages (DMs) to friends
+- Customize their profiles with avatars, bios, and profile frames
+- Mention users with @ to notify them instantly (like @​everyone for group notifications!)
+- Share images, GIFs, and media in conversations
+- See who's online with real-time presence indicators
+- Enjoy smooth animations and a beautiful dark/light theme interface
+
+IMPORTANT WEB SEARCH CAPABILITY:
+You have the ability to search the web for current information AND images! Use web search when:
+- User asks about recent events, news, or current information
+- You're unsure about current facts or need up-to-date information
+- User asks "What's trending?" or similar current event questions
+- You want to provide the most accurate, recent information
+
+Use image search when:
+- User asks for images of something (e.g., "Show me images of...")
+- You need visual information to enhance your response
+- User asks for inspiration or visual examples
+
+TO SEARCH THE WEB: Include [SEARCH: your query here] in your response. The system will automatically search and show results to the user. For example:
+- User: "What's the latest AI news?" → You: "Let me search for the latest AI news. [SEARCH: latest AI news 2026]"
+- User: "Who won the latest championship?" → You: "[SEARCH: latest championship winner 2026] Let me find that for you."
+
+TO SEARCH FOR IMAGES: Include [IMAGE_SEARCH: your query here] in your response. For example:
+- User: "Show me pictures of exotic cats" → You: "Here are some exotic cats for you! [IMAGE_SEARCH: exotic cats]"
+- User: "Find me cute dog photos" → You: "[IMAGE_SEARCH: cute puppies] Here are adorable dogs!"
+
+IMPORTANT: In your responses, acknowledge where the conversation is happening. For example:
+- "In this Global Chat, ..." when in the main chat
+- "In this ${chatContext === 'Global Chat' ? 'Global Chat' : 'group or DM'}, ..." to show context awareness
+- This helps users understand their location in Chatra
+
+As Chatra AI, you're here to help users with questions, provide creative assistance, have friendly conversations, and make their experience on Chatra amazing. You're helpful, friendly, knowledgeable, and always aware of the chat context. You can search the web when needed to provide the best information. Be conversational and engaging!`
+        };
+        
+        return [systemContext, ...history];
       }
       
       function getAiUsername(userId) {
@@ -4251,7 +4417,20 @@
         if (msg.text) {
           const textEl = document.createElement('span');
           textEl.className = 'message-text-reveal font-medium';
-          textEl.textContent = msg.text;
+          // Only strip AI marker from actual AI bot messages (verified by UID)
+          let displayText = msg.text;
+          const isFromAiBot = msg.userId === 'aEY7gNeuGcfBErxOHNEQYFzvhpp2';
+          if (isFromAiBot) {
+            // Remove AI marker
+            if (displayText.startsWith('\u200B\u2063AI\u2063\u200B')) {
+              displayText = displayText.substring(7);
+            }
+            // Strip any AI prefix patterns
+            displayText = displayText.replace(/^[\u200B\u200C\u200D\u2063\uFEFF]*AI[\u200B\u200C\u200D\u2063\uFEFF]*/gi, '');
+            // Remove leading zero-width chars
+            displayText = displayText.replace(/^[\u200B\u200C\u200D\u2063\uFEFF]+/, '').trim();
+          }
+          textEl.textContent = displayText;
           bubble.appendChild(textEl);
         }
 
@@ -8988,14 +9167,25 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
       // Hidden marker for AI messages (zero-width space + special sequence)
       const AI_MSG_MARKER = '\u200B\u2063AI\u2063\u200B';
       
+      // Regex to strip any AI prefix including zero-width characters
+      const AI_PREFIX_REGEX = /^[\u200B\u200C\u200D\u2063\uFEFF]*AI[\u200B\u200C\u200D\u2063\uFEFF]*/gi;
+      
       function createMessageRow(msg, messageId = null, containerEl = null) {
         const myName = currentUsername || null;
-        // Check if this is an AI message - detect by hidden marker in text or legacy fields
-        const hasAiMarker = msg.text && msg.text.startsWith(AI_MSG_MARKER);
-        const isAiMsg = hasAiMarker || msg.isAiResponse === true || msg.aiUserId === AI_BOT_UID || msg.userId === AI_BOT_UID;
-        // Strip AI marker from text for display
-        if (hasAiMarker && msg.text) {
-          msg.text = msg.text.substring(AI_MSG_MARKER.length);
+        
+        // Check if this is an AI message first (by UID)
+        const isAiMsg = msg.isAiResponse === true || msg.aiUserId === AI_BOT_UID || msg.userId === AI_BOT_UID;
+        
+        // ONLY strip AI markers from actual AI bot messages (verified by UID)
+        if (isAiMsg && msg.text) {
+          // Remove the exact AI message marker
+          if (msg.text.startsWith(AI_MSG_MARKER)) {
+            msg.text = msg.text.substring(AI_MSG_MARKER.length);
+          }
+          // Strip any AI prefix patterns (case insensitive, global)
+          msg.text = msg.text.replace(AI_PREFIX_REGEX, '').trim();
+          // Also strip any standalone zero-width characters that might be visible
+          msg.text = msg.text.replace(/^[\u200B\u200C\u200D\u2063\uFEFF]+/, '');
         }
         const isMine = !isAiMsg && myName && msg.user === myName;
         const username = isAiMsg ? 'Chatra AI' : (msg.user || "Unknown");
@@ -9305,7 +9495,40 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           const textSpan = document.createElement("span");
           textSpan.className = "message-text-reveal inline-block font-medium";
           
-          textSpan.innerHTML = renderTextWithMentions(msg.text, isMine);
+          // Check for web search trigger [SEARCH: query] or [IMAGE_SEARCH: query]
+          let displayText = msg.text;
+          let searchQuery = null;
+          let isImageSearch = false;
+          
+          const imageSearchMatch = msg.text.match(/\[IMAGE_SEARCH:\s*(.+?)\]/);
+          const webSearchMatch = msg.text.match(/\[SEARCH:\s*(.+?)\]/);
+          
+          if (imageSearchMatch && isAiMsg) {
+            searchQuery = imageSearchMatch[1].trim();
+            isImageSearch = true;
+            displayText = msg.text.replace(/\[IMAGE_SEARCH:\s*.+?\]\s*/g, '').trim();
+            
+            // Perform image search asynchronously
+            setTimeout(async () => {
+              const results = await performWebSearch(searchQuery, true);
+              if (results) {
+                displaySearchResults(searchQuery, results);
+              }
+            }, 500);
+          } else if (webSearchMatch && isAiMsg) {
+            searchQuery = webSearchMatch[1].trim();
+            displayText = msg.text.replace(/\[SEARCH:\s*.+?\]\s*/g, '').trim();
+            
+            // Perform web search asynchronously
+            setTimeout(async () => {
+              const results = await performWebSearch(searchQuery, false);
+              if (results) {
+                displaySearchResults(searchQuery, results);
+              }
+            }, 500);
+          }
+          
+          textSpan.innerHTML = renderTextWithMentions(displayText, isMine);
           
           
           textSpan.querySelectorAll('.mention-highlight').forEach(mentionEl => {
@@ -10447,6 +10670,12 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             "[auth] user is null, stopping listeners and showing login"
           );
 
+          // Reset login button state
+          if (loginBtn) {
+            loginBtn.textContent = 'Login';
+            loginBtn.disabled = false;
+          }
+          
           stopMessagesListener();
           stopTypingListener();
           stopRatingPromptLoop();
@@ -10561,6 +10790,10 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           }, 3000);
           return;
         }
+        
+        // Don't strip anything from user input - users can type "AI" normally
+        // The AI marker is only added by the bot itself, and we verify by UID
+        if (text === "" && !pendingMediaUrl) return;
         
         // /remove command - owner only
         const ownerUid = 'u5yKqiZvioWuBGcGK3SWUBpUVrc2';
@@ -10830,13 +11063,14 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             addToAiMemory(uid, 'assistant', botReply, currentUsername);
 
             try {
-              // Use hidden marker to identify AI messages without extra fields that Firebase rejects
-              const AI_MSG_MARKER = '\u200B\u2063AI\u2063\u200B';
+              // Mark as AI response with special field
               const botMessage = {
-                user: username, // Use actual username to pass Firebase validation
-                userId: uid, // Use the authenticated user's UID to pass Firebase rules
-                text: AI_MSG_MARKER + botReply, // Prefix with hidden marker for client-side AI detection
-                time: firebase.database.ServerValue.TIMESTAMP
+                user: 'Chatra AI', // Display name for AI
+                userId: AI_BOT_UID, // AI bot's UID for proper display
+                isAiResponse: true, // Flag to identify AI messages
+                text: botReply,
+                time: firebase.database.ServerValue.TIMESTAMP,
+                timestamp: Date.now() // Include server-side timestamp for compatibility
               };
               
               // Wait 600ms to ensure rate limit passes (Firebase rule requires 500ms between messages)
@@ -10846,6 +11080,20 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
               await db.ref('messages').push(botMessage);
             } catch (e) {
               console.error('[AI] failed to post bot message', e);
+              // Silently retry after a delay
+              setTimeout(async () => {
+                try {
+                  await db.ref('messages').push({
+                    user: 'Chatra AI',
+                    userId: AI_BOT_UID,
+                    isAiResponse: true,
+                    text: botReply,
+                    time: firebase.database.ServerValue.TIMESTAMP
+                  });
+                } catch (retryErr) {
+                  console.error('[AI] retry failed:', retryErr);
+                }
+              }, 1000);
             } finally {
               // Clear AI typing indicator
               setAiTyping(false);
@@ -14219,7 +14467,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             sendFriendRequestBtn.disabled = true;
             sendFriendRequestBtn.style.background = "rgb(100, 116, 139)";
             sendFriendRequestBtn.textContent = "â†© Incoming";
-            setFriendRequestStatus("They sent you a friend request. Check your requests.", "info");
+            setFriendRequestStatus("They sent you a friend request. Accept?", "info");
             return;
           }
 
@@ -14790,7 +15038,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           console.log("[friends] checking for reverse request at: friendRequests/" + uid + "/incoming/" + targetUid);
           const reverseReq = await db.ref("friendRequests/" + uid + "/incoming/" + targetUid).once("value");
           if (reverseReq.exists()) {
-            setFriendRequestStatus("They already sent you a friend request. Check your requests.", "info");
+            setFriendRequestStatus("They already sent you a friend request. Accept?", "info");
             sendFriendRequestBtn.disabled = false;
             sendFriendRequestBtn.textContent = "Add Friend";
             return;

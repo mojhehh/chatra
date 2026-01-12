@@ -1,0 +1,66 @@
+/* Responsive and touch styles */
+
+/* Touch interactions */
+@media (hover: none) and (pointer: coarse) {
+  button:active,
+  [role="button"]:active,
+  .cursor-pointer:active,
+  .nav-tab:active,
+  .help-tab:active,
+  a:active {
+    opacity: 0.7;
+    transform: scale(0.98);
+  }
+  
+  .group:active .group-hover\:opacity-100,
+  .group:focus-within .group-hover\:opacity-100,
+  .group:active .opacity-0,
+  .group:focus-within .opacity-0 {
+    opacity: 1 !important;
+  }
+
+  .message-bubble-anim:active ~ button,
+  .group:active button[class*="opacity-0"],
+  .group:focus-within button[class*="opacity-0"] {
+    opacity: 1 !important;
+  }
+
+  .nav-tab, .help-tab {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* Touch active state for message buttons */
+.group.touch-active .group-hover\:opacity-100,
+.group.touch-active .opacity-0,
+.group.touch-active button[class*="opacity-0"] {
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+
+.group button[class*="opacity-0"],
+.group .group-hover\:opacity-100,
+.group .opacity-0 {
+  transition: opacity 0.14s ease, transform 0.08s ease;
+  will-change: opacity, transform;
+}
+
+.group button[class*="opacity-0"] {
+  pointer-events: none;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .group:not(.touch-active) button[class*="opacity-0"],
+  .group:not(.touch-active) .group-hover\:opacity-100,
+  .group:not(.touch-active) .opacity-0 {
+    transition-duration: 0s !important;
+  }
+}
+
+/* Small screen message button adjustments */
+@media (max-width: 520px) {
+  .relative.group > button { width: 26px !important; height: 26px !important; }
+  .relative.group > button[title="Report"] { left: -6px !important; }
+  .relative.group > button[title="Reply"] { right: 8px !important; left: auto !important; }
+}
