@@ -1399,29 +1399,61 @@
       
       // Web search functionality using Cloudflare Worker + Google CSE
       const SEARCH_WORKER_URL = 'https://chatra-search.modmojheh.workers.dev';
+      // Track which search queries have already been displayed to prevent duplicate popups
+      const displayedSearches = new Set();
       
       async function performWebSearch(query, searchImages = false) {
         try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+          
           const response = await fetch(SEARCH_WORKER_URL + '/search', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ query, searchImages })
+            body: JSON.stringify({ query, searchImages }),
+            signal: controller.signal
           });
+          
+          clearTimeout(timeoutId);
           
           if (!response.ok) {
             console.warn('[search] worker returned', response.status);
+            showToast('Search failed - please try again', 'error');
             return null;
           }
           
           const data = await response.json();
+          
+          // Validate results exist
+          if (!data || !data.results || data.results.length === 0) {
+            console.warn('[search] no results returned');
+            return null;
+          }
+          
           return data;
         } catch (e) {
           console.warn('[search] failed:', e);
+          if (e.name === 'AbortError') {
+            showToast('Search timed out - please try again', 'error');
+          } else {
+            showToast('Search failed - please try again', 'error');
+          }
           return null;
         }
       }
       
       function displaySearchResults(query, results) {
+        // Create a unique key for this search to prevent duplicate popups
+        const searchKey = (results.searchType || 'web') + ':' + query.toLowerCase().trim();
+        if (displayedSearches.has(searchKey)) {
+          console.log('[search] Already displayed results for:', searchKey);
+          return;
+        }
+        displayedSearches.add(searchKey);
+        
+        // Clean up old search keys after 5 minutes to prevent memory buildup
+        setTimeout(() => displayedSearches.delete(searchKey), 5 * 60 * 1000);
+        
         if (!results || !results.results || results.results.length === 0) {
           showToast('No search results found for: ' + query, 'info');
           return;
@@ -1565,12 +1597,7 @@ TO SEARCH FOR IMAGES: Include [IMAGE_SEARCH: your query here] in your response. 
 - User: "Show me pictures of exotic cats" → You: "Here are some exotic cats for you! [IMAGE_SEARCH: exotic cats]"
 - User: "Find me cute dog photos" → You: "[IMAGE_SEARCH: cute puppies] Here are adorable dogs!"
 
-IMPORTANT: In your responses, acknowledge where the conversation is happening. For example:
-- "In this Global Chat, ..." when in the main chat
-- "In this ${chatContext === 'Global Chat' ? 'Global Chat' : 'group or DM'}, ..." to show context awareness
-- This helps users understand their location in Chatra
-
-As Chatra AI, you're here to help users with questions, provide creative assistance, have friendly conversations, and make their experience on Chatra amazing. You're helpful, friendly, knowledgeable, and always aware of the chat context. You can search the web when needed to provide the best information. Be conversational and engaging!`
+As Chatra AI, you're here to help users with questions, provide creative assistance, have friendly conversations, and make their experience on Chatra amazing. You're helpful, friendly, and knowledgeable. You can search the web when needed to provide the best information. Be conversational and engaging! Do NOT mention the chat context (like 'In this Global Chat') unless the user specifically asks where they are.`
         };
         
         return [systemContext, ...history];
@@ -9503,29 +9530,38 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           const imageSearchMatch = msg.text.match(/\[IMAGE_SEARCH:\s*(.+?)\]/);
           const webSearchMatch = msg.text.match(/\[SEARCH:\s*(.+?)\]/);
           
+          // Use message ID to prevent re-triggering searches on page reload
+          const searchMsgKey = messageId ? `msg:${messageId}` : null;
+          
           if (imageSearchMatch && isAiMsg) {
             searchQuery = imageSearchMatch[1].trim();
             isImageSearch = true;
             displayText = msg.text.replace(/\[IMAGE_SEARCH:\s*.+?\]\s*/g, '').trim();
             
-            // Perform image search asynchronously
-            setTimeout(async () => {
-              const results = await performWebSearch(searchQuery, true);
-              if (results) {
-                displaySearchResults(searchQuery, results);
-              }
-            }, 500);
+            // Only trigger search if we haven't already for this message
+            if (!searchMsgKey || !displayedSearches.has(searchMsgKey + ':img')) {
+              if (searchMsgKey) displayedSearches.add(searchMsgKey + ':img');
+              setTimeout(async () => {
+                const results = await performWebSearch(searchQuery, true);
+                if (results) {
+                  displaySearchResults(searchQuery, results);
+                }
+              }, 500);
+            }
           } else if (webSearchMatch && isAiMsg) {
             searchQuery = webSearchMatch[1].trim();
             displayText = msg.text.replace(/\[SEARCH:\s*.+?\]\s*/g, '').trim();
             
-            // Perform web search asynchronously
-            setTimeout(async () => {
-              const results = await performWebSearch(searchQuery, false);
-              if (results) {
-                displaySearchResults(searchQuery, results);
-              }
-            }, 500);
+            // Only trigger search if we haven't already for this message
+            if (!searchMsgKey || !displayedSearches.has(searchMsgKey + ':web')) {
+              if (searchMsgKey) displayedSearches.add(searchMsgKey + ':web');
+              setTimeout(async () => {
+                const results = await performWebSearch(searchQuery, false);
+                if (results) {
+                  displaySearchResults(searchQuery, results);
+                }
+              }, 500);
+            }
           }
           
           textSpan.innerHTML = renderTextWithMentions(displayText, isMine);
