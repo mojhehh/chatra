@@ -1403,18 +1403,16 @@
       const displayedSearches = new Set();
       
       async function performWebSearch(query, searchImages = false) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+        
         try {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
-          
           const response = await fetch(SEARCH_WORKER_URL + '/search', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ query, searchImages }),
             signal: controller.signal
           });
-          
-          clearTimeout(timeoutId);
           
           if (!response.ok) {
             console.warn('[search] worker returned', response.status);
@@ -1427,6 +1425,7 @@
           // Validate results exist
           if (!data || !data.results || data.results.length === 0) {
             console.warn('[search] no results returned');
+            showToast('No results found for: ' + query, 'info');
             return null;
           }
           
@@ -1439,6 +1438,8 @@
             showToast('Search failed - please try again', 'error');
           }
           return null;
+        } finally {
+          clearTimeout(timeoutId);
         }
       }
       
@@ -9540,7 +9541,12 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             
             // Only trigger search if we haven't already for this message
             if (!searchMsgKey || !displayedSearches.has(searchMsgKey + ':img')) {
-              if (searchMsgKey) displayedSearches.add(searchMsgKey + ':img');
+              if (searchMsgKey) {
+                const imgKey = searchMsgKey + ':img';
+                displayedSearches.add(imgKey);
+                // TTL cleanup after 5 minutes
+                setTimeout(() => displayedSearches.delete(imgKey), 5 * 60 * 1000);
+              }
               setTimeout(async () => {
                 const results = await performWebSearch(searchQuery, true);
                 if (results) {
@@ -9554,7 +9560,12 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             
             // Only trigger search if we haven't already for this message
             if (!searchMsgKey || !displayedSearches.has(searchMsgKey + ':web')) {
-              if (searchMsgKey) displayedSearches.add(searchMsgKey + ':web');
+              if (searchMsgKey) {
+                const webKey = searchMsgKey + ':web';
+                displayedSearches.add(webKey);
+                // TTL cleanup after 5 minutes
+                setTimeout(() => displayedSearches.delete(webKey), 5 * 60 * 1000);
+              }
               setTimeout(async () => {
                 const results = await performWebSearch(searchQuery, false);
                 if (results) {
