@@ -25,10 +25,11 @@
 
     "ideas": {
       ".read": true,
-      ".write": "auth != null",
+      ".write": false,
       ".indexOn": ["time"],
       "$ideaId": {
-        ".validate": "newData.hasChildren(['text','time']) && newData.child('text').isString() && newData.child('text').val().length <= 1000 && newData.child('time').isNumber()"
+        ".write": "auth != null && (!data.exists() ? newData.child('userId').val() === auth.uid : data.child('userId').val() === auth.uid)",
+        ".validate": "newData.hasChildren(['text','time','userId']) && newData.child('text').isString() && newData.child('text').val().length <= 1000 && newData.child('time').isNumber() && newData.child('userId').isString() && newData.child('userId').val() === auth.uid"
       }
     },
 
@@ -215,7 +216,7 @@
         "messages": {
           ".indexOn": ["time"],
           "$msgId": {
-            ".read": "auth != null",
+            ".read": "auth != null && root.child('dms/' + $threadId + '/participants/' + auth.uid).exists()",
             ".write": "auth != null && newData.child('fromUid').val() === auth.uid",
             ".validate": "newData.hasChildren(['fromUid','toUid','time']) && newData.child('fromUid').isString() && newData.child('toUid').isString() && newData.child('time').isNumber() && ((!newData.child('text').exists() && newData.child('media').exists() && newData.child('media').isString()) || (newData.child('text').exists() && newData.child('text').isString() && newData.child('text').val().length <= 2000 && (newData.child('text').val().length > 0 || (newData.child('media').exists() && newData.child('media').isString())))) && (!newData.child('fromUsername').exists() || newData.child('fromUsername').isString()) && (!newData.child('toUsername').exists() || newData.child('toUsername').isString()) && (!newData.child('mediaFileId').exists() || newData.child('mediaFileId').isString())"
           }
@@ -388,8 +389,8 @@
         "messages": {
           ".indexOn": ["time"],
           "$msgId": {
-            ".write": "auth != null && !root.child('bannedUsers').child(auth.uid).exists() && (data.parent().parent().child('members').child(auth.uid).exists() || newData.child('fromUid').val() === 'system')",
-            ".validate": "!newData.exists() || ((newData.hasChildren(['fromUid','text','time']) && newData.child('fromUid').isString() && (newData.child('fromUid').val() === auth.uid || newData.child('fromUid').val() === 'system') && newData.child('text').isString() && newData.child('text').val().length <= 2000 && (newData.child('time').isNumber() || newData.child('time').child('.sv').exists())) || newData.child('isSystem').val() === true)"
+            ".write": "auth != null && !root.child('bannedUsers').child(auth.uid).exists() && data.parent().parent().child('members').child(auth.uid).exists()",
+            ".validate": "!newData.exists() || (newData.hasChildren(['fromUid','text','time']) && newData.child('fromUid').isString() && newData.child('fromUid').val() === auth.uid && newData.child('text').isString() && newData.child('text').val().length <= 2000 && (newData.child('time').isNumber() || newData.child('time').child('.sv').exists()))"
           }
         }
       }

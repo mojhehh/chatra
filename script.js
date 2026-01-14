@@ -2457,11 +2457,11 @@ As Chatra AI, you're here to help users with questions, provide creative assista
           
           
           await db.ref('groups/' + groupId + '/messages').push({
-            fromUid: 'system',
-            fromUsername: 'System',
+            fromUid: currentUserId,
+            fromUsername: currentUsername || 'User',
             text: `${currentUsername} joined the group`,
             time: Date.now(),
-            isSystem: true
+            isSystemMessage: true
           });
           
           showToast('Joined group!', 'success');
@@ -2564,7 +2564,7 @@ As Chatra AI, you're here to help users with questions, provide creative assista
             if (!messagesEl) return;
             
             
-            if (msg.isSystem) {
+            if (msg.isSystem || msg.isSystemMessage) {
               const systemRow = document.createElement('div');
               systemRow.className = 'w-full flex justify-center my-2';
               systemRow.innerHTML = `<span class="text-[10px] text-slate-500 bg-slate-800/50 px-3 py-1 rounded-full">${escapeHtml(msg.text)}</span>`;
@@ -2652,11 +2652,11 @@ As Chatra AI, you're here to help users with questions, provide creative assista
                 await db.ref('groups/' + groupId + '/members/' + AI_BOT_UID).set(true);
                 
                 await db.ref('groups/' + groupId + '/messages').push({
-                  fromUid: 'system',
-                  fromUsername: 'System',
+                  fromUid: AI_BOT_UID,
+                  fromUsername: 'Chatra AI',
                   text: 'Chatra AI has joined the group',
                   time: Date.now(),
-                  isSystem: true
+                  isSystemMessage: true
                 });
               }
             } catch (e) {
@@ -2753,11 +2753,11 @@ As Chatra AI, you're here to help users with questions, provide creative assista
           
           
           await db.ref('groups/' + key + '/messages').push({
-            fromUid: 'system',
-            fromUsername: 'System',
+            fromUid: currentUserId,
+            fromUsername: currentUsername || 'User',
             text: `${currentUsername || 'Someone'} has joined the group`,
             time: Date.now(),
-            isSystem: true
+            isSystemMessage: true
           });
         }
         
@@ -2808,11 +2808,11 @@ As Chatra AI, you're here to help users with questions, provide creative assista
             
             if (showJoinMessage) {
               await db.ref('groups/' + groupId + '/messages').push({
-                fromUid: 'system',
-                fromUsername: 'System',
+                fromUid: currentUserId,
+                fromUsername: currentUsername || 'User',
                 text: `${currentUsername || username} has joined the group`,
                 time: Date.now(),
-                isSystem: true
+                isSystemMessage: true
               });
             }
           }
@@ -2835,11 +2835,11 @@ As Chatra AI, you're here to help users with questions, provide creative assista
             
             if (showJoinMessage) {
               await db.ref('groups/' + groupId + '/messages').push({
-                fromUid: 'system',
-                fromUsername: 'System',
+                fromUid: currentUserId,
+                fromUsername: currentUsername || 'User',
                 text: `${username} has joined the group`,
                 time: Date.now(),
-                isSystem: true
+                isSystemMessage: true
               });
             }
           }
@@ -3230,11 +3230,11 @@ As Chatra AI, you're here to help users with questions, provide creative assista
         
         
         await db.ref('groups/' + groupId + '/messages').push({
-          fromUid: 'system',
-          fromUsername: 'System',
+          fromUid: currentUserId,
+          fromUsername: currentUsername || 'User',
           text: `${currentUsername} joined via invite code`,
           time: Date.now(),
-          isSystem: true
+          isSystemMessage: true
         });
         
         showToast('Joined ' + (groupInfo.name || 'group') + '!', 'success');
