@@ -1,0 +1,13 @@
+name = "chatra-search"
+main = "search-worker.js"
+compatibility_date = "2026-01-09"
+account_id = "84e07c9e29ef1a0988bc197df1f136e5"
+workers_dev = true
+
+[env.production]
+name = "chatra-search-production"
+
+# IMPORTANT: Do not store secrets in this file.
+# Set secrets via Wrangler CLI:
+#   wrangler secret put GOOGLE_API_KEY --env production
+#   wrangler secret put CSE_ID --env production
