@@ -1443,18 +1443,7 @@
         }
       }
       
-      function displaySearchResults(query, results) {
-        // Create a unique key for this search to prevent duplicate popups
-        const searchKey = (results.searchType || 'web') + ':' + query.toLowerCase().trim();
-        if (displayedSearches.has(searchKey)) {
-          console.log('[search] Already displayed results for:', searchKey);
-          return;
-        }
-        displayedSearches.add(searchKey);
-        
-        // Clean up old search keys after 5 minutes to prevent memory buildup
-        setTimeout(() => displayedSearches.delete(searchKey), 5 * 60 * 1000);
-        
+      function displaySearchResults(query, results, bubbleElement = null) {
         if (!results || !results.results || results.results.length === 0) {
           showToast('No search results found for: ' + query, 'info');
           return;
@@ -1462,7 +1451,62 @@
         
         const isImageSearch = results.searchType === 'image';
         
-        // Create a modal to display search results
+        // If we have a bubble element, display inline - otherwise use modal
+        if (bubbleElement) {
+          const resultsContainer = document.createElement('div');
+          resultsContainer.className = 'mt-3 rounded-lg border border-slate-600/50 overflow-hidden bg-slate-800/50';
+          
+          if (isImageSearch) {
+            // Inline image grid
+            resultsContainer.innerHTML = `
+              <div class="p-2 border-b border-slate-700/50 text-xs text-slate-400">
+                🖼️ Image results for: ${escapeHtml(query)}
+              </div>
+              <div class="p-2 grid grid-cols-2 gap-2">
+                ${results.results.slice(0, 6).map((result, i) => `
+                  <a href="${escapeHtml(result.originalImage || result.link)}" target="_blank" rel="noopener noreferrer" 
+                     class="group relative overflow-hidden rounded border border-slate-700 hover:border-sky-500/50 transition-colors block aspect-square">
+                    <img src="${escapeHtml(result.image)}" alt="${escapeHtml(result.title)}" 
+                         class="w-full h-full object-cover group-hover:opacity-80 transition-opacity"
+                         loading="lazy" onerror="this.parentElement.style.display='none'">
+                  </a>
+                `).join('')}
+              </div>
+            `;
+          } else {
+            // Inline web results - compact card style
+            resultsContainer.innerHTML = `
+              <div class="p-2 border-b border-slate-700/50 text-xs text-slate-400">
+                🔍 Search results for: ${escapeHtml(query)}
+              </div>
+              <div class="p-2 space-y-2">
+                ${results.results.slice(0, 3).map((result, i) => `
+                  <div class="border border-slate-700/50 rounded p-2 hover:bg-slate-700/30 transition-colors">
+                    ${result.image ? `<div class="mb-2 rounded overflow-hidden"><img src="${escapeHtml(result.image)}" alt="" class="w-full h-auto max-h-32 object-cover rounded" onerror="this.style.display='none'"></div>` : ''}
+                    <a href="${escapeHtml(result.link)}" target="_blank" rel="noopener noreferrer" class="text-sky-400 hover:text-sky-300 font-medium text-sm break-words block">
+                      ${escapeHtml(result.title)}
+                    </a>
+                    <p class="text-[10px] text-slate-500 mt-0.5">${escapeHtml(result.displayLink)}</p>
+                    <p class="text-xs text-slate-300 mt-1 line-clamp-2">${escapeHtml(result.snippet)}</p>
+                  </div>
+                `).join('')}
+              </div>
+            `;
+          }
+          
+          bubbleElement.appendChild(resultsContainer);
+          
+          // Scroll to show results
+          setTimeout(() => {
+            const messagesDiv = document.getElementById('messages');
+            if (messagesDiv) {
+              messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            }
+          }, 100);
+          return;
+        }
+        
+        // Modal fallback (for cases where bubble isn't available)
         const modal = document.createElement('div');
         modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4';
         
@@ -9547,10 +9591,12 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
                 // TTL cleanup after 5 minutes
                 setTimeout(() => displayedSearches.delete(imgKey), 5 * 60 * 1000);
               }
+              // Capture bubble reference for inline display
+              const currentBubble = bubble;
               setTimeout(async () => {
                 const results = await performWebSearch(searchQuery, true);
                 if (results) {
-                  displaySearchResults(searchQuery, results);
+                  displaySearchResults(searchQuery, results, currentBubble);
                 }
               }, 500);
             }
@@ -9566,10 +9612,12 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
                 // TTL cleanup after 5 minutes
                 setTimeout(() => displayedSearches.delete(webKey), 5 * 60 * 1000);
               }
+              // Capture bubble reference for inline display
+              const currentBubble = bubble;
               setTimeout(async () => {
                 const results = await performWebSearch(searchQuery, false);
                 if (results) {
-                  displaySearchResults(searchQuery, results);
+                  displaySearchResults(searchQuery, results, currentBubble);
                 }
               }, 500);
             }
