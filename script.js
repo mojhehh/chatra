@@ -192,7 +192,16 @@
       // - TODO: Add server-enforced retention/erasure policies and version fields
       // ============================================================================
       
-      const FINGERPRINT_ENABLED = false; // Temporarily disabled - was banning all Safari/iOS users 
+      // Detect Safari/iOS where fingerprinting is unreliable
+      function isSafariOrIOS() {
+        const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+                      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        return isSafari && isIOS;
+      }
+      
+      // Fingerprinting disabled for Safari/iOS due to unreliable fingerprints
+      const FINGERPRINT_ENABLED = !isSafariOrIOS();
       
       
       
@@ -355,12 +364,9 @@
       async function computeFingerprintHash() {
         const components = [];
         
-        // Detect Safari/iOS - these have very limited fingerprinting
-        const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-        
         // If Safari on iOS, fingerprinting is unreliable - return null to skip hardware ban checks
-        if (isSafari && isIOS) {
+        // (FINGERPRINT_ENABLED already checks this, but this is a safeguard)
+        if (isSafariOrIOS()) {
           console.log('[fingerprint] Safari/iOS detected - fingerprinting unreliable, skipping');
           return null;
         }
@@ -2053,15 +2059,17 @@ As Chatra AI, you're here to help users with questions, provide creative assista
       let notificationHistory = [];
       let lastNotificationClearTime = 0; // Timestamp of last clear
       
-      function loadClearedNotifications() {
+      async function loadClearedNotifications() {
         if (!currentUserId) return;
-        db.ref("userSettings/" + currentUserId + "/clearedNotifications").once("value", (snap) => {
+        try {
+          const snap = await db.ref("userSettings/" + currentUserId + "/clearedNotifications").once("value");
           const cleared = snap.val();
           // Now it's just a timestamp
           lastNotificationClearTime = typeof cleared === 'number' ? cleared : 0;
-        }).catch(() => {
+        } catch (e) {
+          console.warn('[notifications] failed to load cleared state:', e);
           lastNotificationClearTime = 0;
-        });
+        }
       }
       
       let originalProfilePic = null;
@@ -7292,10 +7300,17 @@ As Chatra AI, you're here to help users with questions, provide creative assista
         // Re-render the empty list
         renderNotificationHistory();
         
-        // Save cleared state to Firebase
+        // Save cleared state to Firebase using server timestamp
         if (currentUserId) {
           try {
-            await db.ref("userSettings/" + currentUserId + "/clearedNotifications").set(Date.now());
+            const ref = db.ref("userSettings/" + currentUserId + "/clearedNotifications");
+            await ref.set(firebase.database.ServerValue.TIMESTAMP);
+            // Read back the server timestamp to update local cache
+            const snap = await ref.once('value');
+            const serverTime = snap.val();
+            if (typeof serverTime === 'number') {
+              lastNotificationClearTime = serverTime;
+            }
           } catch (e) {
             console.warn('[notifications] failed to save cleared state:', e);
           }
@@ -10678,7 +10693,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             }
             
             
-            loadClearedNotifications();
+            await loadClearedNotifications();
             
             
             checkAndShowGuidelines(user.uid);
