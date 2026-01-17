@@ -355,8 +355,15 @@
       async function computeFingerprintHash() {
         const components = [];
         
+        // Detect Safari/iOS - these have very limited fingerprinting
+        const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
         
-        
+        // If Safari on iOS, fingerprinting is unreliable - return null to skip hardware ban checks
+        if (isSafari && isIOS) {
+          console.log('[fingerprint] Safari/iOS detected - fingerprinting unreliable, skipping');
+          return null;
+        }
         
         components.push('scr:' + screen.width + 'x' + screen.height + 'x' + screen.colorDepth);
         components.push('avail:' + screen.availWidth + 'x' + screen.availHeight);
@@ -615,6 +622,21 @@
           return false;
         }
       }
+
+      // EMERGENCY: Clear all hardware bans - run window.emergencyClearHardwareBans() in console
+      window.emergencyClearHardwareBans = async function() {
+        try {
+          console.log('[EMERGENCY] Clearing all hardware bans...');
+          await db.ref('bannedFingerprints').remove();
+          console.log('[EMERGENCY] All hardware bans cleared!');
+          alert('All hardware bans cleared! Refresh the page.');
+          return true;
+        } catch (e) {
+          console.error('[EMERGENCY] Failed to clear hardware bans:', e);
+          alert('Failed: ' + e.message);
+          return false;
+        }
+      };
 
       
       let presenceRef = null;
@@ -4853,12 +4875,23 @@ As Chatra AI, you're here to help users with questions, provide creative assista
             });
           }
           
+          // Prevent double-send for groups
+          let isSendingGroupMessage = false;
+          
           groupsPageForm.addEventListener('submit', async (e) => {
             e.preventDefault();
+            
+            // Prevent double-send
+            if (isSendingGroupMessage) {
+              console.log("[groups] already sending, ignoring duplicate call");
+              return;
+            }
+            
             if (!activeGroupId) return;
             const txt = (groupsPageInput && groupsPageInput.value) ? groupsPageInput.value.trim() : '';
             if (!txt) return;
             
+            isSendingGroupMessage = true;
             
             if (groupsPageError) groupsPageError.textContent = '';
             
@@ -4879,6 +4912,8 @@ As Chatra AI, you're here to help users with questions, provide creative assista
             } catch (err) {
               console.error(err);
               if (groupsPageError) groupsPageError.textContent = err.message || 'Send failed';
+            } finally {
+              isSendingGroupMessage = false;
             }
           });
         }
@@ -4888,19 +4923,33 @@ As Chatra AI, you're here to help users with questions, provide creative assista
         const dmCancelMediaBtn = document.getElementById('dmCancelMediaBtn');
         let pendingDmMediaUrl = null;
         let pendingDmMediaFileId = null;
+        
+        // Prevent double-send for DM page
+        let isSendingDMPage = false;
+        
         if (dmPageForm) {
           dmPageForm.addEventListener('submit', async (e) => {
             e.preventDefault();
+            
+            // Prevent double-send
+            if (isSendingDMPage) {
+              console.log("[dmPage] already sending, ignoring duplicate call");
+              return;
+            }
+            
             if (!activeDMThread || !dmPageInput || !activeDMTarget) return;
             const text = dmPageInput.value.trim();
             
             if (!text && !pendingDmMediaUrl) return;
+
+            isSendingDMPage = true;
 
             try {
               
               const privacyCheck = await checkDmPrivacy(activeDMTarget.uid);
               if (!privacyCheck.allowed) {
                 if (dmPageError) dmPageError.textContent = privacyCheck.reason;
+                isSendingDMPage = false;
                 return;
               }
               
@@ -5022,6 +5071,8 @@ As Chatra AI, you're here to help users with questions, provide creative assista
               } else {
                 if (dmPageError) dmPageError.textContent = 'Failed to send message';
               }
+            } finally {
+              isSendingDMPage = false;
             }
           });
         }
@@ -8333,12 +8384,16 @@ As Chatra AI, you're here to help users with questions, provide creative assista
 
         if (username.length < 2 || username.length > 12) {
           registerError.textContent = "Username must be 2-12 characters.";
+          registerBtn.textContent = originalRegText;
+          registerBtn.disabled = false;
           return;
         }
 
         
         if (!/^[a-zA-Z0-9_ -]+$/.test(username) || /^[_-]|[_-]$/.test(username)) {
           registerError.textContent = "Use letters/numbers/underscore/dash/space (no leading/trailing _ or -).";
+          registerBtn.textContent = originalRegText;
+          registerBtn.disabled = false;
           return;
         }
 
@@ -8348,6 +8403,8 @@ As Chatra AI, you're here to help users with questions, provide creative assista
           if (fpCheck.banned) {
             console.log("[register] device fingerprint is banned");
             registerError.textContent = "This device has been banned. Contact support.";
+            registerBtn.textContent = originalRegText;
+            registerBtn.disabled = false;
             return;
           }
         } catch (e) {
@@ -8390,16 +8447,22 @@ As Chatra AI, you're here to help users with questions, provide creative assista
 
         if (usernameHasBad) {
           registerError.textContent = "Username not allowed.";
+          registerBtn.textContent = originalRegText;
+          registerBtn.disabled = false;
           return;
         }
 
         if (isLocallyBlockedUsername(username)) {
           registerError.textContent = "Username not allowed.";
+          registerBtn.textContent = originalRegText;
+          registerBtn.disabled = false;
           return;
         }
 
         if (password !== passwordConfirm) {
           registerError.textContent = "Passwords do not match.";
+          registerBtn.textContent = originalRegText;
+          registerBtn.disabled = false;
           return;
         }
 
@@ -8408,6 +8471,8 @@ As Chatra AI, you're here to help users with questions, provide creative assista
           if (!registerError.textContent) {
             registerError.textContent = "That username is already taken.";
           }
+          registerBtn.textContent = originalRegText;
+          registerBtn.disabled = false;
           return;
         }
 
@@ -8454,6 +8519,9 @@ As Chatra AI, you're here to help users with questions, provide creative assista
           
           await storeFingerprint(user.uid);
           
+          // Reset button (form will be hidden anyway)
+          registerBtn.textContent = originalRegText || 'Sign Up';
+          registerBtn.disabled = false;
           
           registerForm.classList.add("hidden");
         } catch (error) {
@@ -8513,6 +8581,8 @@ As Chatra AI, you're here to help users with questions, provide creative assista
           if (fpCheck.banned) {
             console.log("[login] device fingerprint is banned");
             loginError.textContent = "This device has been banned. Contact support.";
+            loginBtn.textContent = originalText;
+            loginBtn.disabled = false;
             return;
           }
         } catch (e) {
@@ -8535,6 +8605,8 @@ As Chatra AI, you're here to help users with questions, provide creative assista
             if (bannedEmailSnap.exists() || bannedUsernameSnap.exists()) {
               const bannedReason = bannedEmailSnap.val()?.reason || bannedUsernameSnap.val()?.reason || "Account has been permanently banned";
               loginError.textContent = "This account is banned: " + bannedReason;
+              loginBtn.textContent = originalText;
+              loginBtn.disabled = false;
               return;
             }
           } catch (banCheckErr) {
@@ -10868,8 +10940,16 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         }
       };
 
+      // Prevent double-send with a lock
+      let isSendingMessage = false;
       
       async function sendMessage() {
+        // Prevent double-send
+        if (isSendingMessage) {
+          console.log("[send] already sending, ignoring duplicate call");
+          return;
+        }
+        
         let text = msgInput.value.trim();
         if (text === "" && !pendingMediaUrl) return;
 
@@ -11012,6 +11092,8 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
 
         const uid = userObj.uid;
 
+        // Set the sending lock
+        isSendingMessage = true;
         
         const originalBtnText = sendBtn.innerHTML;
         sendBtn.innerHTML = '<span class="animate-pulse">✓</span>';
@@ -11088,6 +11170,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             setTimeout(() => {
               sendBtn.innerHTML = originalBtnText;
               sendBtn.disabled = false;
+              isSendingMessage = false; // Release lock
             }, 300);
           })
           .catch((error) => {
@@ -11110,6 +11193,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             setTimeout(() => {
               sendBtn.innerHTML = originalBtnText;
               sendBtn.disabled = false;
+              isSendingMessage = false; // Release lock on error too
               currentWarningText = "";
               updateStatusBar();
             }, 3000);
@@ -13596,8 +13680,19 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           }
         });
       }
+      
+      // Prevent DM double-send with a lock
+      let isSendingDM = false;
+      
       dmForm.addEventListener("submit", async (e) => {
         e.preventDefault();
+        
+        // Prevent double-send
+        if (isSendingDM) {
+          console.log("[dm] already sending, ignoring duplicate call");
+          return;
+        }
+        
         if (!currentUserId) {
           dmError.textContent = "Please log in.";
           return;
@@ -13651,12 +13746,14 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
 
         dmError.textContent = "";
         dmSendBtn.disabled = true;
+        isSendingDM = true; // Set the lock
 
         try {
           const privacyCheck = await checkDmPrivacy(activeDMTarget.uid);
           if (!privacyCheck.allowed) {
             dmError.textContent = privacyCheck.reason;
             dmSendBtn.disabled = false;
+            isSendingDM = false; // Release lock
             return;
           }
 
@@ -13710,10 +13807,12 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           dmLastUpdateTimeByThread[threadId] = now;
           dmInput.value = "";
           dmSendBtn.disabled = false;
+          isSendingDM = false; // Release lock on success
         } catch (err) {
           console.error("[dm] send error", err);
           dmError.textContent = err.message || "Failed to send DM.";
           dmSendBtn.disabled = false;
+          isSendingDM = false; // Release lock on error
         }
       });
 
