@@ -192,7 +192,7 @@
       // - TODO: Add server-enforced retention/erasure policies and version fields
       // ============================================================================
       
-      const FINGERPRINT_ENABLED = true; 
+      const FINGERPRINT_ENABLED = false; // Temporarily disabled - was banning all Safari/iOS users 
       
       
       
@@ -2051,24 +2051,19 @@ As Chatra AI, you're here to help users with questions, provide creative assista
       
       let friendsCache = new Set();
       let notificationHistory = [];
-      let clearedNotificationThreads = new Set(); 
+      let lastNotificationClearTime = 0; // Timestamp of last clear
       
       function loadClearedNotifications() {
         if (!currentUserId) return;
         db.ref("userSettings/" + currentUserId + "/clearedNotifications").once("value", (snap) => {
-          const cleared = snap.val() || [];
-          clearedNotificationThreads = new Set(Array.isArray(cleared) ? cleared : []);
+          const cleared = snap.val();
+          // Now it's just a timestamp
+          lastNotificationClearTime = typeof cleared === 'number' ? cleared : 0;
         }).catch(() => {
-          clearedNotificationThreads = new Set();
+          lastNotificationClearTime = 0;
         });
       }
       
-      async function saveClearedNotifications() {
-        if (!currentUserId) return;
-        try {
-          await db.ref("userSettings/" + currentUserId + "/clearedNotifications").set(Array.from(clearedNotificationThreads));
-        } catch (err) {}
-      }
       let originalProfilePic = null;
       let originalProfilePicDeleteToken = null;
 
@@ -7268,14 +7263,19 @@ As Chatra AI, you're here to help users with questions, provide creative assista
         });
       }
 
+      // ============================================================================
+      // NOTIFICATION SYSTEM - Rewritten for reliability
+      // ============================================================================
+      
       function updateNotifBadge() {
         if (!notifBellBadge || !currentUserId) {
           notifBellBadge?.classList.add("hidden");
           return;
         }
-        const count = notificationHistory.filter(n => n.isDM).length;
+        // Count unread notifications
+        const count = notificationHistory.length;
         if (count > 0) {
-          notifBellBadge.textContent = count;
+          notifBellBadge.textContent = count > 99 ? '99+' : count;
           notifBellBadge.classList.remove("hidden");
         } else {
           notifBellBadge.classList.add("hidden");
@@ -7283,16 +7283,23 @@ As Chatra AI, you're here to help users with questions, provide creative assista
       }
 
       async function clearNotifications() {
+        // Actually clear all notifications
+        notificationHistory = [];
         
-        notificationHistory.forEach(n => {
-          if (n.isDM && n.threadId) {
-            clearedNotificationThreads.add(n.threadId);
-          }
-        });
-        await saveClearedNotifications();
-        
+        // Clear the badge
         updateNotifBadge();
+        
+        // Re-render the empty list
         renderNotificationHistory();
+        
+        // Save cleared state to Firebase
+        if (currentUserId) {
+          try {
+            await db.ref("userSettings/" + currentUserId + "/clearedNotifications").set(Date.now());
+          } catch (e) {
+            console.warn('[notifications] failed to save cleared state:', e);
+          }
+        }
       }
 
       function renderNotificationHistory() {
@@ -8084,8 +8091,8 @@ As Chatra AI, you're here to help users with questions, provide creative assista
             
             
             entries.forEach((item) => {
-              
-              if (clearedNotificationThreads.has(item.threadId)) return;
+              // Skip if this notification is older than last clear time
+              if (item.lastTime && item.lastTime <= lastNotificationClearTime) return;
               
               if (!item.lastMsg) return;
 
@@ -10856,7 +10863,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           currentUsername = null;
           messagesDiv.innerHTML = "";
           friendsCache.clear();
-          clearedNotificationThreads.clear();
+          lastNotificationClearTime = 0;
           dmLastSeenByThread = {};
           dmInboxInitialLoaded = false;
           detachModerationListeners();
@@ -12819,7 +12826,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
       });
 
       notifBellBtn.addEventListener("click", async () => {
-        await clearNotifications();
+        // Just open the modal, don't clear
         renderNotificationHistory();
         notifModal.classList.remove("modal-closed");
         notifModal.classList.add("modal-open");
@@ -12837,10 +12844,8 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         }
       });
 
-      notifClearBtn.addEventListener("click", () => {
-        notificationHistory = [];
-        clearNotifications();
-        renderNotificationHistory();
+      notifClearBtn.addEventListener("click", async () => {
+        await clearNotifications();
       });
 
       
