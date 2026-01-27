@@ -1,4 +1,4 @@
-
+﻿
       
       window.addEventListener("error", (event) => {
         console.error(
@@ -192,16 +192,7 @@
       // - TODO: Add server-enforced retention/erasure policies and version fields
       // ============================================================================
       
-      // Detect Safari/iOS where fingerprinting is unreliable
-      function isSafariOrIOS() {
-        const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
-                      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-        return isSafari && isIOS;
-      }
-      
-      // Fingerprinting disabled for Safari/iOS due to unreliable fingerprints
-      const FINGERPRINT_ENABLED = !isSafariOrIOS();
+      const FINGERPRINT_ENABLED = true; 
       
       
       
@@ -364,12 +355,8 @@
       async function computeFingerprintHash() {
         const components = [];
         
-        // If Safari on iOS, fingerprinting is unreliable - return null to skip hardware ban checks
-        // (FINGERPRINT_ENABLED already checks this, but this is a safeguard)
-        if (isSafariOrIOS()) {
-          console.log('[fingerprint] Safari/iOS detected - fingerprinting unreliable, skipping');
-          return null;
-        }
+        
+        
         
         components.push('scr:' + screen.width + 'x' + screen.height + 'x' + screen.colorDepth);
         components.push('avail:' + screen.availWidth + 'x' + screen.availHeight);
@@ -629,21 +616,6 @@
         }
       }
 
-      // EMERGENCY: Clear all hardware bans - run window.emergencyClearHardwareBans() in console
-      window.emergencyClearHardwareBans = async function() {
-        try {
-          console.log('[EMERGENCY] Clearing all hardware bans...');
-          await db.ref('bannedFingerprints').remove();
-          console.log('[EMERGENCY] All hardware bans cleared!');
-          alert('All hardware bans cleared! Refresh the page.');
-          return true;
-        } catch (e) {
-          console.error('[EMERGENCY] Failed to clear hardware bans:', e);
-          alert('Failed: ' + e.message);
-          return false;
-        }
-      };
-
       
       let presenceRef = null;
       let connectedRef = null;
@@ -902,7 +874,8 @@
                 const newPriority = STAFF_ROLES[newRole]?.priority || 0;
                 
                 if (prevRole && newPriority < prevPriority) {
-                  // This is a demotion - check for demotion reason in staffRoleRemoved
+                  // This is a demotion - ONLY show demotion notification, not promotion
+                  roleNotificationShown = true; // Prevent double notification
                   checkRoleRemovalNotification();
                 } else {
                   // This is promotion or new assignment
@@ -916,6 +889,7 @@
               }
             } else if (!newRole && prevRole && lastKnownUserRole) {
               // Role was removed entirely - check for removal reason
+              roleNotificationShown = true; // Prevent double notification
               checkRoleRemovalNotification();
             }
             
@@ -1427,48 +1401,72 @@
       
       // Web search functionality using Cloudflare Worker + Google CSE
       const SEARCH_WORKER_URL = 'https://chatra-search.modmojheh.workers.dev';
-      // Track which search queries have already been displayed to prevent duplicate popups
-      const displayedSearches = new Set();
       
       async function performWebSearch(query, searchImages = false) {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
-        
         try {
-          const response = await fetch(SEARCH_WORKER_URL + '/search', {
+          const response = await fetch(SEARCH_WORKER_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ query, searchImages }),
-            signal: controller.signal
+            body: JSON.stringify({ query, searchImages })
           });
           
           if (!response.ok) {
             console.warn('[search] worker returned', response.status);
-            showToast('Search failed - please try again', 'error');
             return null;
           }
           
           const data = await response.json();
-          
-          // Validate results exist
-          if (!data || !data.results || data.results.length === 0) {
-            console.warn('[search] no results returned');
-            showToast('No results found for: ' + query, 'info');
-            return null;
-          }
-          
           return data;
         } catch (e) {
           console.warn('[search] failed:', e);
-          if (e.name === 'AbortError') {
-            showToast('Search timed out - please try again', 'error');
-          } else {
-            showToast('Search failed - please try again', 'error');
-          }
           return null;
-        } finally {
-          clearTimeout(timeoutId);
         }
+      }
+      
+      // Display a single image inline within a message bubble
+      function displaySingleImage(imageData, bubbleElement) {
+        if (!imageData || !bubbleElement) return;
+        
+        const imageUrl = imageData.image || imageData.originalImage;
+        const linkUrl = imageData.originalImage || imageData.link;
+        
+        if (!imageUrl) return;
+        
+        const imageContainer = document.createElement('div');
+        imageContainer.className = 'mt-2 rounded-lg overflow-hidden max-w-sm';
+        
+        const link = document.createElement('a');
+        link.href = linkUrl;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.className = 'block';
+        
+        const img = document.createElement('img');
+        img.src = imageUrl;
+        img.alt = imageData.title || 'Image';
+        img.className = 'w-full h-auto rounded-lg border border-slate-600 hover:opacity-90 transition-opacity cursor-pointer';
+        img.loading = 'lazy';
+        img.onerror = function() {
+          // Try original image if thumbnail fails
+          if (imageData.originalImage && this.src !== imageData.originalImage) {
+            this.src = imageData.originalImage;
+          } else {
+            imageContainer.remove();
+          }
+        };
+        
+        link.appendChild(img);
+        imageContainer.appendChild(link);
+        
+        // Add source label
+        if (imageData.source) {
+          const sourceLabel = document.createElement('p');
+          sourceLabel.className = 'text-[10px] text-slate-400 mt-1 truncate';
+          sourceLabel.textContent = imageData.source;
+          imageContainer.appendChild(sourceLabel);
+        }
+        
+        bubbleElement.appendChild(imageContainer);
       }
       
       function displaySearchResults(query, results, bubbleElement = null) {
@@ -1541,26 +1539,25 @@
         let resultsHTML = '';
         
         if (isImageSearch) {
-          // Image grid layout
+          // Image grid layout - fixed aspect ratio to prevent cutoff
           resultsHTML = `
-            <div class="bg-slate-800 rounded-lg max-w-4xl w-full max-h-[80vh] overflow-y-auto border border-slate-700">
-              <div class="sticky top-0 bg-slate-800 border-b border-slate-700 p-4 flex justify-between items-center">
+            <div class="bg-slate-800 rounded-lg max-w-4xl w-full max-h-[85vh] overflow-y-auto border border-slate-700">
+              <div class="sticky top-0 bg-slate-800 border-b border-slate-700 p-4 flex justify-between items-center z-10">
                 <h3 class="text-lg font-bold text-white">Image Results for: ${escapeHtml(query)}</h3>
-                <button class="text-slate-400 hover:text-white transition-colors" id="closeSearchBtn">✕</button>
+                <button class="text-slate-400 hover:text-white transition-colors text-2xl" id="closeSearchBtn">✕</button>
               </div>
-              <div class="p-4 grid grid-cols-2 sm:grid-cols-3 gap-3 auto-rows-max">
+              <div class="p-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                 ${results.results.map((result, i) => `
                   <a href="${escapeHtml(result.originalImage || result.link)}" target="_blank" rel="noopener noreferrer" 
-                     class="group relative overflow-hidden rounded border border-slate-700 hover:border-slate-600 transition-colors">
+                     class="group relative overflow-hidden rounded-lg border border-slate-700 hover:border-sky-500 transition-all aspect-square bg-slate-900">
                     <img src="${escapeHtml(result.image)}" alt="${escapeHtml(result.title)}" 
-                         class="w-full h-auto object-cover group-hover:opacity-75 transition-opacity"
-                         loading="lazy" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22200%22 height=%22150%22%3E%3Crect fill=%22%23374151%22 width=%22200%22 height=%22150%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 font-size=%2214%22 fill=%22%239CA3AF%22 text-anchor=%22middle%22 dominant-baseline=%22middle%22%3EImage not available%3C/text%3E%3C/svg%3E'">
-                    <div class="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
-                      <span class="text-white text-2xl opacity-0 group-hover:opacity-100 transition-opacity">🔗</span>
-                    </div>
-                    <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black to-transparent p-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <p class="text-xs text-white line-clamp-2">${escapeHtml(result.title)}</p>
-                      <p class="text-[10px] text-gray-300">${escapeHtml(result.source)}</p>
+                         class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                         loading="lazy" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22200%22 height=%22200%22%3E%3Crect fill=%22%23374151%22 width=%22200%22 height=%22200%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 font-size=%2212%22 fill=%22%239CA3AF%22 text-anchor=%22middle%22 dominant-baseline=%22middle%22%3EImage unavailable%3C/text%3E%3C/svg%3E'">
+                    <div class="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div class="absolute bottom-0 left-0 right-0 p-2">
+                        <p class="text-xs text-white line-clamp-2 font-medium">${escapeHtml(result.title)}</p>
+                        <p class="text-[10px] text-gray-300">${escapeHtml(result.source)}</p>
+                      </div>
                     </div>
                   </a>
                 `).join('')}
@@ -1570,16 +1567,16 @@
         } else {
           // Web results with optional images
           resultsHTML = `
-            <div class="bg-slate-800 rounded-lg max-w-3xl w-full max-h-[80vh] overflow-y-auto border border-slate-700">
-              <div class="sticky top-0 bg-slate-800 border-b border-slate-700 p-4 flex justify-between items-center">
+            <div class="bg-slate-800 rounded-lg max-w-3xl w-full max-h-[85vh] overflow-y-auto border border-slate-700">
+              <div class="sticky top-0 bg-slate-800 border-b border-slate-700 p-4 flex justify-between items-center z-10">
                 <h3 class="text-lg font-bold text-white">Search Results for: ${escapeHtml(query)}</h3>
-                <button class="text-slate-400 hover:text-white transition-colors" id="closeSearchBtn">✕</button>
+                <button class="text-slate-400 hover:text-white transition-colors text-2xl" id="closeSearchBtn">✕</button>
               </div>
               <div class="p-4 space-y-4">
                 ${results.results.map((result, i) => `
-                  <div class="border border-slate-700 rounded p-3 hover:bg-slate-700/50 transition-colors">
-                    ${result.image ? `<div class="mb-2 rounded overflow-hidden max-h-48"><img src="${escapeHtml(result.image)}" alt="" class="w-full h-auto object-cover max-h-48" onerror="this.style.display='none'"></div>` : ''}
-                    <a href="${escapeHtml(result.link)}" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300 font-semibold break-words">
+                  <div class="border border-slate-700 rounded-lg p-3 hover:bg-slate-700/50 transition-colors">
+                    ${result.image ? `<div class="mb-2 rounded-lg overflow-hidden"><img src="${escapeHtml(result.image)}" alt="" class="w-full h-auto object-cover max-h-48 rounded-lg" onerror="this.style.display='none'"></div>` : ''}
+                    <a href="${escapeHtml(result.link)}" target="_blank" rel="noopener noreferrer" class="text-sky-400 hover:text-sky-300 font-semibold break-words">
                       ${escapeHtml(result.title)}
                     </a>
                     <p class="text-xs text-slate-400 mt-1">${escapeHtml(result.displayLink)}</p>
@@ -1604,22 +1601,62 @@
       let aiProfile = { name: 'Chatra AI', avatar: null, bio: '', username: 'AI' };
       
       
-      const AI_MEMORY_LIMIT = 1000;
+      const AI_MEMORY_LIMIT = 8000; // Increased from 1000 for better context retention
       const aiConversationMemory = new Map(); 
       
-      function addToAiMemory(userId, role, content, username = null) {
+      // Try to restore AI memory from sessionStorage on load
+      function restoreAiMemory() {
+        try {
+          const saved = sessionStorage.getItem('aiConversationMemory');
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            for (const [key, value] of Object.entries(parsed)) {
+              aiConversationMemory.set(key, value);
+            }
+            console.log('[AI] Restored conversation memory from session');
+          }
+        } catch (e) {
+          console.warn('[AI] Failed to restore memory:', e);
+        }
+      }
+      restoreAiMemory();
+      
+      // Save AI memory to sessionStorage
+      function saveAiMemory() {
+        try {
+          const obj = {};
+          for (const [key, value] of aiConversationMemory.entries()) {
+            obj[key] = value;
+          }
+          sessionStorage.setItem('aiConversationMemory', JSON.stringify(obj));
+        } catch (e) {
+          console.warn('[AI] Failed to save memory:', e);
+        }
+      }
+      
+      function addToAiMemory(userId, role, content, username = null, imageContext = null) {
         if (!aiConversationMemory.has(userId)) {
           aiConversationMemory.set(userId, { username: username || 'User', history: [] });
         }
         const memEntry = aiConversationMemory.get(userId);
         if (username) memEntry.username = username;
-        memEntry.history.push({ role, content });
+        
+        // Include image context if provided
+        let fullContent = content;
+        if (imageContext) {
+          fullContent = `${content} ${imageContext}`;
+        }
+        
+        memEntry.history.push({ role, content: fullContent });
         
         let totalChars = memEntry.history.reduce((sum, m) => sum + m.content.length, 0);
-        while (totalChars > AI_MEMORY_LIMIT && memEntry.history.length > 1) {
+        while (totalChars > AI_MEMORY_LIMIT && memEntry.history.length > 2) {
           const removed = memEntry.history.shift();
           totalChars -= removed.content.length;
         }
+        
+        // Persist to sessionStorage
+        saveAiMemory();
       }
       
       function getAiMemory(userId) {
@@ -1640,37 +1677,43 @@
           role: 'system',
           content: `You are Chatra AI, the intelligent assistant for Chatra - a vibrant, modern real-time chat platform. You are currently in ${chatContext}.
 
+CRITICAL - MEMORY & CONTEXT:
+- You MUST remember the ENTIRE conversation history provided to you
+- When users reference "that", "it", "the image", etc., look at previous messages for context
+- If a user says something doesn't match (e.g., "that's not a dog"), acknowledge your mistake and the context
+- ALWAYS maintain continuity - never say "I don't see any previous message" if history exists
+- The conversation history below contains everything said so far - USE IT
+
+⚠️ IMAGE LIMITATIONS:
+- You CANNOT actually see or analyze images that users share or that you display
+- When you use [IMAGE: query], you're searching the web - results may not be perfect
+- If a user says an image is wrong, APOLOGIZE and acknowledge the search wasn't accurate
+- You can search for better images with more specific queries
+- Be honest: "I searched for X but I can't actually see what image appeared for you"
+
 Chatra is a feature-rich social messaging app where users can:
 - Chat in the public Global Chat with everyone online
-- Create and join Groups for topic-based discussions
+- Create and join Groups for topic-based discussions  
 - Send Direct Messages (DMs) to friends
 - Customize their profiles with avatars, bios, and profile frames
-- Mention users with @ to notify them instantly (like @​everyone for group notifications!)
+- Mention users with @ to notify them instantly
 - Share images, GIFs, and media in conversations
 - See who's online with real-time presence indicators
-- Enjoy smooth animations and a beautiful dark/light theme interface
 
-IMPORTANT WEB SEARCH CAPABILITY:
-You have the ability to search the web for current information AND images! Use web search when:
-- User asks about recent events, news, or current information
-- You're unsure about current facts or need up-to-date information
-- User asks "What's trending?" or similar current event questions
-- You want to provide the most accurate, recent information
+🔍 WEB SEARCH - Use [SEARCH: query] ONLY when:
+- User EXPLICITLY asks "search for...", "look up...", "find info about..."
+- User needs VERY recent news (last few days)
+- You genuinely cannot answer without current data
+- DO NOT search for general knowledge - just answer directly!
 
-Use image search when:
-- User asks for images of something (e.g., "Show me images of...")
-- You need visual information to enhance your response
-- User asks for inspiration or visual examples
+🖼️ IMAGE FEATURES - Use ONLY when user explicitly asks:
+- [IMAGE: query] - Single image (user asks "show me a picture of X" or "show me a gif of X")
+- [IMAGE_SEARCH: query] - Multiple images (user asks "show me pictures of X")
+- GIFs are ALLOWED - when user asks for a GIF, use [IMAGE: animated gif X] or [IMAGE: X gif]
+- NEVER add images unless specifically requested
+- If image result is wrong, apologize and offer to search with better terms
 
-TO SEARCH THE WEB: Include [SEARCH: your query here] in your response. The system will automatically search and show results to the user. For example:
-- User: "What's the latest AI news?" → You: "Let me search for the latest AI news. [SEARCH: latest AI news 2026]"
-- User: "Who won the latest championship?" → You: "[SEARCH: latest championship winner 2026] Let me find that for you."
-
-TO SEARCH FOR IMAGES: Include [IMAGE_SEARCH: your query here] in your response. For example:
-- User: "Show me pictures of exotic cats" → You: "Here are some exotic cats for you! [IMAGE_SEARCH: exotic cats]"
-- User: "Find me cute dog photos" → You: "[IMAGE_SEARCH: cute puppies] Here are adorable dogs!"
-
-As Chatra AI, you're here to help users with questions, provide creative assistance, have friendly conversations, and make their experience on Chatra amazing. You're helpful, friendly, and knowledgeable. You can search the web when needed to provide the best information. Be conversational and engaging! Do NOT mention the chat context (like 'In this Global Chat') unless the user specifically asks where they are.`
+Be helpful, remember context, and maintain conversation continuity. You're friendly and conversational!`
         };
         
         return [systemContext, ...history];
@@ -2036,7 +2079,7 @@ As Chatra AI, you're here to help users with questions, provide creative assista
       }
 
       async function loadUserSettings() {
-        if (!currentUserId) return { theme: "dark", messageSize: "medium", fastMode: true, ratingOptOut: false, ratingLastPrompt: 0 };
+        if (!currentUserId) return { theme: "dark", messageSize: "medium", fastMode: true, ratingOptOut: false, ratingLastPrompt: 0, accentColor: null };
         userSettingsRef = db.ref("userSettings/" + currentUserId);
         try {
           const snap = await userSettingsRef.once("value");
@@ -2047,31 +2090,35 @@ As Chatra AI, you're here to help users with questions, provide creative assista
             fastMode: data.fastMode === true,
             ratingOptOut: data.ratingOptOut === true,
             ratingLastPrompt: data.ratingLastPrompt || 0,
+            accentColor: data.accentColor || null,
           };
         } catch (err) {
           console.warn("[settings] failed to load user settings", err);
-          return { theme: "dark", messageSize: "medium", fastMode: true, ratingOptOut: false, ratingLastPrompt: 0 };
+          return { theme: "dark", messageSize: "medium", fastMode: true, ratingOptOut: false, ratingLastPrompt: 0, accentColor: null };
         }
       }
 
       
       let friendsCache = new Set();
       let notificationHistory = [];
-      let lastNotificationClearTime = 0; // Timestamp of last clear
+      let clearedNotificationThreads = new Set(); 
       
-      async function loadClearedNotifications() {
+      function loadClearedNotifications() {
         if (!currentUserId) return;
-        try {
-          const snap = await db.ref("userSettings/" + currentUserId + "/clearedNotifications").once("value");
-          const cleared = snap.val();
-          // Now it's just a timestamp
-          lastNotificationClearTime = typeof cleared === 'number' ? cleared : 0;
-        } catch (e) {
-          console.warn('[notifications] failed to load cleared state:', e);
-          lastNotificationClearTime = 0;
-        }
+        db.ref("userSettings/" + currentUserId + "/clearedNotifications").once("value", (snap) => {
+          const cleared = snap.val() || [];
+          clearedNotificationThreads = new Set(Array.isArray(cleared) ? cleared : []);
+        }).catch(() => {
+          clearedNotificationThreads = new Set();
+        });
       }
       
+      async function saveClearedNotifications() {
+        if (!currentUserId) return;
+        try {
+          await db.ref("userSettings/" + currentUserId + "/clearedNotifications").set(Array.from(clearedNotificationThreads));
+        } catch (err) {}
+      }
       let originalProfilePic = null;
       let originalProfilePicDeleteToken = null;
 
@@ -2116,16 +2163,31 @@ As Chatra AI, you're here to help users with questions, provide creative assista
         }, 50);
       }
 
-      function loadMentionedNotifsFromStorage() {
+      async function loadMentionedNotifsFromStorage() {
         // Load from Firebase if user is logged in, fallback to localStorage
-        if (currentUserId) {
-          db.ref('userMentionNotified/' + currentUserId).once('value').then(snap => {
-            const data = snap.val();
-            if (data && typeof data === 'object') {
-              mentionNotified = new Set(Object.keys(data));
-            }
-          }).catch(() => {
-            // Fallback to localStorage
+        return new Promise((resolve) => {
+          if (currentUserId) {
+            db.ref('userMentionNotified/' + currentUserId).once('value').then(snap => {
+              const data = snap.val();
+              if (data && typeof data === 'object') {
+                mentionNotified = new Set(Object.keys(data));
+              }
+              console.log('[mentions] loaded', mentionNotified.size, 'notified mentions from Firebase');
+              resolve();
+            }).catch(() => {
+              // Fallback to localStorage
+              try {
+                const raw = localStorage.getItem('mentions-notified');
+                if (raw) {
+                  const arr = JSON.parse(raw);
+                  mentionNotified = new Set(Array.isArray(arr) ? arr : []);
+                }
+              } catch (e) {
+                mentionNotified = new Set();
+              }
+              resolve();
+            });
+          } else {
             try {
               const raw = localStorage.getItem('mentions-notified');
               if (raw) {
@@ -2135,18 +2197,9 @@ As Chatra AI, you're here to help users with questions, provide creative assista
             } catch (e) {
               mentionNotified = new Set();
             }
-          });
-        } else {
-          try {
-            const raw = localStorage.getItem('mentions-notified');
-            if (raw) {
-              const arr = JSON.parse(raw);
-              mentionNotified = new Set(Array.isArray(arr) ? arr : []);
-            }
-          } catch (e) {
-            mentionNotified = new Set();
+            resolve();
           }
-        }
+        });
       }
 
       function markMentionNotified(id) {
@@ -2526,11 +2579,11 @@ As Chatra AI, you're here to help users with questions, provide creative assista
           
           
           await db.ref('groups/' + groupId + '/messages').push({
-            fromUid: currentUserId,
-            fromUsername: currentUsername || 'User',
+            fromUid: 'system',
+            fromUsername: 'System',
             text: `${currentUsername} joined the group`,
             time: Date.now(),
-            isSystemMessage: true
+            isSystem: true
           });
           
           showToast('Joined group!', 'success');
@@ -2633,7 +2686,7 @@ As Chatra AI, you're here to help users with questions, provide creative assista
             if (!messagesEl) return;
             
             
-            if (msg.isSystem || msg.isSystemMessage) {
+            if (msg.isSystem) {
               const systemRow = document.createElement('div');
               systemRow.className = 'w-full flex justify-center my-2';
               systemRow.innerHTML = `<span class="text-[10px] text-slate-500 bg-slate-800/50 px-3 py-1 rounded-full">${escapeHtml(msg.text)}</span>`;
@@ -2721,11 +2774,11 @@ As Chatra AI, you're here to help users with questions, provide creative assista
                 await db.ref('groups/' + groupId + '/members/' + AI_BOT_UID).set(true);
                 
                 await db.ref('groups/' + groupId + '/messages').push({
-                  fromUid: AI_BOT_UID,
-                  fromUsername: 'Chatra AI',
+                  fromUid: 'system',
+                  fromUsername: 'System',
                   text: 'Chatra AI has joined the group',
                   time: Date.now(),
-                  isSystemMessage: true
+                  isSystem: true
                 });
               }
             } catch (e) {
@@ -2767,7 +2820,17 @@ As Chatra AI, you're here to help users with questions, provide creative assista
               botReply = botReply.replace(/\n{3,}/g, '\n\n').trim();
               botReply = botReply.replace(/@everyone/gi, '@​everyone');
               
-              addToAiMemory(currentUserId, 'assistant', botReply, currentUsername);
+              // Extract image context if AI showed an image
+              let imageCtx = null;
+              const imgMatch = botReply.match(/\[IMAGE:\s*(.+?)\]/i);
+              const imgSearchMatch = botReply.match(/\[IMAGE_SEARCH:\s*(.+?)\]/i);
+              if (imgMatch) {
+                imageCtx = `[Showed image of: ${imgMatch[1].trim()}]`;
+              } else if (imgSearchMatch) {
+                imageCtx = `[Showed image search results for: ${imgSearchMatch[1].trim()}]`;
+              }
+              
+              addToAiMemory(currentUserId, 'assistant', botReply, currentUsername, imageCtx);
               
               
               try {
@@ -2822,11 +2885,11 @@ As Chatra AI, you're here to help users with questions, provide creative assista
           
           
           await db.ref('groups/' + key + '/messages').push({
-            fromUid: currentUserId,
-            fromUsername: currentUsername || 'User',
+            fromUid: 'system',
+            fromUsername: 'System',
             text: `${currentUsername || 'Someone'} has joined the group`,
             time: Date.now(),
-            isSystemMessage: true
+            isSystem: true
           });
         }
         
@@ -2877,11 +2940,11 @@ As Chatra AI, you're here to help users with questions, provide creative assista
             
             if (showJoinMessage) {
               await db.ref('groups/' + groupId + '/messages').push({
-                fromUid: currentUserId,
-                fromUsername: currentUsername || 'User',
+                fromUid: 'system',
+                fromUsername: 'System',
                 text: `${currentUsername || username} has joined the group`,
                 time: Date.now(),
-                isSystemMessage: true
+                isSystem: true
               });
             }
           }
@@ -2904,11 +2967,11 @@ As Chatra AI, you're here to help users with questions, provide creative assista
             
             if (showJoinMessage) {
               await db.ref('groups/' + groupId + '/messages').push({
-                fromUid: currentUserId,
-                fromUsername: currentUsername || 'User',
+                fromUid: 'system',
+                fromUsername: 'System',
                 text: `${username} has joined the group`,
                 time: Date.now(),
-                isSystemMessage: true
+                isSystem: true
               });
             }
           }
@@ -3299,11 +3362,11 @@ As Chatra AI, you're here to help users with questions, provide creative assista
         
         
         await db.ref('groups/' + groupId + '/messages').push({
-          fromUid: currentUserId,
-          fromUsername: currentUsername || 'User',
+          fromUid: 'system',
+          fromUsername: 'System',
           text: `${currentUsername} joined via invite code`,
           time: Date.now(),
-          isSystemMessage: true
+          isSystem: true
         });
         
         showToast('Joined ' + (groupInfo.name || 'group') + '!', 'success');
@@ -4500,7 +4563,7 @@ As Chatra AI, you're here to help users with questions, provide creative assista
               wrapper.appendChild(img);
               const replayBtn = document.createElement('button');
               replayBtn.className = 'absolute bottom-3 right-3 bg-black/60 hover:bg-black/80 text-white text-xs px-2 py-1 rounded';
-              replayBtn.textContent = 'â†» GIF';
+              replayBtn.textContent = '↻ GIF';
               replayBtn.onclick = (e) => { e.stopPropagation(); replayGif(img); };
               wrapper.appendChild(replayBtn);
               bubble.appendChild(wrapper);
@@ -4878,23 +4941,12 @@ As Chatra AI, you're here to help users with questions, provide creative assista
             });
           }
           
-          // Prevent double-send for groups
-          let isSendingGroupMessage = false;
-          
           groupsPageForm.addEventListener('submit', async (e) => {
             e.preventDefault();
-            
-            // Prevent double-send
-            if (isSendingGroupMessage) {
-              console.log("[groups] already sending, ignoring duplicate call");
-              return;
-            }
-            
             if (!activeGroupId) return;
             const txt = (groupsPageInput && groupsPageInput.value) ? groupsPageInput.value.trim() : '';
             if (!txt) return;
             
-            isSendingGroupMessage = true;
             
             if (groupsPageError) groupsPageError.textContent = '';
             
@@ -4915,8 +4967,6 @@ As Chatra AI, you're here to help users with questions, provide creative assista
             } catch (err) {
               console.error(err);
               if (groupsPageError) groupsPageError.textContent = err.message || 'Send failed';
-            } finally {
-              isSendingGroupMessage = false;
             }
           });
         }
@@ -4926,33 +4976,19 @@ As Chatra AI, you're here to help users with questions, provide creative assista
         const dmCancelMediaBtn = document.getElementById('dmCancelMediaBtn');
         let pendingDmMediaUrl = null;
         let pendingDmMediaFileId = null;
-        
-        // Prevent double-send for DM page
-        let isSendingDMPage = false;
-        
         if (dmPageForm) {
           dmPageForm.addEventListener('submit', async (e) => {
             e.preventDefault();
-            
-            // Prevent double-send
-            if (isSendingDMPage) {
-              console.log("[dmPage] already sending, ignoring duplicate call");
-              return;
-            }
-            
             if (!activeDMThread || !dmPageInput || !activeDMTarget) return;
             const text = dmPageInput.value.trim();
             
             if (!text && !pendingDmMediaUrl) return;
-
-            isSendingDMPage = true;
 
             try {
               
               const privacyCheck = await checkDmPrivacy(activeDMTarget.uid);
               if (!privacyCheck.allowed) {
                 if (dmPageError) dmPageError.textContent = privacyCheck.reason;
-                isSendingDMPage = false;
                 return;
               }
               
@@ -5041,7 +5077,17 @@ As Chatra AI, you're here to help users with questions, provide creative assista
                     botReply = cleanAiResponse(botReply);
                     botReply = botReply.replace(/\n{3,}/g, '\n\n').trim();
                     
-                    addToAiMemory(currentUserId, 'assistant', botReply, currentUsername);
+                    // Extract image context if AI showed an image
+                    let imageCtx = null;
+                    const imgMatch = botReply.match(/\[IMAGE:\s*(.+?)\]/i);
+                    const imgSearchMatch = botReply.match(/\[IMAGE_SEARCH:\s*(.+?)\]/i);
+                    if (imgMatch) {
+                      imageCtx = `[Showed image of: ${imgMatch[1].trim()}]`;
+                    } else if (imgSearchMatch) {
+                      imageCtx = `[Showed image search results for: ${imgSearchMatch[1].trim()}]`;
+                    }
+                    
+                    addToAiMemory(currentUserId, 'assistant', botReply, currentUsername, imageCtx);
                     
                     // Send AI response as a DM
                     const aiMsgRef = db.ref('dms/' + activeDMThread + '/messages').push();
@@ -5074,8 +5120,6 @@ As Chatra AI, you're here to help users with questions, provide creative assista
               } else {
                 if (dmPageError) dmPageError.textContent = 'Failed to send message';
               }
-            } finally {
-              isSendingDMPage = false;
             }
           });
         }
@@ -5340,6 +5384,7 @@ As Chatra AI, you're here to help users with questions, provide creative assista
       
       let PAGE_SIZE = 75; 
       let FAST_MODE_ENABLED = false;
+      let mentionNotificationsReady = false; // Don't show mention notifications until initial load is done
       let oldestTime = null;
       let newestTime = null;
       let isLoadingOlder = false;
@@ -5633,7 +5678,13 @@ As Chatra AI, you're here to help users with questions, provide creative assista
       }
 
       
-      function notifyMention(msg) {
+      function notifyMention(msg, messageId) {
+        // Don't show notifications until initial load is complete
+        if (!mentionNotificationsReady) {
+          console.log('[mentions] skipping notification - initial load not complete');
+          return;
+        }
+        
         try {
           const from = msg.user || 'Someone';
           const snippet = previewText((msg.text || '').replace(/\s+/g, ' ').trim(), 120);
@@ -5646,12 +5697,42 @@ As Chatra AI, you're here to help users with questions, provide creative assista
 
             const banner = document.createElement('div');
             banner.id = 'mentionInlineBanner';
-            banner.className = 'inline-report-anim mb-2 rounded-lg border border-amber-500/50 bg-amber-600/10 p-2 flex items-center gap-3 text-sm';
+            banner.className = 'inline-report-anim mb-2 rounded-lg border border-amber-500/50 bg-amber-600/10 p-3 flex items-center justify-between gap-3 text-sm cursor-pointer hover:bg-amber-600/20 transition-colors';
             
             const nameHtml = FAST_MODE_ENABLED ?
               `<span style="font-weight:600;color:#f59e0b">${escapeHtml(from)}</span>` :
               `<span class="mention-from">${escapeHtml(from)}</span>`;
-            banner.innerHTML = `<strong style="color:#f59e0b">Mentioned</strong> by ${nameHtml}: <span style="color:#f1f5f9">${escapeHtml(snippet)}</span>`;
+            
+            const goToLink = messageId ? `<button class="mention-goto-btn px-2 py-1 bg-amber-600 hover:bg-amber-500 rounded text-xs text-white font-medium whitespace-nowrap">Go to message</button>` : '';
+            
+            banner.innerHTML = `<div class="flex-1"><strong style="color:#f59e0b">Mentioned</strong> by ${nameHtml}: <span style="color:#f1f5f9">${escapeHtml(snippet)}</span></div>${goToLink}`;
+            
+            // Add click handler to go to the message
+            if (messageId) {
+              const goToBtn = banner.querySelector('.mention-goto-btn');
+              if (goToBtn) {
+                goToBtn.addEventListener('click', (e) => {
+                  e.stopPropagation();
+                  const msgEl = document.querySelector(`[data-msg-id="${messageId}"]`);
+                  if (msgEl) {
+                    msgEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    msgEl.classList.add('mention-flash');
+                    setTimeout(() => msgEl.classList.remove('mention-flash'), 2000);
+                  }
+                  if (banner.parentElement) banner.parentElement.removeChild(banner);
+                });
+              }
+              // Also allow clicking anywhere on banner
+              banner.addEventListener('click', () => {
+                const msgEl = document.querySelector(`[data-msg-id="${messageId}"]`);
+                if (msgEl) {
+                  msgEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  msgEl.classList.add('mention-flash');
+                  setTimeout(() => msgEl.classList.remove('mention-flash'), 2000);
+                }
+                if (banner.parentElement) banner.parentElement.removeChild(banner);
+              });
+            }
             
             if (formWrapper && messageForm && formWrapper.contains(messageForm)) {
               formWrapper.insertBefore(banner, messageForm);
@@ -5662,7 +5743,7 @@ As Chatra AI, you're here to help users with questions, provide creative assista
             setTimeout(() => {
               banner.classList.add('fade-out');
               setTimeout(() => { if (banner.parentElement) banner.parentElement.removeChild(banner); }, 600);
-            }, 4000);
+            }, 6000);
           } catch (e) {}
 
           
@@ -6726,14 +6807,14 @@ As Chatra AI, you're here to help users with questions, provide creative assista
                   <div class="flex items-center justify-between">
                     <div class="flex items-center gap-4 text-xs text-slate-400">
                       ${bannedAt ? '<span>ðŸ“… ' + bannedAt + '</span>' : ''}
-                      ${!isPermanent && expiresAt ? '<span>â° Expires: ' + expiresAt + '</span>' : ''}
+                      ${!isPermanent && expiresAt ? '<span>° Expires: ' + expiresAt + '</span>' : ''}
                     </div>
                   </div>
                 </div>
               </div>
               <div class="flex gap-2 flex-wrap mt-4 pt-4 border-t border-slate-700">
                 <button onclick="modPanelUnban('${uid}')" class="px-5 py-2 bg-green-600 hover:bg-green-500 text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-green-500/25 hover:scale-105">✓ Unban</button>
-                <button onclick="modPanelExtendBan('${uid}')" class="px-5 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-amber-500/25 hover:scale-105">â±ï¸ Extend</button>
+                <button onclick="modPanelExtendBan('${uid}')" class="px-5 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-amber-500/25 hover:scale-105">±ï¸ Extend</button>
                 ${fp && !isHardwareBanned ? `<button onclick="modPanelHardwareBan('${fp}', '${uid}')" class="px-5 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-purple-500/25 hover:scale-105">ðŸ–¥ï¸ HW Ban</button>` : ''}
                 ${fp && isHardwareBanned ? `<button onclick="modPanelUnHardwareBan('${fp}')" class="px-5 py-2 bg-slate-600 hover:bg-slate-500 text-white rounded-xl font-semibold transition-all shadow-lg hover:scale-105">ðŸ–¥ï¸ Remove HW</button>` : ''}
               </div>
@@ -6798,12 +6879,12 @@ As Chatra AI, you're here to help users with questions, provide creative assista
                     <div class="text-xs text-slate-500 uppercase tracking-wide mb-1">Reason</div>
                     <p class="text-slate-200">${escapeHtml(reason)}</p>
                   </div>
-                  ${!isPermanent && expiresAt ? `<div class="text-xs text-slate-400">â° Expires: ${expiresAt}</div>` : ''}
+                  ${!isPermanent && expiresAt ? `<div class="text-xs text-slate-400">° Expires: ${expiresAt}</div>` : ''}
                 </div>
               </div>
               <div class="flex gap-2 flex-wrap mt-4 pt-4 border-t border-slate-700">
                 <button onclick="modPanelUnmute('${uid}')" class="px-5 py-2 bg-green-600 hover:bg-green-500 text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-green-500/25 hover:scale-105">✓ Unmute</button>
-                <button onclick="modPanelExtendMute('${uid}')" class="px-5 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-amber-500/25 hover:scale-105">â±ï¸ Extend</button>
+                <button onclick="modPanelExtendMute('${uid}')" class="px-5 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-amber-500/25 hover:scale-105">±ï¸ Extend</button>
               </div>
             </div>
           `;
@@ -7271,19 +7352,14 @@ As Chatra AI, you're here to help users with questions, provide creative assista
         });
       }
 
-      // ============================================================================
-      // NOTIFICATION SYSTEM - Rewritten for reliability
-      // ============================================================================
-      
       function updateNotifBadge() {
         if (!notifBellBadge || !currentUserId) {
           notifBellBadge?.classList.add("hidden");
           return;
         }
-        // Count unread notifications
-        const count = notificationHistory.length;
+        const count = notificationHistory.filter(n => n.isDM).length;
         if (count > 0) {
-          notifBellBadge.textContent = count > 99 ? '99+' : count;
+          notifBellBadge.textContent = count;
           notifBellBadge.classList.remove("hidden");
         } else {
           notifBellBadge.classList.add("hidden");
@@ -7291,30 +7367,16 @@ As Chatra AI, you're here to help users with questions, provide creative assista
       }
 
       async function clearNotifications() {
-        // Actually clear all notifications
-        notificationHistory = [];
         
-        // Clear the badge
-        updateNotifBadge();
-        
-        // Re-render the empty list
-        renderNotificationHistory();
-        
-        // Save cleared state to Firebase using server timestamp
-        if (currentUserId) {
-          try {
-            const ref = db.ref("userSettings/" + currentUserId + "/clearedNotifications");
-            await ref.set(firebase.database.ServerValue.TIMESTAMP);
-            // Read back the server timestamp to update local cache
-            const snap = await ref.once('value');
-            const serverTime = snap.val();
-            if (typeof serverTime === 'number') {
-              lastNotificationClearTime = serverTime;
-            }
-          } catch (e) {
-            console.warn('[notifications] failed to save cleared state:', e);
+        notificationHistory.forEach(n => {
+          if (n.isDM && n.threadId) {
+            clearedNotificationThreads.add(n.threadId);
           }
-        }
+        });
+        await saveClearedNotifications();
+        
+        updateNotifBadge();
+        renderNotificationHistory();
       }
 
       function renderNotificationHistory() {
@@ -7412,7 +7474,7 @@ As Chatra AI, you're here to help users with questions, provide creative assista
           'b': '[b8ÃŸ]',
           'c': '[cÃ§(\[]',
           'd': '[dÎ´]',
-          'e': '[e3Ã¨Ã©ÃªÃ«â‚¬]',
+          'e': '[e3Ã¨Ã©ÃªÃ«‚¬]',
           'f': '[f]',
           'g': '[g9q]',
           'h': '[h#]',
@@ -7487,9 +7549,20 @@ As Chatra AI, you're here to help users with questions, provide creative assista
       function filterBadWords(text) {
         if (!text) return text;
         
+        // Whitelist common false positives (like "of a gif")
+        const WHITELIST_PHRASES = [
+          { pattern: /\bof\s+a\s+gif\b/gi, placeholder: '___OF_A_GIF___' },
+          { pattern: /\bgif\s+of\s+a\b/gi, placeholder: '___GIF_OF_A___' },
+        ];
+        
+        // Replace whitelisted phrases with placeholders
+        let processed = text;
+        for (const item of WHITELIST_PHRASES) {
+          processed = processed.replace(item.pattern, item.placeholder);
+        }
         
         for (let pattern of THREAT_PATTERNS) {
-          if (pattern.test(text)) {
+          if (pattern.test(processed)) {
             console.warn("[filter] Threat/violence detected in message");
             return "[FILTERED - VIOLENT CONTENT NOT ALLOWED]";
           }
@@ -7497,7 +7570,7 @@ As Chatra AI, you're here to help users with questions, provide creative assista
         
         
         for (let pattern of HATE_PATTERNS) {
-          if (pattern.test(text)) {
+          if (pattern.test(processed)) {
             console.warn("[filter] Hate speech/harassment detected in message");
             return "[FILTERED - HATEFUL/HARASSMENT CONTENT NOT ALLOWED]";
           }
@@ -7505,7 +7578,7 @@ As Chatra AI, you're here to help users with questions, provide creative assista
         
         
         for (let pattern of FLEXIBLE_SEVERE_PATTERNS) {
-          if (pattern.test(text)) {
+          if (pattern.test(processed)) {
             console.warn("[filter] Severe slur detected in message");
             return "[FILTERED - HATEFUL/HARASSMENT CONTENT NOT ALLOWED]";
           }
@@ -7514,7 +7587,7 @@ As Chatra AI, you're here to help users with questions, provide creative assista
         
         
         let hasFiltered = false;
-        let filtered = text;
+        let filtered = processed;
         
         for (let pattern of FLEXIBLE_BAD_WORD_PATTERNS) {
           if (pattern.test(filtered)) {
@@ -7532,6 +7605,10 @@ As Chatra AI, you're here to help users with questions, provide creative assista
             return '*'.repeat(match.length);
           });
         }
+        
+        // Restore whitelisted phrases
+        filtered = filtered.replace(/___OF_A_GIF___/g, 'of a gif');
+        filtered = filtered.replace(/___GIF_OF_A___/g, 'gif of a');
         
         return filtered;
       }
@@ -8106,8 +8183,8 @@ As Chatra AI, you're here to help users with questions, provide creative assista
             
             
             entries.forEach((item) => {
-              // Skip if this notification is older than last clear time
-              if (item.lastTime && item.lastTime <= lastNotificationClearTime) return;
+              
+              if (clearedNotificationThreads.has(item.threadId)) return;
               
               if (!item.lastMsg) return;
 
@@ -8406,16 +8483,12 @@ As Chatra AI, you're here to help users with questions, provide creative assista
 
         if (username.length < 2 || username.length > 12) {
           registerError.textContent = "Username must be 2-12 characters.";
-          registerBtn.textContent = originalRegText;
-          registerBtn.disabled = false;
           return;
         }
 
         
         if (!/^[a-zA-Z0-9_ -]+$/.test(username) || /^[_-]|[_-]$/.test(username)) {
           registerError.textContent = "Use letters/numbers/underscore/dash/space (no leading/trailing _ or -).";
-          registerBtn.textContent = originalRegText;
-          registerBtn.disabled = false;
           return;
         }
 
@@ -8425,8 +8498,6 @@ As Chatra AI, you're here to help users with questions, provide creative assista
           if (fpCheck.banned) {
             console.log("[register] device fingerprint is banned");
             registerError.textContent = "This device has been banned. Contact support.";
-            registerBtn.textContent = originalRegText;
-            registerBtn.disabled = false;
             return;
           }
         } catch (e) {
@@ -8469,22 +8540,16 @@ As Chatra AI, you're here to help users with questions, provide creative assista
 
         if (usernameHasBad) {
           registerError.textContent = "Username not allowed.";
-          registerBtn.textContent = originalRegText;
-          registerBtn.disabled = false;
           return;
         }
 
         if (isLocallyBlockedUsername(username)) {
           registerError.textContent = "Username not allowed.";
-          registerBtn.textContent = originalRegText;
-          registerBtn.disabled = false;
           return;
         }
 
         if (password !== passwordConfirm) {
           registerError.textContent = "Passwords do not match.";
-          registerBtn.textContent = originalRegText;
-          registerBtn.disabled = false;
           return;
         }
 
@@ -8493,8 +8558,6 @@ As Chatra AI, you're here to help users with questions, provide creative assista
           if (!registerError.textContent) {
             registerError.textContent = "That username is already taken.";
           }
-          registerBtn.textContent = originalRegText;
-          registerBtn.disabled = false;
           return;
         }
 
@@ -8541,9 +8604,6 @@ As Chatra AI, you're here to help users with questions, provide creative assista
           
           await storeFingerprint(user.uid);
           
-          // Reset button (form will be hidden anyway)
-          registerBtn.textContent = originalRegText || 'Sign Up';
-          registerBtn.disabled = false;
           
           registerForm.classList.add("hidden");
         } catch (error) {
@@ -8603,8 +8663,6 @@ As Chatra AI, you're here to help users with questions, provide creative assista
           if (fpCheck.banned) {
             console.log("[login] device fingerprint is banned");
             loginError.textContent = "This device has been banned. Contact support.";
-            loginBtn.textContent = originalText;
-            loginBtn.disabled = false;
             return;
           }
         } catch (e) {
@@ -8627,8 +8685,6 @@ As Chatra AI, you're here to help users with questions, provide creative assista
             if (bannedEmailSnap.exists() || bannedUsernameSnap.exists()) {
               const bannedReason = bannedEmailSnap.val()?.reason || bannedUsernameSnap.val()?.reason || "Account has been permanently banned";
               loginError.textContent = "This account is banned: " + bannedReason;
-              loginBtn.textContent = originalText;
-              loginBtn.disabled = false;
               return;
             }
           } catch (banCheckErr) {
@@ -9502,7 +9558,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             }
           });
           
-          nameLabel.title = "Click to view profile â€¢ Shift+Click to @mention";
+          nameLabel.title = "Click to view profile €¢ Shift+Click to @mention";
           column.appendChild(nameLabel);
         } else {
           
@@ -9661,60 +9717,59 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           const textSpan = document.createElement("span");
           textSpan.className = "message-text-reveal inline-block font-medium";
           
-          // Check for web search trigger [SEARCH: query] or [IMAGE_SEARCH: query]
+          // Check for triggers: [SEARCH: query], [IMAGE_SEARCH: query], [IMAGE: query]
           let displayText = msg.text;
           let searchQuery = null;
           let isImageSearch = false;
+          let isSingleImage = false;
           
-          const imageSearchMatch = msg.text.match(/\[IMAGE_SEARCH:\s*(.+?)\]/);
-          const webSearchMatch = msg.text.match(/\[SEARCH:\s*(.+?)\]/);
+          const singleImageMatch = msg.text.match(/\[IMAGE:\s*(.+?)\]/i);
+          const imageSearchMatch = msg.text.match(/\[IMAGE_SEARCH:\s*(.+?)\]/i);
+          const webSearchMatch = msg.text.match(/\[SEARCH:\s*(.+?)\]/i);
           
-          // Use message ID to prevent re-triggering searches on page reload
-          const searchMsgKey = messageId ? `msg:${messageId}` : null;
+          // Always strip these tags from display text for AI messages
+          if (isAiMsg) {
+            displayText = displayText.replace(/\[IMAGE:\s*[^\]]+\]/gi, '').trim();
+            displayText = displayText.replace(/\[IMAGE_SEARCH:\s*[^\]]+\]/gi, '').trim();
+            displayText = displayText.replace(/\[SEARCH:\s*[^\]]+\]/gi, '').trim();
+          }
           
-          if (imageSearchMatch && isAiMsg) {
+          if (singleImageMatch && isAiMsg) {
+            // Single image - embed inline
+            searchQuery = singleImageMatch[1].trim();
+            isSingleImage = true;
+            
+            // Fetch single best image and embed it
+            setTimeout(async () => {
+              const results = await performWebSearch(searchQuery, true);
+              if (results && results.results && results.results.length > 0) {
+                const bestImage = results.results[0];
+                displaySingleImage(bestImage, bubble);
+              }
+            }, 300);
+          } else if (imageSearchMatch && isAiMsg) {
             searchQuery = imageSearchMatch[1].trim();
             isImageSearch = true;
-            displayText = msg.text.replace(/\[IMAGE_SEARCH:\s*.+?\]\s*/g, '').trim();
             
-            // Only trigger search if we haven't already for this message
-            if (!searchMsgKey || !displayedSearches.has(searchMsgKey + ':img')) {
-              if (searchMsgKey) {
-                const imgKey = searchMsgKey + ':img';
-                displayedSearches.add(imgKey);
-                // TTL cleanup after 5 minutes
-                setTimeout(() => displayedSearches.delete(imgKey), 5 * 60 * 1000);
+            // Perform image search - show inline in bubble
+            const currentBubble = bubble;
+            setTimeout(async () => {
+              const results = await performWebSearch(searchQuery, true);
+              if (results) {
+                displaySearchResults(searchQuery, results, currentBubble);
               }
-              // Capture bubble reference for inline display
-              const currentBubble = bubble;
-              setTimeout(async () => {
-                const results = await performWebSearch(searchQuery, true);
-                if (results) {
-                  displaySearchResults(searchQuery, results, currentBubble);
-                }
-              }, 500);
-            }
+            }, 500);
           } else if (webSearchMatch && isAiMsg) {
             searchQuery = webSearchMatch[1].trim();
-            displayText = msg.text.replace(/\[SEARCH:\s*.+?\]\s*/g, '').trim();
             
-            // Only trigger search if we haven't already for this message
-            if (!searchMsgKey || !displayedSearches.has(searchMsgKey + ':web')) {
-              if (searchMsgKey) {
-                const webKey = searchMsgKey + ':web';
-                displayedSearches.add(webKey);
-                // TTL cleanup after 5 minutes
-                setTimeout(() => displayedSearches.delete(webKey), 5 * 60 * 1000);
+            // Perform web search - show inline in bubble
+            const currentBubble = bubble;
+            setTimeout(async () => {
+              const results = await performWebSearch(searchQuery, false);
+              if (results) {
+                displaySearchResults(searchQuery, results, currentBubble);
               }
-              // Capture bubble reference for inline display
-              const currentBubble = bubble;
-              setTimeout(async () => {
-                const results = await performWebSearch(searchQuery, false);
-                if (results) {
-                  displaySearchResults(searchQuery, results, currentBubble);
-                }
-              }, 500);
-            }
+            }, 500);
           }
           
           textSpan.innerHTML = renderTextWithMentions(displayText, isMine);
@@ -9742,12 +9797,12 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
                 
                 if (messageId) {
                   if (!mentionNotified.has(messageId)) {
-                    notifyMention(msg);
+                    notifyMention(msg, messageId);
                     markMentionNotified(messageId);
                   }
                 } else {
                   
-                  notifyMention(msg);
+                  notifyMention(msg, null);
                 }
               }
 
@@ -10311,12 +10366,21 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
                 };
 
                 
-                const scrollDelays = (typeof FAST_MODE_ENABLED !== 'undefined' && FAST_MODE_ENABLED) ? [50, 150, 400] : [300, 800, 1500];
+                const scrollDelays = (typeof FAST_MODE_ENABLED !== 'undefined' && FAST_MODE_ENABLED) ? [20, 50, 100] : [300, 800, 1500];
                 scrollDelays.forEach(d => setTimeout(scrollToBottom, d));
 
                 
-                const extraDelay = (typeof FAST_MODE_ENABLED !== 'undefined' && FAST_MODE_ENABLED) ? 50 : 1500;
-                setTimeout(() => { if (loadingScreen) loadingScreen.classList.add("hidden"); }, extraDelay);
+                // Show loading screen a bit longer for smoother experience
+                const extraDelay = (typeof FAST_MODE_ENABLED !== 'undefined' && FAST_MODE_ENABLED) ? 500 : 2500;
+                setTimeout(() => { 
+                  if (loadingScreen) loadingScreen.classList.add("hidden");
+                  // Enable mention notifications after initial load is complete (with longer delay)
+                  // This prevents showing old mentions as notifications on reload
+                  setTimeout(() => {
+                    mentionNotificationsReady = true;
+                    console.log('[mentions] notifications now enabled');
+                  }, 3000);
+                }, extraDelay);
 
                 if (count < PAGE_SIZE) {
                   allHistoryLoaded = true;
@@ -10693,7 +10757,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             }
             
             
-            await loadClearedNotifications();
+            loadClearedNotifications();
             
             
             checkAndShowGuidelines(user.uid);
@@ -10744,14 +10808,18 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             }
 
             console.log("[auth] starting messages listener from auth state change");
+            
+            // IMPORTANT: Load mentioned notifications BEFORE starting messages listener
+            // This prevents showing duplicate mention notifications on every page reload
+            await loadMentionedNotifsFromStorage();
+            console.log('[mentions] notified set loaded with', mentionNotified.size, 'entries');
+            
             startMessagesListener();
             startTypingListener();
             await loadFriendsCache();
             
             
             loadUsersForMentions();
-            
-            loadMentionedNotifsFromStorage();
 
             
             checkAdmin();
@@ -10786,6 +10854,13 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             if (fastModeToggle) fastModeToggle.checked = settings.fastMode === true;
             applyFastMode(settings.fastMode === true, false);
             initRatingSettings(settings);
+            // Apply custom accent color if saved
+            if (settings.accentColor) {
+              applyAccentColor(settings.accentColor, false);
+              const accentInput = document.getElementById('customAccentColor');
+              if (accentInput) accentInput.value = settings.accentColor;
+              setActiveAccentPreset(settings.accentColor);
+            }
             
             
             
@@ -10878,7 +10953,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           currentUsername = null;
           messagesDiv.innerHTML = "";
           friendsCache.clear();
-          lastNotificationClearTime = 0;
+          clearedNotificationThreads.clear();
           dmLastSeenByThread = {};
           dmInboxInitialLoaded = false;
           detachModerationListeners();
@@ -10962,16 +11037,8 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         }
       };
 
-      // Prevent double-send with a lock
-      let isSendingMessage = false;
       
       async function sendMessage() {
-        // Prevent double-send
-        if (isSendingMessage) {
-          console.log("[send] already sending, ignoring duplicate call");
-          return;
-        }
-        
         let text = msgInput.value.trim();
         if (text === "" && !pendingMediaUrl) return;
 
@@ -11114,8 +11181,6 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
 
         const uid = userObj.uid;
 
-        // Set the sending lock
-        isSendingMessage = true;
         
         const originalBtnText = sendBtn.innerHTML;
         sendBtn.innerHTML = '<span class="animate-pulse">✓</span>';
@@ -11192,7 +11257,6 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             setTimeout(() => {
               sendBtn.innerHTML = originalBtnText;
               sendBtn.disabled = false;
-              isSendingMessage = false; // Release lock
             }, 300);
           })
           .catch((error) => {
@@ -11215,7 +11279,6 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             setTimeout(() => {
               sendBtn.innerHTML = originalBtnText;
               sendBtn.disabled = false;
-              isSendingMessage = false; // Release lock on error too
               currentWarningText = "";
               updateStatusBar();
             }, 3000);
@@ -11260,8 +11323,17 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             
             botReply = botReply.replace(/@everyone/gi, '@​everyone'); 
             
+            // Extract image context if AI showed an image
+            let imageCtx = null;
+            const imgMatch = botReply.match(/\[IMAGE:\s*(.+?)\]/i);
+            const imgSearchMatch = botReply.match(/\[IMAGE_SEARCH:\s*(.+?)\]/i);
+            if (imgMatch) {
+              imageCtx = `[Showed image of: ${imgMatch[1].trim()}]`;
+            } else if (imgSearchMatch) {
+              imageCtx = `[Showed image search results for: ${imgSearchMatch[1].trim()}]`;
+            }
             
-            addToAiMemory(uid, 'assistant', botReply, currentUsername);
+            addToAiMemory(uid, 'assistant', botReply, currentUsername, imageCtx);
 
             try {
               // Mark as AI response with special field
@@ -12841,7 +12913,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
       });
 
       notifBellBtn.addEventListener("click", async () => {
-        // Just open the modal, don't clear
+        await clearNotifications();
         renderNotificationHistory();
         notifModal.classList.remove("modal-closed");
         notifModal.classList.add("modal-open");
@@ -12859,8 +12931,10 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         }
       });
 
-      notifClearBtn.addEventListener("click", async () => {
-        await clearNotifications();
+      notifClearBtn.addEventListener("click", () => {
+        notificationHistory = [];
+        clearNotifications();
+        renderNotificationHistory();
       });
 
       
@@ -13192,8 +13266,11 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
       function applyFastMode(enabled, persist = true) {
         FAST_MODE_ENABLED = !!enabled;
         
-        PAGE_SIZE = enabled ? 40 : 75;
+        // FAST MODE: Even smaller page size and disable animations
+        // FAST MODE: Even smaller page size for faster loading
+        PAGE_SIZE = enabled ? 20 : 75;
         document.body.classList.toggle("perf-lite", enabled);
+        document.body.classList.toggle("reduce-motion", enabled);
         if (persist) saveUserSetting("fastMode", enabled);
         if (fastModeLabel) {
           fastModeLabel.textContent = enabled ? "Fast Mode (ON)" : "Fast Mode";
@@ -13700,19 +13777,8 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           }
         });
       }
-      
-      // Prevent DM double-send with a lock
-      let isSendingDM = false;
-      
       dmForm.addEventListener("submit", async (e) => {
         e.preventDefault();
-        
-        // Prevent double-send
-        if (isSendingDM) {
-          console.log("[dm] already sending, ignoring duplicate call");
-          return;
-        }
-        
         if (!currentUserId) {
           dmError.textContent = "Please log in.";
           return;
@@ -13766,14 +13832,12 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
 
         dmError.textContent = "";
         dmSendBtn.disabled = true;
-        isSendingDM = true; // Set the lock
 
         try {
           const privacyCheck = await checkDmPrivacy(activeDMTarget.uid);
           if (!privacyCheck.allowed) {
             dmError.textContent = privacyCheck.reason;
             dmSendBtn.disabled = false;
-            isSendingDM = false; // Release lock
             return;
           }
 
@@ -13827,12 +13891,10 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           dmLastUpdateTimeByThread[threadId] = now;
           dmInput.value = "";
           dmSendBtn.disabled = false;
-          isSendingDM = false; // Release lock on success
         } catch (err) {
           console.error("[dm] send error", err);
           dmError.textContent = err.message || "Failed to send DM.";
           dmSendBtn.disabled = false;
-          isSendingDM = false; // Release lock on error
         }
       });
 
@@ -13892,18 +13954,62 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         });
       });
 
+      // All theme mode class names
+      const THEME_MODES = ['light-mode', 'midnight-mode', 'ocean-mode', 'forest-mode', 'sunset-mode'];
       
       function applyTheme(theme, persist = true) {
+        // Remove all theme classes first
+        THEME_MODES.forEach(mode => document.body.classList.remove(mode));
+        
+        // Apply the selected theme
         if (theme === "light") {
           document.body.classList.add("light-mode");
-        } else {
-          document.body.classList.remove("light-mode");
+        } else if (theme === "midnight") {
+          document.body.classList.add("midnight-mode");
+        } else if (theme === "ocean") {
+          document.body.classList.add("ocean-mode");
+        } else if (theme === "forest") {
+          document.body.classList.add("forest-mode");
+        } else if (theme === "sunset") {
+          document.body.classList.add("sunset-mode");
         }
+        // 'dark' is the default, no class needed
+        
         if (persist) saveUserSetting("theme", theme);
         console.log("[settings] theme applied:", theme);
       }
+      
+      function applyAccentColor(color, persist = true) {
+        if (!color) return;
+        // Calculate hover color (slightly darker)
+        const r = parseInt(color.slice(1, 3), 16);
+        const g = parseInt(color.slice(3, 5), 16);
+        const b = parseInt(color.slice(5, 7), 16);
+        const hoverColor = '#' + [r, g, b].map(c => Math.max(0, c - 25).toString(16).padStart(2, '0')).join('');
+        
+        document.documentElement.style.setProperty('--accent-color', color);
+        document.documentElement.style.setProperty('--accent-hover', hoverColor);
+        document.body.setAttribute('data-accent', 'true');
+        
+        if (persist) saveUserSetting("accentColor", color);
+        console.log("[settings] accent color applied:", color);
+      }
+      
+      function resetAccentColor() {
+        document.documentElement.style.removeProperty('--accent-color');
+        document.documentElement.style.removeProperty('--accent-hover');
+        document.body.removeAttribute('data-accent');
+        saveUserSetting("accentColor", null);
+        console.log("[settings] accent color reset");
+      }
 
       function setActiveThemeButton(theme) {
+        // Update dropdown
+        const themeSelect = document.getElementById('themeSelect');
+        if (themeSelect) {
+          themeSelect.value = theme;
+        }
+        // Legacy button support
         document.querySelectorAll(".theme-btn").forEach((b) => {
           const isActive = b.getAttribute("data-theme") === theme;
           b.classList.remove("active", "bg-sky-600", "hover:bg-sky-700", "text-white");
@@ -13914,7 +14020,27 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           }
         });
       }
+      
+      function setActiveAccentPreset(color) {
+        document.querySelectorAll('.accent-preset').forEach(btn => {
+          const isActive = btn.getAttribute('data-accent') === color;
+          btn.classList.remove('ring-white', 'ring-offset-2', 'ring-offset-slate-900');
+          if (isActive) {
+            btn.classList.add('ring-white', 'ring-offset-2', 'ring-offset-slate-900');
+          }
+        });
+      }
 
+      // Theme dropdown handler
+      const themeSelect = document.getElementById('themeSelect');
+      if (themeSelect) {
+        themeSelect.addEventListener('change', (e) => {
+          const theme = e.target.value;
+          applyTheme(theme);
+        });
+      }
+
+      // Legacy button support
       document.querySelectorAll(".theme-btn").forEach((btn) => {
         btn.addEventListener("click", () => {
           const theme = btn.getAttribute("data-theme");
@@ -13922,6 +14048,73 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           applyTheme(theme);
         });
       });
+      
+      // Accent preset handlers
+      document.querySelectorAll('.accent-preset').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const color = btn.getAttribute('data-accent');
+          applyAccentColor(color);
+          setActiveAccentPreset(color);
+          const customAccentInput = document.getElementById('customAccentColor');
+          if (customAccentInput) customAccentInput.value = color;
+        });
+      });
+      
+      // Custom accent color handlers
+      const customAccentColor = document.getElementById('customAccentColor');
+      const resetAccentBtn = document.getElementById('resetAccentBtn');
+      
+      if (customAccentColor) {
+        customAccentColor.addEventListener('change', (e) => {
+          const color = e.target.value;
+          applyAccentColor(color);
+          setActiveAccentPreset(color);
+        });
+      }
+      
+      if (resetAccentBtn) {
+        resetAccentBtn.addEventListener('click', () => {
+          resetAccentColor();
+          if (customAccentColor) customAccentColor.value = '#0ea5e9';
+          setActiveAccentPreset('#0ea5e9');
+        });
+      }
+      
+      // Feature Announcement Modal (saves to Firebase)
+      async function showFeatureAnnouncement() {
+        const modal = document.getElementById('featureAnnouncementModal');
+        if (!modal || !currentUserId) return;
+        
+        // Check Firebase for dismissed status
+        const userRef = firebase.database().ref(`users/${currentUserId}/settings/featureAnnouncementDismissed`);
+        const snapshot = await userRef.once('value');
+        const dismissed = snapshot.val();
+        
+        if (!dismissed || dismissed !== 'v1.5.0') {
+          modal.style.display = 'flex';
+          modal.classList.remove('hidden');
+        }
+      }
+      
+      async function hideFeatureAnnouncement() {
+        const modal = document.getElementById('featureAnnouncementModal');
+        if (modal) {
+          modal.style.display = 'none';
+          modal.classList.add('hidden');
+        }
+        // Always save to Firebase when dismissed
+        if (currentUserId) {
+          await firebase.database().ref(`users/${currentUserId}/settings/featureAnnouncementDismissed`).set('v1.5.0');
+        }
+      }
+      
+      const dismissFeatureBtn = document.getElementById('dismissFeatureAnnouncement');
+      if (dismissFeatureBtn) dismissFeatureBtn.addEventListener('click', hideFeatureAnnouncement);
+      
+      // Show feature announcement after a short delay on login
+      setTimeout(() => {
+        if (currentUserId) showFeatureAnnouncement();
+      }, 2000);
 
       
       uploadPicBtn.addEventListener("click", () => {
@@ -14670,7 +14863,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           if (sentReqSnap.exists()) {
             sendFriendRequestBtn.disabled = true;
             sendFriendRequestBtn.style.background = "rgb(100, 116, 139)";
-            sendFriendRequestBtn.textContent = "â³ Pending";
+            sendFriendRequestBtn.textContent = "³ Pending";
             setFriendRequestStatus("Friend request already sent.", "info");
             return;
           }
@@ -14680,7 +14873,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           if (reverseReqSnap.exists()) {
             sendFriendRequestBtn.disabled = true;
             sendFriendRequestBtn.style.background = "rgb(100, 116, 139)";
-            sendFriendRequestBtn.textContent = "â†© Incoming";
+            sendFriendRequestBtn.textContent = "†© Incoming";
             setFriendRequestStatus("They sent you a friend request. Accept?", "info");
             return;
           }
@@ -15326,9 +15519,34 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           viewProfileModal.classList.remove("modal-open");
           viewProfileModal.classList.add("modal-closed");
           
-          // Open DM with this user
+          // Open DM with this user - use the same logic as startDmWithUser
           try {
             const threadId = makeThreadId(currentUserId, targetUid);
+            
+            // Set up YOUR OWN participant entry (database rules only allow writing your own)
+            await db.ref('dms/' + threadId + '/participants/' + currentUserId).set(true);
+            
+            // Update YOUR OWN DM inbox
+            const now = Date.now();
+            await db.ref('dmInbox/' + currentUserId + '/' + threadId).update({
+              withUid: targetUid,
+              withUsername: targetUsername,
+              lastTime: now
+            });
+            
+            // Try to set up the other user's participant entry (may fail due to permissions, that's ok)
+            // They'll be added when they first access the thread
+            try {
+              await db.ref('dms/' + threadId + '/participants/' + targetUid).set(true);
+              await db.ref('dmInbox/' + targetUid + '/' + threadId).update({
+                withUid: currentUserId,
+                withUsername: currentUsername,
+                lastTime: now
+              });
+            } catch (e) {
+              // Permission denied is expected if the other user needs to accept/open the DM first
+              console.log('[profile-dm] could not set other user participant (expected):', e.message);
+            }
             
             // Navigate to DM page
             const dmPage = document.getElementById('dmPage');
@@ -15493,7 +15711,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             infoDiv.className = "flex flex-col flex-1 ml-3";
             infoDiv.innerHTML = `
               <span class="text-sm font-medium text-slate-100">Loading...</span>
-              <span class="text-xs text-slate-400">${isOnline ? '<span class="text-emerald-400">Online</span> â€¢ ' : ''}Added ${addedAt}</span>
+              <span class="text-xs text-slate-400">${isOnline ? '<span class="text-emerald-400">Online</span> €¢ ' : ''}Added ${addedAt}</span>
             `;
             
             const container = document.createElement("div");
@@ -15514,7 +15732,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
                   avatarDiv.innerHTML = friendUsername.charAt(0).toUpperCase();
                   infoDiv.innerHTML = `
                     <span class="text-sm font-medium text-slate-100">${friendUsername}</span>
-                    <span class="text-xs text-slate-400">${isOnline ? '<span class="text-emerald-400">Online</span> â€¢ ' : ''}Added ${addedAt}</span>
+                    <span class="text-xs text-slate-400">${isOnline ? '<span class="text-emerald-400">Online</span> €¢ ' : ''}Added ${addedAt}</span>
                   `;
                   
                   
@@ -16139,7 +16357,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           }, 800);
         } catch (err) {
           
-          confirmDeleteBtn.innerHTML = 'âœ— Failed';
+          confirmDeleteBtn.innerHTML = 'œ— Failed';
           confirmDeleteBtn.className = "flex-1 px-4 py-2 bg-orange-600 text-white rounded-lg font-medium";
           
           setTimeout(() => {
@@ -16341,7 +16559,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         },
         {
           target: "#menuToggle",
-          title: "Open the Menu â˜°",
+          title: "Open the Menu ˜°",
           desc: "Click the menu button (three dots) to access your profile, settings, friends, DMs, Patch Notes, Suggestions & Help (submit suggestions, bug reports, ideas, or ban appeals), and more!",
           position: "bottom"
         },
@@ -16365,7 +16583,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         },
         {
           target: null, 
-          title: "You're All Set! ðŸŽ‰",
+          title: "You're All Set! ‰",
           desc: "That's the basics! Explore the menu for more features like adding friends, customizing your profile, and adjusting settings. Have fun chatting!",
           position: "center"
         }

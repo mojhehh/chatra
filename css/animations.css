@@ -125,3 +125,27 @@
     transform: translateY(0);
   }
 }
+
+/* ===== FAST MODE / REDUCE MOTION ===== */
+/* Disable animations when fast mode is enabled */
+body.reduce-motion *,
+body.reduce-motion *::before,
+body.reduce-motion *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+}
+
+body.reduce-motion .bg-orb {
+  animation: none !important;
+  opacity: 0.3;
+}
+
+body.reduce-motion .message-bubble-anim {
+  animation: none !important;
+}
+
+body.reduce-motion .animate-spin,
+body.reduce-motion .animate-pulse {
+  animation: none !important;
+}

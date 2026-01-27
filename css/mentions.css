@@ -107,3 +107,36 @@ body.light-mode .mention-username {
 body.light-mode .mention-hint {
   color: #64748b;
 }
+
+/* Mention flash animation when jumping to a mentioned message */
+@keyframes mention-flash {
+  0%, 100% { background-color: transparent; }
+  25%, 75% { background-color: rgba(251, 191, 36, 0.3); }
+  50% { background-color: rgba(251, 191, 36, 0.5); }
+}
+
+.mention-flash {
+  animation: mention-flash 2s ease-in-out;
+  border-radius: 8px;
+}
+
+/* Mention inline banner styles */
+#mentionInlineBanner {
+  animation: mention-banner-slide 0.3s ease-out;
+}
+
+@keyframes mention-banner-slide {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.mention-goto-btn {
+  flex-shrink: 0;
+  transition: background 0.15s ease;
+}

@@ -110,3 +110,187 @@ body.light-mode .input-shell {
 body.light-mode .input-shell:focus-within {
   border-color: #0ea5e9 !important;
 }
+
+/* ===== MIDNIGHT THEME ===== */
+body.midnight-mode {
+  background-color: #0f0f1a;
+  color: #e0e0ff;
+}
+
+body.midnight-mode .glass-card {
+  background: rgba(20, 20, 40, 0.9);
+  border-color: rgba(100, 100, 200, 0.2);
+}
+
+body.midnight-mode #messages {
+  background-color: #0a0a15;
+}
+
+body.midnight-mode .message-bubble-anim:not(.mine) {
+  background: rgba(30, 30, 60, 0.9) !important;
+  border-color: rgba(100, 100, 200, 0.2) !important;
+}
+
+body.midnight-mode .message-bubble-anim.mine {
+  background: linear-gradient(135deg, #6366f1, #4f46e5) !important;
+}
+
+body.midnight-mode .bg-slate-950,
+body.midnight-mode .bg-slate-900 {
+  background-color: #0f0f1a !important;
+}
+
+body.midnight-mode .bg-slate-800 {
+  background-color: #1a1a2e !important;
+}
+
+body.midnight-mode .bg-slate-700 {
+  background-color: #252540 !important;
+}
+
+body.midnight-mode .border-slate-700,
+body.midnight-mode .border-slate-600\/60 {
+  border-color: rgba(100, 100, 200, 0.3) !important;
+}
+
+body.midnight-mode .bg-orb-blue { background: radial-gradient(circle, rgba(99,102,241,0.4), transparent 70%); }
+body.midnight-mode .bg-orb-purple { background: radial-gradient(circle, rgba(139,92,246,0.4), transparent 70%); }
+body.midnight-mode .bg-orb-pink { background: radial-gradient(circle, rgba(168,85,247,0.3), transparent 70%); }
+
+/* ===== OCEAN THEME ===== */
+body.ocean-mode {
+  background-color: #0a1628;
+  color: #e0f2fe;
+}
+
+body.ocean-mode .glass-card {
+  background: rgba(15, 30, 55, 0.9);
+  border-color: rgba(56, 189, 248, 0.2);
+}
+
+body.ocean-mode #messages {
+  background-color: #071422;
+}
+
+body.ocean-mode .message-bubble-anim:not(.mine) {
+  background: rgba(15, 40, 70, 0.9) !important;
+  border-color: rgba(56, 189, 248, 0.2) !important;
+}
+
+body.ocean-mode .message-bubble-anim.mine {
+  background: linear-gradient(135deg, #0ea5e9, #0284c7) !important;
+}
+
+body.ocean-mode .bg-slate-950,
+body.ocean-mode .bg-slate-900 {
+  background-color: #0a1628 !important;
+}
+
+body.ocean-mode .bg-slate-800 {
+  background-color: #0f2540 !important;
+}
+
+body.ocean-mode .bg-slate-700 {
+  background-color: #153050 !important;
+}
+
+body.ocean-mode .border-slate-700,
+body.ocean-mode .border-slate-600\/60 {
+  border-color: rgba(56, 189, 248, 0.3) !important;
+}
+
+body.ocean-mode .bg-orb-blue { background: radial-gradient(circle, rgba(14,165,233,0.4), transparent 70%); }
+body.ocean-mode .bg-orb-purple { background: radial-gradient(circle, rgba(6,182,212,0.3), transparent 70%); }
+body.ocean-mode .bg-orb-pink { background: radial-gradient(circle, rgba(34,211,238,0.25), transparent 70%); }
+
+/* ===== FOREST THEME ===== */
+body.forest-mode {
+  background-color: #0a1a0f;
+  color: #d1fae5;
+}
+
+body.forest-mode .glass-card {
+  background: rgba(15, 35, 20, 0.9);
+  border-color: rgba(34, 197, 94, 0.2);
+}
+
+body.forest-mode #messages {
+  background-color: #071409;
+}
+
+body.forest-mode .message-bubble-anim:not(.mine) {
+  background: rgba(20, 45, 25, 0.9) !important;
+  border-color: rgba(34, 197, 94, 0.2) !important;
+}
+
+body.forest-mode .message-bubble-anim.mine {
+  background: linear-gradient(135deg, #22c55e, #16a34a) !important;
+}
+
+body.forest-mode .bg-slate-950,
+body.forest-mode .bg-slate-900 {
+  background-color: #0a1a0f !important;
+}
+
+body.forest-mode .bg-slate-800 {
+  background-color: #0f2515 !important;
+}
+
+body.forest-mode .bg-slate-700 {
+  background-color: #153520 !important;
+}
+
+body.forest-mode .border-slate-700,
+body.forest-mode .border-slate-600\/60 {
+  border-color: rgba(34, 197, 94, 0.3) !important;
+}
+
+body.forest-mode .bg-orb-blue { background: radial-gradient(circle, rgba(34,197,94,0.4), transparent 70%); }
+body.forest-mode .bg-orb-purple { background: radial-gradient(circle, rgba(74,222,128,0.3), transparent 70%); }
+body.forest-mode .bg-orb-pink { background: radial-gradient(circle, rgba(16,185,129,0.25), transparent 70%); }
+
+/* ===== SUNSET THEME ===== */
+body.sunset-mode {
+  background-color: #1a0f0a;
+  color: #fef3c7;
+}
+
+body.sunset-mode .glass-card {
+  background: rgba(35, 20, 15, 0.9);
+  border-color: rgba(251, 146, 60, 0.2);
+}
+
+body.sunset-mode #messages {
+  background-color: #140a07;
+}
+
+body.sunset-mode .message-bubble-anim:not(.mine) {
+  background: rgba(45, 25, 18, 0.9) !important;
+  border-color: rgba(251, 146, 60, 0.2) !important;
+}
+
+body.sunset-mode .message-bubble-anim.mine {
+  background: linear-gradient(135deg, #f97316, #ea580c) !important;
+}
+
+body.sunset-mode .bg-slate-950,
+body.sunset-mode .bg-slate-900 {
+  background-color: #1a0f0a !important;
+}
+
+body.sunset-mode .bg-slate-800 {
+  background-color: #25150f !important;
+}
+
+body.sunset-mode .bg-slate-700 {
+  background-color: #352015 !important;
+}
+
+body.sunset-mode .border-slate-700,
+body.sunset-mode .border-slate-600\/60 {
+  border-color: rgba(251, 146, 60, 0.3) !important;
+}
+
+body.sunset-mode .bg-orb-blue { background: radial-gradient(circle, rgba(251,146,60,0.4), transparent 70%); }
+body.sunset-mode .bg-orb-purple { background: radial-gradient(circle, rgba(249,115,22,0.35), transparent 70%); }
+body.sunset-mode .bg-orb-pink { background: radial-gradient(circle, rgba(234,88,12,0.3), transparent 70%); }
