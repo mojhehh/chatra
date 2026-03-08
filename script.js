@@ -627,6 +627,15 @@
       function setupPresence(uid) {
         console.log('[presence] setupPresence called for uid:', uid);
 
+        // Tear down previous presence listeners to prevent leaks
+        if (connectedRef) {
+          connectedRef.off('value');
+        }
+        if (presenceHeartbeatInterval) {
+          clearInterval(presenceHeartbeatInterval);
+          presenceHeartbeatInterval = null;
+        }
+
         // create a new connection entry under the user's presence node
         const connRef = db.ref('presence/' + uid).push();
         presenceRef = connRef; // this ref points to presence/<uid>/<connId>
@@ -665,12 +674,20 @@
       
       let onlineUsersCache = {};
       
+      let onlineCountListenerRef = null;
+      
       function startOnlineCountListener() {
         console.log('[presence] startOnlineCountListener called');
         
+        // Detach previous listener to prevent leaks on re-login
+        if (onlineCountListenerRef) {
+          onlineCountListenerRef.off('value');
+        }
+        
         const STALE_THRESHOLD = 2 * 60 * 1000; // 2 minutes - if no heartbeat, consider offline
         
-        db.ref('presence').on('value', (snap) => {
+        onlineCountListenerRef = db.ref('presence');
+        onlineCountListenerRef.on('value', (snap) => {
           const data = snap.val() || {};
           const now = Date.now();
           let onlineCount = 0;
@@ -684,6 +701,8 @@
           
           Object.entries(data).forEach(([uid, presence]) => {
             try {
+              // AI already counted above — skip to avoid double count
+              if (uid === 'aEY7gNeuGcfBErxOHNEQYFzvhpp2') return;
               let isOnline = false;
 
               // presence may be the old flat object {state: 'online'}
@@ -776,6 +795,7 @@
       AI_BOT_UID = 'aEY7gNeuGcfBErxOHNEQYFzvhpp2';
       
       const AI_ADMIN_UID = 'aEY7gNeuGcfBErxOHNEQYFzvhpp2';
+      const aiProfileRef = db.ref('userProfiles/' + AI_BOT_UID);
       
       // Co-Owner UID (OWNER_UID is defined later in the file)
       const CO_OWNER_UID = '6n8hjmrUxhMHskX4BG8Ik9boMqa2';
@@ -848,8 +868,15 @@
       let lastKnownUserRole = null;
       let roleNotificationShown = false;
       
+      let staffRolesListenerRef = null;
+      
       function startStaffRolesListener() {
-        db.ref('staffRoles').on('value', (snap) => {
+        // Detach previous listener to prevent leaks on re-login
+        if (staffRolesListenerRef) {
+          staffRolesListenerRef.off('value');
+        }
+        staffRolesListenerRef = db.ref('staffRoles');
+        staffRolesListenerRef.on('value', (snap) => {
           const prevCache = { ...staffRolesCache };
           staffRolesCache = snap.val() || {};
           staffRolesLoaded = true;
@@ -1665,8 +1692,8 @@
         
         // Determine chat context
         let chatContext = "Global Chat";
-        if (currentPage === 'groups' && currentGroupId) {
-          const groupName = groupsList.find(g => g.id === currentGroupId)?.name || currentGroupId;
+        if (currentPage === 'groups' && activeGroupId) {
+          const groupName = (typeof cachedGroups !== 'undefined' && cachedGroups[activeGroupId]) ? cachedGroups[activeGroupId].name : activeGroupId;
           chatContext = `the ${groupName} group`;
         } else if (currentPage === 'dms' && activeDMTarget) {
           chatContext = `a direct message with ${activeDMTarget.username || 'a user'}`;
@@ -2017,6 +2044,7 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
       let activeDMTarget = null; 
       let dmMessagesRef = null;
       let dmMessagesListener = null;
+      let dmChildChangedListener = null;
       let dmInboxRef = null;
       let dmInboxListener = null;
       let dmUnreadCounts = {}; 
@@ -2125,6 +2153,7 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
       
       let messagesRemoveRef = null;
       let messagesRemoveListener = null;
+      let messagesChangedListener = null;
 
       
       let messagesRef = null;      
@@ -2221,6 +2250,7 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
       let currentPage = 'global'; 
       let dmPageMessagesRef = null;
       let dmPageMessagesListener = null;
+      let dmPageMessagesQueryRef = null;
 
       
       function updateNavSlider(activeTab) {
@@ -2428,7 +2458,12 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
           const avatar = document.createElement('div');
           avatar.className = 'w-10 h-10 rounded-full bg-gradient-to-br from-sky-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm overflow-hidden flex-shrink-0';
           if (info.photo) {
-            avatar.innerHTML = `<img src="${info.photo}" class="w-full h-full object-cover" alt="" />`;
+            const groupImg = document.createElement('img');
+            groupImg.src = info.photo;
+            groupImg.className = 'w-full h-full object-cover';
+            groupImg.alt = '';
+            avatar.innerHTML = '';
+            avatar.appendChild(groupImg);
           } else {
             avatar.textContent = name.charAt(0).toUpperCase();
           }
@@ -3040,7 +3075,12 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
         
         if (avatar && initial) {
           if (info.photo) {
-            avatar.innerHTML = `<img src="${info.photo}" class="w-full h-full object-cover" alt="Group photo" />`;
+            const settingsImg = document.createElement('img');
+            settingsImg.src = info.photo;
+            settingsImg.className = 'w-full h-full object-cover';
+            settingsImg.alt = 'Group photo';
+            avatar.innerHTML = '';
+            avatar.appendChild(settingsImg);
           } else {
             initial.textContent = (info.name || 'G').charAt(0).toUpperCase();
             avatar.innerHTML = '';
@@ -3321,12 +3361,19 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
         
         const groupId = codeData.groupId;
         
+        // Atomically check and increment uses count
+        const usesResult = await db.ref('groupInviteCodes/' + code).transaction((data) => {
+          if (!data) return data; // code doesn't exist
+          if (data.maxUses === 0) return; // abort - invalid code
+          if (data.maxUses > 0 && data.maxUses < 999999 && (data.uses || 0) >= data.maxUses) {
+            return; // abort - expired
+          }
+          data.uses = (data.uses || 0) + 1;
+          return data;
+        });
         
-        if (codeData.maxUses === 0) {
-          throw new Error('This invite code is invalid');
-        }
-        if (codeData.maxUses > 0 && codeData.maxUses < 999999 && (codeData.uses || 0) >= codeData.maxUses) {
-          throw new Error('This invite code has expired');
+        if (!usesResult.committed) {
+          throw new Error('This invite code has expired or is invalid');
         }
         
         
@@ -3354,11 +3401,10 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
         
         const joined = await atomicJoinGroup(groupId, currentUserId);
         if (!joined) {
+          // Undo the uses increment since join failed
+          await db.ref('groupInviteCodes/' + code + '/uses').transaction((uses) => Math.max((uses || 1) - 1, 0));
           throw new Error('This group is full');
         }
-        
-        
-        await db.ref('groupInviteCodes/' + code + '/uses').transaction((uses) => (uses || 0) + 1);
         
         
         await db.ref('groups/' + groupId + '/messages').push({
@@ -3427,9 +3473,10 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
             actionsHtml += `<button class="remove-member-btn text-xs px-2 py-0.5 rounded bg-red-600/20 text-red-400 hover:bg-red-600/40" data-uid="${uid}">Remove</button>`;
           }
           
+          const escapedPic = profilePic ? escapeHtml(profilePic) : null;
           row.innerHTML = `
             <div class="w-8 h-8 rounded-full bg-slate-600 flex items-center justify-center overflow-hidden flex-shrink-0">
-              ${profilePic ? `<img src="${profilePic}" class="w-full h-full object-cover" />` : `<span class="text-xs text-slate-300">${username.charAt(0).toUpperCase()}</span>`}
+              ${escapedPic ? `<img src="${escapedPic}" class="w-full h-full object-cover" />` : `<span class="text-xs text-slate-300">${username.charAt(0).toUpperCase()}</span>`}
             </div>
             <span class="flex-1 text-sm text-slate-200 truncate">${escapeHtml(username)}</span>
             ${badgesHtml}
@@ -3541,6 +3588,10 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
             canvas.width = w;
             canvas.height = h;
             const ctx = canvas.getContext('2d');
+            if (!ctx) {
+              showToast('Could not process image', 'error');
+              return;
+            }
             ctx.drawImage(img, 0, 0, w, h);
             const resized = canvas.toDataURL('image/jpeg', 0.8);
             
@@ -3567,10 +3618,20 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
         if (!avatar || !currentGroupInfo) return;
         
         if (currentGroupInfo.photo) {
-          avatar.innerHTML = `<img src="${currentGroupInfo.photo}" class="w-full h-full object-cover" alt="Group" />`;
+          const headerImg = document.createElement('img');
+          headerImg.src = currentGroupInfo.photo;
+          headerImg.className = 'w-full h-full object-cover';
+          headerImg.alt = 'Group';
+          avatar.innerHTML = '';
+          avatar.appendChild(headerImg);
         } else {
           const name = currentGroupInfo.name || 'G';
-          avatar.innerHTML = `<span id="groupHeaderInitial" class="text-white font-bold text-sm">${name.charAt(0).toUpperCase()}</span>`;
+          const headerInitialSpan = document.createElement('span');
+          headerInitialSpan.id = 'groupHeaderInitial';
+          headerInitialSpan.className = 'text-white font-bold text-sm';
+          headerInitialSpan.textContent = name.charAt(0).toUpperCase();
+          avatar.innerHTML = '';
+          avatar.appendChild(headerInitialSpan);
         }
       }
       
@@ -3609,10 +3670,18 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
         showLeaveConfirm();
       }
       
+      let leavingGroup = false;
       async function confirmLeaveGroup() {
-        if (!activeGroupId || !currentUserId) return;
+        if (!activeGroupId || !currentUserId || leavingGroup) return;
+        leavingGroup = true;
         
         try {
+          // Detach group messages listener before leaving
+          if (groupMessagesRef && groupMessagesListener) {
+            groupMessagesRef.off('child_added', groupMessagesListener);
+            groupMessagesRef = null;
+            groupMessagesListener = null;
+          }
           
           await atomicLeaveGroup(activeGroupId, currentUserId);
           hideLeaveConfirm();
@@ -3632,6 +3701,8 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
           await loadGroupsPageConversations();
         } catch (e) {
           showToast('Failed to leave group: ' + e.message, 'error');
+        } finally {
+          leavingGroup = false;
         }
       }
       
@@ -3661,10 +3732,19 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
         showDeleteConfirm();
       }
       
+      let deletingGroup = false;
       async function confirmDeleteGroup() {
-        if (!activeGroupId) return;
+        if (!activeGroupId || deletingGroup) return;
+        deletingGroup = true;
         
         try {
+          // Detach group messages listener before deleting
+          if (groupMessagesRef && groupMessagesListener) {
+            groupMessagesRef.off('child_added', groupMessagesListener);
+            groupMessagesRef = null;
+            groupMessagesListener = null;
+          }
+          
           await db.ref('groups/' + activeGroupId).remove();
           hideDeleteConfirm();
           closeGroupSettingsModal();
@@ -3683,6 +3763,8 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
           await loadGroupsPageConversations();
         } catch (e) {
           showToast('Failed to delete group: ' + e.message, 'error');
+        } finally {
+          deletingGroup = false;
         }
       }
       
@@ -3696,15 +3778,21 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
         if (select && currentGroupInfo) {
           select.innerHTML = '<option value="">Select a member...</option>';
           const members = currentGroupInfo.members || {};
-          Object.keys(members).filter(uid => members[uid] && uid !== currentUserId).forEach(async (uid) => {
+          const memberUids = Object.keys(members).filter(uid => members[uid] && uid !== currentUserId);
+          Promise.all(memberUids.map(async (uid) => {
             try {
               const snap = await db.ref('users/' + uid + '/username').once('value');
-              const username = snap.val() || uid;
+              return { uid, username: snap.val() || uid };
+            } catch (e) {
+              return { uid, username: uid };
+            }
+          })).then(results => {
+            results.forEach(({ uid, username }) => {
               const option = document.createElement('option');
               option.value = uid;
               option.textContent = username;
               select.appendChild(option);
-            } catch (e) {}
+            });
           });
         }
       }
@@ -3872,7 +3960,7 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
                   addMemberResults.innerHTML = results.map(([uid, user]) => `
                     <div class="add-member-result flex items-center gap-2 px-3 py-2 hover:bg-slate-700/50 cursor-pointer" data-uid="${uid}">
                       <div class="w-8 h-8 rounded-full bg-slate-600 flex items-center justify-center overflow-hidden flex-shrink-0">
-                        ${user.profilePic ? `<img src="${user.profilePic}" class="w-full h-full object-cover" />` : `<span class="text-xs text-slate-300">${(user.username || 'U').charAt(0).toUpperCase()}</span>`}
+                        ${user.profilePic ? `<img src="${escapeHtml(user.profilePic)}" class="w-full h-full object-cover" />` : `<span class="text-xs text-slate-300">${(user.username || 'U').charAt(0).toUpperCase()}</span>`}
                       </div>
                       <div class="flex-1 min-w-0">
                         <span class="text-sm text-slate-200 block truncate">${escapeHtml(user.username || uid)}</span>
@@ -4112,22 +4200,27 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
             try {
               const key = name.replace(/[^A-Za-z0-9_-]/g, '_').toLowerCase();
               const groupRef = db.ref('groups/' + key);
-              const snap = await groupRef.once('value');
               
-              if (snap.exists()) {
+              const result = await groupRef.transaction((currentData) => {
+                if (currentData !== null) {
+                  // Group already exists, abort transaction
+                  return; // returning undefined aborts
+                }
+                return {
+                  name: name,
+                  owner: currentUserId,
+                  isPublic: isPublic,
+                  members: { [currentUserId]: true },
+                  createdAt: Date.now()
+                };
+              });
+              
+              if (!result.committed) {
                 if (createGroupError) createGroupError.textContent = 'A group with this name already exists';
                 createGroupSubmitBtn.disabled = false;
                 createGroupSubmitBtn.textContent = 'Create Group';
                 return;
               }
-              
-              await groupRef.set({
-                name: name,
-                owner: currentUserId,
-                isPublic: isPublic,
-                members: { [currentUserId]: true },
-                createdAt: Date.now()
-              });
               
               closeCreateGroupModal();
               showToast('Group created!', 'success');
@@ -4251,8 +4344,17 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
           
           const threadPromises = threads.map(async thread => {
             try {
-              const msgSnap = await db.ref('dms/' + thread.threadId + '/messages').once('value');
-              thread.messageCount = msgSnap.numChildren() || 0;
+              // Use shallow REST read to count messages without downloading full data
+              const dbUrl = db.app.options.databaseURL || '';
+              const token = await firebase.auth().currentUser?.getIdToken();
+              const shallowUrl = `${dbUrl}/dms/${encodeURIComponent(thread.threadId)}/messages.json?shallow=true${token ? '&auth=' + encodeURIComponent(token) : ''}`;
+              const resp = await fetch(shallowUrl);
+              if (resp.ok) {
+                const data = await resp.json();
+                thread.messageCount = data ? Object.keys(data).length : 0;
+              } else {
+                thread.messageCount = 0;
+              }
             } catch (e) {
               thread.messageCount = 0;
             }
@@ -4329,7 +4431,6 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
 
             let actualUsername = displayName;
             row.addEventListener('click', () => openDmPageThread(otherUid, actualUsername, thread.threadId));
-            row.addEventListener('touchend', (e) => { e.preventDefault(); openDmPageThread(otherUid, actualUsername, thread.threadId); });
 
             if (otherUid) {
               db.ref('users/' + otherUid).once('value').then(userSnap => {
@@ -4382,6 +4483,17 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
         if (blockBtn) blockBtn.classList.remove('hidden');
         if (messagesEl) messagesEl.innerHTML = '';
 
+        // Show video call button
+        const vcBtn = document.getElementById('dmPageVideoCallBtn');
+        if (vcBtn) {
+          vcBtn.classList.remove('hidden');
+          vcBtn.onclick = function() {
+            if (window.ChatraVideoCall && otherUid) {
+              window.ChatraVideoCall.startCall(otherUid, otherUsername || 'Unknown');
+            }
+          };
+        }
+
         
         try {
           const now = Date.now();
@@ -4413,11 +4525,16 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
         console.log('[DM Page] startDmPageMessagesListener called with threadId:', threadId);
         
         
-        if (dmPageMessagesRef && dmPageMessagesListener) {
+        if (dmPageMessagesQueryRef && dmPageMessagesListener) {
+          dmPageMessagesQueryRef.off('child_added', dmPageMessagesListener);
+          dmPageMessagesQueryRef = null;
+        } else if (dmPageMessagesRef && dmPageMessagesListener) {
           dmPageMessagesRef.off('child_added', dmPageMessagesListener);
-          dmPageMessagesRef = null;
-          dmPageMessagesListener = null;
         }
+        if (dmPageMessagesRef) {
+          dmPageMessagesRef = null;
+        }
+        dmPageMessagesListener = null;
 
         const messagesEl = document.getElementById('dmPageMessages');
         if (!messagesEl) {
@@ -4455,7 +4572,8 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
           messagesEl.scrollTop = messagesEl.scrollHeight;
           
           
-          dmPageMessagesListener = dmPageMessagesRef.orderByChild('time').limitToLast(1).on('child_added', snap => {
+          dmPageMessagesQueryRef = dmPageMessagesRef.orderByChild('time').limitToLast(1);
+          dmPageMessagesListener = dmPageMessagesQueryRef.on('child_added', snap => {
             const msg = snap.val();
             if (!msg) return;
             
@@ -4732,7 +4850,21 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
       }
 
       
+      let pageNavListenersSetup = false;
+      
       function setupPageNavListeners() {
+        // Prevent duplicate listener attachment on re-login
+        if (pageNavListenersSetup) {
+          // Still update the slider position
+          const navGlobal = document.getElementById('navGlobalChat');
+          if (navGlobal) setTimeout(() => updateNavSlider(navGlobal), 100);
+          // Still start listeners that need to be re-attached
+          startOnlineCountListener();
+          startStaffRolesListener();
+          setTimeout(() => checkPendingRoleNotification(), 2000);
+          return;
+        }
+        pageNavListenersSetup = true;
         
         const navGlobal = document.getElementById('navGlobalChat');
         const navDMs = document.getElementById('navDMs');
@@ -4771,15 +4903,16 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
         const navGlobal3 = document.getElementById('navGlobalChat3');
         const navGroups3 = document.getElementById('navGroups3');
         const navDMs3 = document.getElementById('navDMs3');
-        [navGlobal3, navGlobal, navGlobal2].forEach(btn => {
-          if (btn) btn.addEventListener('click', () => switchToPage('global'));
-        });
-        [navGroups3, navGroups, navGroups2].forEach(btn => {
-          if (btn) btn.addEventListener('click', () => switchToPage('groups'));
-        });
-        [navDMs3, navDMs, navDMs2].forEach(btn => {
-          if (btn) btn.addEventListener('click', () => switchToPage('dms'));
-        });
+        // Only add listeners to navGlobal3/navGroups3/navDMs3 (the others already have listeners above)
+        if (navGlobal3) {
+          navGlobal3.addEventListener('click', () => switchToPage('global'));
+        }
+        if (navGroups3) {
+          navGroups3.addEventListener('click', () => switchToPage('groups'));
+        }
+        if (navDMs3) {
+          navDMs3.addEventListener('click', () => switchToPage('dms'));
+        }
 
         
         const dmPageLogoutBtn = document.getElementById('dmPageLogoutBtn');
@@ -5020,12 +5153,12 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
                 
                 
                 const recipientInboxRef = db.ref('dmInbox/' + activeDMTarget.uid + '/' + activeDMThread);
-                recipientInboxRef.set({
+                recipientInboxRef.update({
                   withUid: currentUserId,
                   withUsername: currentUsername || currentUserId,
                   lastMsg: lastMsgPreview,
                   lastTime: now,
-                  unread: 1
+                  unread: firebase.database.ServerValue.increment(1)
                 }).catch(err => console.error('[DM] failed to update recipient inbox:', err));
                 
                 dmLastUpdateTimeByThread[activeDMThread] = now;
@@ -5135,6 +5268,18 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
           dmPageMediaInput.addEventListener('change', async () => {
             const file = dmPageMediaInput.files[0];
             if (!file || !activeDMThread) {
+              dmPageMediaInput.value = '';
+              return;
+            }
+
+            const allowedMediaTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'video/mp4', 'video/webm', 'video/quicktime'];
+            if (!allowedMediaTypes.includes(file.type)) {
+              showToast('Unsupported file type. Images and videos only.', 'error');
+              dmPageMediaInput.value = '';
+              return;
+            }
+            if (file.size > 50 * 1024 * 1024) {
+              showToast('File too large. Max 50MB.', 'error');
               dmPageMediaInput.value = '';
               return;
             }
@@ -5543,11 +5688,11 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
 
         mentionSelectedIndex = 0;
         mentionAutocomplete.innerHTML = suggestions.map((user, i) => {
-          const initials = user.isEveryone ? 'ðŸ“¢' : user.username.slice(0, 2).toUpperCase();
+          const initials = user.isEveryone ? '📢' : escapeHtml(user.username.slice(0, 2).toUpperCase());
           const avatarContent = user.isEveryone
-            ? 'ðŸ“¢'
+            ? '📢'
             : (user.profilePic 
-              ? `<img src="${escapeHtml(user.profilePic)}" alt="" onerror="this.parentElement.innerHTML='${initials}'">` 
+              ? `<img src="${escapeHtml(user.profilePic)}" alt="" onerror="this.parentElement.textContent='${initials}'">` 
               : initials);
           const hintText = user.isEveryone ? 'Mention everyone (admin only)' : 'Click to mention';
           return `
@@ -6028,6 +6173,10 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
           clearTimeout(banLogoutTimeout);
           banLogoutTimeout = null;
         }
+        if (muteTimerInterval) {
+          clearInterval(muteTimerInterval);
+          muteTimerInterval = null;
+        }
         adminRef = muteRef = warningRef = banRef = null;
         adminListener = muteListener = warningListener = banListener = null;
         isAdmin = false;
@@ -6205,6 +6354,7 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
         const banReasonModal = document.getElementById("banReasonModal");
         const banReasonCustom = document.getElementById("banReasonCustom");
         const banDuration = document.getElementById("banDuration");
+        if (!banReasonModal || !banReasonCustom || !banDuration) return;
         banReasonCustom.value = "";
         banDuration.value = "60";
         banReasonModal.classList.remove("hidden");
@@ -6795,7 +6945,7 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
                   <div class="flex items-center justify-between mb-1">
                     <div class="flex items-center gap-2 flex-wrap">
                       <span class="font-bold text-xl text-white">${escapeHtml(username)}</span>
-                      ${isHardwareBanned ? '<span class="px-2 py-0.5 bg-purple-600 text-white text-xs rounded-full font-medium">ðŸ–¥ï¸ HW</span>' : ''}
+                      ${isHardwareBanned ? '<span class="px-2 py-0.5 bg-purple-600 text-white text-xs rounded-full font-medium">🖥️ HW</span>' : ''}
                       ${isPermanent ? '<span class="px-2 py-0.5 bg-red-600 text-white text-xs rounded-full font-medium">PERMANENT</span>' : ''}
                     </div>
                   </div>
@@ -6806,7 +6956,7 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
                   </div>
                   <div class="flex items-center justify-between">
                     <div class="flex items-center gap-4 text-xs text-slate-400">
-                      ${bannedAt ? '<span>ðŸ“… ' + bannedAt + '</span>' : ''}
+                      ${bannedAt ? '<span>📝… ' + bannedAt + '</span>' : ''}
                       ${!isPermanent && expiresAt ? '<span>° Expires: ' + expiresAt + '</span>' : ''}
                     </div>
                   </div>
@@ -6814,9 +6964,9 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
               </div>
               <div class="flex gap-2 flex-wrap mt-4 pt-4 border-t border-slate-700">
                 <button onclick="modPanelUnban('${uid}')" class="px-5 py-2 bg-green-600 hover:bg-green-500 text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-green-500/25 hover:scale-105">✓ Unban</button>
-                <button onclick="modPanelExtendBan('${uid}')" class="px-5 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-amber-500/25 hover:scale-105">±ï¸ Extend</button>
-                ${fp && !isHardwareBanned ? `<button onclick="modPanelHardwareBan('${fp}', '${uid}')" class="px-5 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-purple-500/25 hover:scale-105">ðŸ–¥ï¸ HW Ban</button>` : ''}
-                ${fp && isHardwareBanned ? `<button onclick="modPanelUnHardwareBan('${fp}')" class="px-5 py-2 bg-slate-600 hover:bg-slate-500 text-white rounded-xl font-semibold transition-all shadow-lg hover:scale-105">ðŸ–¥ï¸ Remove HW</button>` : ''}
+                <button onclick="modPanelExtendBan('${uid}')" class="px-5 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-amber-500/25 hover:scale-105">⏱️ Extend</button>
+                ${fp && !isHardwareBanned ? `<button onclick="modPanelHardwareBan('${fp}', '${uid}')" class="px-5 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-purple-500/25 hover:scale-105">🖥️ HW Ban</button>` : ''}
+                ${fp && isHardwareBanned ? `<button onclick="modPanelUnHardwareBan('${fp}')" class="px-5 py-2 bg-slate-600 hover:bg-slate-500 text-white rounded-xl font-semibold transition-all shadow-lg hover:scale-105">🖥️ Remove HW</button>` : ''}
               </div>
             </div>
           `;
@@ -6884,7 +7034,7 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
               </div>
               <div class="flex gap-2 flex-wrap mt-4 pt-4 border-t border-slate-700">
                 <button onclick="modPanelUnmute('${uid}')" class="px-5 py-2 bg-green-600 hover:bg-green-500 text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-green-500/25 hover:scale-105">✓ Unmute</button>
-                <button onclick="modPanelExtendMute('${uid}')" class="px-5 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-amber-500/25 hover:scale-105">±ï¸ Extend</button>
+                <button onclick="modPanelExtendMute('${uid}')" class="px-5 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-amber-500/25 hover:scale-105">⏱️ Extend</button>
               </div>
             </div>
           `;
@@ -6914,15 +7064,15 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
             <div class="bg-gradient-to-r from-purple-900/30 to-slate-800 rounded-xl p-4 border border-purple-700/50 backdrop-blur-sm shadow-lg">
               <div class="flex justify-between items-start mb-3">
                 <div class="flex items-center gap-3">
-                  <div class="w-10 h-10 rounded-full bg-gradient-to-br from-purple-600 to-purple-800 flex items-center justify-center text-lg">ðŸ–¥ï¸</div>
+                  <div class="w-10 h-10 rounded-full bg-gradient-to-br from-purple-600 to-purple-800 flex items-center justify-center text-lg">🖥️</div>
                   <div>
                     <span class="font-mono text-sm text-purple-300">${fpHash.slice(0, 20)}...</span>
                     <div class="text-xs text-slate-500">Banned by: ${bannedBy}</div>
                   </div>
                 </div>
-                <span class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-purple-600/30 text-purple-300">ðŸ• ${bannedAt}</span>
+                <span class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-purple-600/30 text-purple-300">🕐 ${bannedAt}</span>
               </div>
-              <p class="text-sm text-slate-300 mb-4 pl-12">ðŸ“ ${escapeHtml(reason)}</p>
+              <p class="text-sm text-slate-300 mb-4 pl-12">📝 ${escapeHtml(reason)}</p>
               <div class="flex gap-2 pl-12">
                 <button onclick="modPanelUnHardwareBan('${fpHash}')" class="px-4 py-1.5 bg-green-600 hover:bg-green-500 text-white text-xs rounded-lg font-medium transition-colors shadow-md">✓ Remove HW Ban</button>
               </div>
@@ -6937,14 +7087,15 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
       window.modPanelUnban = async (uid) => {
         if (!isAdmin) return;
         if (!confirm("Unban this user?")) return;
-        const btn = event.target;
-        const card = btn.closest('.bg-slate-800\\/80');
+        const content = document.getElementById('modPanelContent');
+        const cards = content ? content.querySelectorAll('.bg-slate-800\\/80') : [];
+        let card = null;
+        cards.forEach(c => { if (c.querySelector(`[onclick*="'${uid}'"]`)) card = c; });
         if (card) card.style.opacity = '0.5';
         await unbanUser(uid);
         if (card) card.remove();
         showToast("User unbanned", "success");
         
-        const content = document.getElementById('modPanelContent');
         if (content && !content.querySelector('.bg-slate-800\\/80')) {
           content.innerHTML = '<div class="flex flex-col items-center justify-center py-16 text-slate-400"><div class="w-20 h-20 rounded-full bg-green-600/20 flex items-center justify-center mb-4"><span class="text-4xl">✓</span></div><p class="text-xl font-medium">No Banned Users</p><p class="text-sm text-slate-500 mt-1">All clear!</p></div>';
         }
@@ -6961,7 +7112,12 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
         if (mins.toLowerCase() === 'permanent') {
           await db.ref("bannedUsers/" + uid).update({ until: 9999999999999 });
         } else {
-          const addMs = parseInt(mins) * 60 * 1000;
+          const parsed = parseInt(mins, 10);
+          if (isNaN(parsed) || parsed <= 0) {
+            showToast("Please enter a valid number of minutes", "error");
+            return;
+          }
+          const addMs = parsed * 60 * 1000;
           const newUntil = Math.max(current.until || Date.now(), Date.now()) + addMs;
           await db.ref("bannedUsers/" + uid).update({ until: newUntil });
         }
@@ -6989,14 +7145,15 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
       window.modPanelUnmute = async (uid) => {
         if (!isAdmin) return;
         if (!confirm("Unmute this user?")) return;
-        const btn = event.target;
-        const card = btn.closest('.bg-slate-800\\/80');
+        const content = document.getElementById('modPanelContent');
+        const cards = content ? content.querySelectorAll('.bg-slate-800\\/80') : [];
+        let card = null;
+        cards.forEach(c => { if (c.querySelector(`[onclick*="'${uid}'"]`)) card = c; });
         if (card) card.style.opacity = '0.5';
         await db.ref("mutedUsers/" + uid).remove();
         if (card) card.remove();
         showToast("User unmuted", "success");
         
-        const content = document.getElementById('modPanelContent');
         if (content && !content.querySelector('.bg-slate-800\\/80')) {
           content.innerHTML = '<div class="flex flex-col items-center justify-center py-16 text-slate-400"><div class="w-20 h-20 rounded-full bg-green-600/20 flex items-center justify-center mb-4"><span class="text-4xl">✓</span></div><p class="text-xl font-medium">No Muted Users</p><p class="text-sm text-slate-500 mt-1">All clear!</p></div>';
         }
@@ -7009,7 +7166,12 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
         
         const muteSnap = await db.ref("mutedUsers/" + uid).once("value");
         const current = muteSnap.val() || {};
-        const addMs = parseInt(mins) * 60 * 1000;
+        const parsed = parseInt(mins, 10);
+        if (isNaN(parsed) || parsed <= 0) {
+          showToast("Please enter a valid number of minutes", "error");
+          return;
+        }
+        const addMs = parsed * 60 * 1000;
         const newUntil = Math.max(current.until || Date.now(), Date.now()) + addMs;
         await db.ref("mutedUsers/" + uid).update({ until: newUntil });
         showToast("Mute extended", "success");
@@ -7156,6 +7318,7 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
         const muteReasonModal = document.getElementById("muteReasonModal");
         const muteReasonCustom = document.getElementById("muteReasonCustom");
         const muteDuration = document.getElementById("muteDuration");
+        if (!muteReasonModal || !muteReasonCustom || !muteDuration) return;
         muteReasonCustom.value = "";
         muteDuration.value = "10";
         muteReasonModal.classList.remove("hidden");
@@ -7220,6 +7383,7 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
             const mutePopup = document.getElementById("mutePopup");
             const muteReason = document.getElementById("muteReason");
             const muteTimer = document.getElementById("muteTimer");
+            if (!mutePopup || !muteReason || !muteTimer) return;
             muteReason.textContent = "Reason: " + (data.reason || "Rule break");
             mutePopup.classList.remove("hidden");
             muteTimer.textContent = timeLeft + "s remaining";
@@ -7273,6 +7437,7 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
         pendingWarnUid = uid;
         const warnReasonModal = document.getElementById("warnReasonModal");
         const warnReasonCustom = document.getElementById("warnReasonCustom");
+        if (!warnReasonModal || !warnReasonCustom) return;
         warnReasonCustom.value = "";
         warnReasonModal.classList.remove("hidden");
       }
@@ -7470,31 +7635,31 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
       function createFlexiblePattern(word) {
         
         const subs = {
-          'a': '[a@4Ã Ã¡Ã¢Ã£Ã¤Ã¥Î±]',
-          'b': '[b8ÃŸ]',
-          'c': '[cÃ§(\[]',
-          'd': '[dÎ´]',
-          'e': '[e3Ã¨Ã©ÃªÃ«‚¬]',
+          'a': '[a@4àáâãäåα]',
+          'b': '[b8ß]',
+          'c': '[cç(\\[]',
+          'd': '[dδ]',
+          'e': '[e3èéêë€]',
           'f': '[f]',
           'g': '[g9q]',
           'h': '[h#]',
-          'i': '[i1!|Ã¬Ã­Ã®Ã¯]',
+          'i': '[i1!|ìíîï]',
           'j': '[j]',
           'k': '[k]',
-          'l': '[l1|!Ã¬Ã­Ã®Ã¯]',
+          'l': '[l1|!ìíîï]',
           'm': '[m]',
-          'n': '[nÃ±]',
-          'o': '[o0Ã³Ã²Ã´ÃµÃ¶Ã¸]',
+          'n': '[nñ]',
+          'o': '[o0óòôõöø]',
           'p': '[p]',
           'q': '[q9]',
           'r': '[r]',
           's': '[s5$]',
           't': '[t7+]',
-          'u': '[uÃ¹ÃºÃ»Ã¼]',
+          'u': '[uùúûü]',
           'v': '[v]',
           'w': '[w]',
-          'x': '[x%Ã—]',
-          'y': '[yÃ¿]',
+          'x': '[x%×]',
+          'y': '[yÿ]',
           'z': '[z2]'
         };
 
@@ -7509,7 +7674,7 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
         });
         let pattern = parts.join('');
         
-        return new RegExp(pattern, 'iu');
+        return new RegExp(pattern, 'giu');
       }
 
       
@@ -7525,11 +7690,11 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
         
         /i'?m\s+(?:gonna|going\s+to|will)?\s+(?:kill|hurt|rape|beat|punch|stab|harm|destroy)\s+you\b/gi,
         /you\s+(?:better\s+)?(?:watch\s+your\s+back|watch\s+it)\b/gi,
-        /(?:kill|hurt|harm)\s+(?:yourself|yourself)\b/gi,
+        /(?:kill|hurt|harm)\s+yourself\b/gi,
         /you\s+deserve\s+to\s+(?:die|suffer|hurt|be\s+hurt)\b/gi,
         /i\s+(?:hope|wish|want)\s+(?:you|someone|people)\s+(?:dies?|dead|suffers?|gets?\s+hurt)\b/gi,
         /(?:death|kill|rape)\s+threat/gi,
-        /neck\s+yourself|rope|hang\s+yourself|slit\s+your\s+wrist/gi,
+        /neck\s+yourself|hang\s+yourself|slit\s+your\s+wrist/gi,
         /go\s+(?:kill|die|kys)/gi,
       ];
 
@@ -7562,6 +7727,7 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
         }
         
         for (let pattern of THREAT_PATTERNS) {
+          pattern.lastIndex = 0;
           if (pattern.test(processed)) {
             console.warn("[filter] Threat/violence detected in message");
             return "[FILTERED - VIOLENT CONTENT NOT ALLOWED]";
@@ -7570,6 +7736,7 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
         
         
         for (let pattern of HATE_PATTERNS) {
+          pattern.lastIndex = 0;
           if (pattern.test(processed)) {
             console.warn("[filter] Hate speech/harassment detected in message");
             return "[FILTERED - HATEFUL/HARASSMENT CONTENT NOT ALLOWED]";
@@ -7578,6 +7745,7 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
         
         
         for (let pattern of FLEXIBLE_SEVERE_PATTERNS) {
+          pattern.lastIndex = 0;
           if (pattern.test(processed)) {
             console.warn("[filter] Severe slur detected in message");
             return "[FILTERED - HATEFUL/HARASSMENT CONTENT NOT ALLOWED]";
@@ -7590,17 +7758,20 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
         let filtered = processed;
         
         for (let pattern of FLEXIBLE_BAD_WORD_PATTERNS) {
+          pattern.lastIndex = 0;
           if (pattern.test(filtered)) {
             hasFiltered = true;
+            pattern.lastIndex = 0;
             filtered = filtered.replace(pattern, (match) => {
               return '*'.repeat(match.length);
             });
-            pattern.lastIndex = 0; 
           }
         }
         
         
+        badWordPattern.lastIndex = 0;
         if (badWordPattern.test(filtered)) {
+          badWordPattern.lastIndex = 0;
           filtered = filtered.replace(badWordPattern, (match) => {
             return '*'.repeat(match.length);
           });
@@ -7976,8 +8147,12 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
         if (dmMessagesRef && dmMessagesListener) {
           dmMessagesRef.off("child_added", dmMessagesListener);
         }
+        if (dmMessagesRef && dmChildChangedListener) {
+          dmMessagesRef.off("child_changed", dmChildChangedListener);
+        }
         dmMessagesRef = null;
         dmMessagesListener = null;
+        dmChildChangedListener = null;
       }
 
       function detachDmInboxListener() {
@@ -8131,7 +8306,7 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
           });
 
         
-        dmMessagesRef.on("child_changed", (snap) => {
+        dmChildChangedListener = (snap) => {
           const msg = snap.val();
           const key = snap.key;
           if (!msg || !key) return;
@@ -8146,7 +8321,8 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
               setTimeout(() => bubble.classList.remove("message-text-reveal"), 400);
             }
           }
-        });
+        };
+        dmMessagesRef.on("child_changed", dmChildChangedListener);
       }
 
       function verifyNotificationsLoaded() {
@@ -8289,6 +8465,17 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
         activeDMTarget = { uid: targetUid, username: resolvedUsername };
         dmActiveUser.textContent = resolvedUsername;
         dmError.textContent = "";
+
+        // Show video call button in modal DM view
+        const vcBtn2 = document.getElementById('dmVideoCallBtn');
+        if (vcBtn2) {
+          vcBtn2.classList.remove('hidden');
+          vcBtn2.onclick = function() {
+            if (window.ChatraVideoCall && targetUid) {
+              window.ChatraVideoCall.startCall(targetUid, resolvedUsername || 'Unknown');
+            }
+          };
+        }
         
         const now = Date.now();
         dmLastSeenByThread[threadId] = now;
@@ -8412,34 +8599,36 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
           console.log("[users] username taken =", exists, "banned =", isBanned);
           
           
-          let hasForbiddenContent = badWordPattern.test(username);
+          let hasForbiddenContent = false;
+          badWordPattern.lastIndex = 0;
+          hasForbiddenContent = badWordPattern.test(username);
 
           
           if (!hasForbiddenContent) {
             for (let pattern of FLEXIBLE_BAD_WORD_PATTERNS) {
+              pattern.lastIndex = 0;
               if (pattern.test(username)) {
                 hasForbiddenContent = true;
                 break;
               }
-              pattern.lastIndex = 0;
             }
           }
           if (!hasForbiddenContent) {
             for (let pattern of THREAT_PATTERNS) {
+              pattern.lastIndex = 0;
               if (pattern.test(username)) {
                 hasForbiddenContent = true;
                 break;
               }
-              pattern.lastIndex = 0;
             }
           }
           if (!hasForbiddenContent) {
             for (let pattern of HATE_PATTERNS) {
+              pattern.lastIndex = 0;
               if (pattern.test(username)) {
                 hasForbiddenContent = true;
                 break;
               }
-              pattern.lastIndex = 0;
             }
           }
           
@@ -8483,12 +8672,16 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
 
         if (username.length < 2 || username.length > 12) {
           registerError.textContent = "Username must be 2-12 characters.";
+          registerBtn.disabled = false;
+          registerBtn.textContent = originalRegText;
           return;
         }
 
         
         if (!/^[a-zA-Z0-9_ -]+$/.test(username) || /^[_-]|[_-]$/.test(username)) {
           registerError.textContent = "Use letters/numbers/underscore/dash/space (no leading/trailing _ or -).";
+          registerBtn.disabled = false;
+          registerBtn.textContent = originalRegText;
           return;
         }
 
@@ -8498,6 +8691,8 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
           if (fpCheck.banned) {
             console.log("[register] device fingerprint is banned");
             registerError.textContent = "This device has been banned. Contact support.";
+            registerBtn.disabled = false;
+            registerBtn.textContent = originalRegText;
             return;
           }
         } catch (e) {
@@ -8505,51 +8700,59 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
           
         }
 
-        let usernameHasBad = badWordPattern.test(username);
+        let usernameHasBad = false;
+        badWordPattern.lastIndex = 0;
+        usernameHasBad = badWordPattern.test(username);
 
         if (!usernameHasBad) {
           
           for (let pattern of FLEXIBLE_BAD_WORD_PATTERNS) {
+            pattern.lastIndex = 0;
             if (pattern.test(username)) {
               usernameHasBad = true;
               break;
             }
-            pattern.lastIndex = 0;
           }
         }
 
         if (!usernameHasBad) {
           for (let pattern of THREAT_PATTERNS) {
+            pattern.lastIndex = 0;
             if (pattern.test(username)) {
               usernameHasBad = true;
               break;
             }
-            pattern.lastIndex = 0;
           }
         }
 
         if (!usernameHasBad) {
           for (let pattern of HATE_PATTERNS) {
+            pattern.lastIndex = 0;
             if (pattern.test(username)) {
               usernameHasBad = true;
               break;
             }
-            pattern.lastIndex = 0;
           }
         }
 
         if (usernameHasBad) {
           registerError.textContent = "Username not allowed.";
+          registerBtn.disabled = false;
+          registerBtn.textContent = originalRegText;
           return;
         }
 
         if (isLocallyBlockedUsername(username)) {
           registerError.textContent = "Username not allowed.";
+          registerBtn.disabled = false;
+          registerBtn.textContent = originalRegText;
           return;
         }
 
         if (password !== passwordConfirm) {
           registerError.textContent = "Passwords do not match.";
+          registerBtn.disabled = false;
+          registerBtn.textContent = originalRegText;
           return;
         }
 
@@ -8558,6 +8761,8 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
           if (!registerError.textContent) {
             registerError.textContent = "That username is already taken.";
           }
+          registerBtn.disabled = false;
+          registerBtn.textContent = originalRegText;
           return;
         }
 
@@ -8663,6 +8868,8 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
           if (fpCheck.banned) {
             console.log("[login] device fingerprint is banned");
             loginError.textContent = "This device has been banned. Contact support.";
+            loginBtn.disabled = false;
+            loginBtn.textContent = originalText;
             return;
           }
         } catch (e) {
@@ -8685,6 +8892,8 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
             if (bannedEmailSnap.exists() || bannedUsernameSnap.exists()) {
               const bannedReason = bannedEmailSnap.val()?.reason || bannedUsernameSnap.val()?.reason || "Account has been permanently banned";
               loginError.textContent = "This account is banned: " + bannedReason;
+              loginBtn.disabled = false;
+              loginBtn.textContent = originalText;
               return;
             }
           } catch (banCheckErr) {
@@ -9047,7 +9256,14 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
               editedAt: firebase.database.ServerValue.TIMESTAMP,
             });
 
-            textEl.textContent = trimmed;
+            textEl.innerHTML = renderTextWithMentions(trimmed, true);
+            textEl.querySelectorAll('.mention-highlight').forEach(mentionEl => {
+              mentionEl.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const mentionedUser = mentionEl.dataset.mention;
+                if (mentionedUser) viewUserProfile(mentionedUser);
+              });
+            });
             cancelDmInlineEdit();
           } catch (err) {
             console.error("[dm edit] error editing message", err);
@@ -9305,7 +9521,14 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
               editedAt: firebase.database.ServerValue.TIMESTAMP,
             });
 
-            textEl.textContent = trimmed;
+            textEl.innerHTML = renderTextWithMentions(trimmed, true);
+            textEl.querySelectorAll('.mention-highlight').forEach(mentionEl => {
+              mentionEl.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const mentionedUser = mentionEl.dataset.mention;
+                if (mentionedUser) viewUserProfile(mentionedUser);
+              });
+            });
             cancelInlineEdit();
           } catch (err) {
             console.error("[edit] error editing message", err);
@@ -9399,16 +9622,20 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         const isAiMsg = msg.isAiResponse === true || msg.aiUserId === AI_BOT_UID || msg.userId === AI_BOT_UID;
         
         // ONLY strip AI markers from actual AI bot messages (verified by UID)
-        if (isAiMsg && msg.text) {
+        // Use a local variable to avoid mutating the original msg object (which Firebase may cache)
+        let displayText = msg.text || '';
+        if (isAiMsg && displayText) {
           // Remove the exact AI message marker
-          if (msg.text.startsWith(AI_MSG_MARKER)) {
-            msg.text = msg.text.substring(AI_MSG_MARKER.length);
+          if (displayText.startsWith(AI_MSG_MARKER)) {
+            displayText = displayText.substring(AI_MSG_MARKER.length);
           }
           // Strip any AI prefix patterns (case insensitive, global)
-          msg.text = msg.text.replace(AI_PREFIX_REGEX, '').trim();
+          displayText = displayText.replace(AI_PREFIX_REGEX, '').trim();
           // Also strip any standalone zero-width characters that might be visible
-          msg.text = msg.text.replace(/^[\u200B\u200C\u200D\u2063\uFEFF]+/, '');
+          displayText = displayText.replace(/^[\u200B\u200C\u200D\u2063\uFEFF]+/, '');
         }
+        // Replace msg.text with cleaned display text for rendering
+        msg = { ...msg, text: displayText };
         const isMine = !isAiMsg && myName && msg.user === myName;
         const username = isAiMsg ? 'Chatra AI' : (msg.user || "Unknown");
         const ownerUid = "u5yKqiZvioWuBGcGK3SWUBpUVrc2";
@@ -9558,7 +9785,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             }
           });
           
-          nameLabel.title = "Click to view profile €¢ Shift+Click to @mention";
+          nameLabel.title = "Click to view profile \u2022 Shift+Click to @mention";
           column.appendChild(nameLabel);
         } else {
           
@@ -9671,13 +9898,6 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
               if (localMessagesDiv && localMessagesDiv.scrollTop >= localMessagesDiv.scrollHeight - localMessagesDiv.clientHeight - 100) {
                 localMessagesDiv.scrollTop = localMessagesDiv.scrollHeight;
               }
-              
-              
-              setInterval(() => {
-                const tempSrc = img.src;
-                img.src = '';
-                img.src = tempSrc;
-              }, 10000); 
             };
             
             img.onclick = () => openImageViewer(mediaUrl);
@@ -9891,7 +10111,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
 
           const editBtn = document.createElement("button");
           
-          editBtn.className = "absolute -top-4 right-4 z-20 w-7 h-7 rounded-full bg-slate-600 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center hover:bg-sky-500 active:bg-sky-500 cursor-pointer";
+          editBtn.className = "absolute -top-4 right-12 z-20 w-7 h-7 rounded-full bg-slate-600 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center hover:bg-sky-500 active:bg-sky-500 cursor-pointer";
           editBtn.innerHTML = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 20 20\" fill=\"currentColor\" class=\"w-3.5 h-3.5\"><path d=\"M15.502 1.94a1.5 1.5 0 0 1 2.122 2.12l-1.06 1.062-2.122-2.122 1.06-1.06Zm-2.829 2.828-9.192 9.193a2 2 0 0 0-.518.94l-.88 3.521a.5.5 0 0 0 .607.607l3.52-.88a2 2 0 0 0 .942-.518l9.193-9.193-2.672-2.67Z\"/></svg>";
           editBtn.title = "Edit message";
 
@@ -10204,13 +10424,21 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         if (newMessagesCount > 0) {
           
           requestAnimationFrame(() => {
+            // Capture scroll state before DOM mutation for maintainScroll
+            const prevScrollHeight = options.maintainScroll ? messagesDiv.scrollHeight : 0;
+            const prevScrollTop = options.maintainScroll ? messagesDiv.scrollTop : 0;
+
             if (options.prepend && messagesDiv.firstChild) {
               messagesDiv.insertBefore(fragment, messagesDiv.firstChild);
             } else {
               messagesDiv.appendChild(fragment);
             }
 
-            if (!options.maintainScroll) {
+            if (options.maintainScroll) {
+              // Restore scroll position after prepending older messages
+              const addedHeight = messagesDiv.scrollHeight - prevScrollHeight;
+              messagesDiv.scrollTop = prevScrollTop + addedHeight;
+            } else {
               messagesDiv.scrollTop = messagesDiv.scrollHeight;
             }
 
@@ -10289,10 +10517,6 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
                 prepend: true,
                 maintainScroll: true,
               });
-
-              const newScrollHeight = messagesDiv.scrollHeight;
-              const addedHeight = newScrollHeight - prevScrollHeight;
-              messagesDiv.scrollTop = prevScrollTop + addedHeight;
 
               console.log(
                 "[messages] loaded older page, count =",
@@ -10445,6 +10669,9 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
               if (messagesRemoveRef && messagesRemoveListener) {
                 messagesRemoveRef.off("child_removed", messagesRemoveListener);
               }
+              if (messagesRemoveRef && messagesChangedListener) {
+                messagesRemoveRef.off("child_changed", messagesChangedListener);
+              }
               messagesRemoveRef = db.ref("messages");
               messagesRemoveListener = (snap) => {
                 const removedId = snap.key;
@@ -10457,10 +10684,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
               );
 
               
-              if (messagesRemoveRef && messagesRemoveRef._childChangedListener) {
-                messagesRemoveRef.off("child_changed", messagesRemoveRef._childChangedListener);
-              }
-              messagesRemoveRef._childChangedListener = (snap) => {
+              messagesChangedListener = (snap) => {
                 const changedId = snap.key;
                 const changedMsg = snap.val() || {};
                 
@@ -10469,13 +10693,22 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
                   
                   const bubble = row.querySelector(".message-bubble-anim .message-text-reveal");
                   if (bubble && changedMsg.text !== undefined) {
-                    bubble.textContent = changedMsg.text;
+                    const isMine = changedMsg.userId === currentUserId;
+                    bubble.innerHTML = renderTextWithMentions(changedMsg.text, isMine);
+                    // Re-attach mention click handlers
+                    bubble.querySelectorAll('.mention-highlight').forEach(mentionEl => {
+                      mentionEl.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const mentionedUser = mentionEl.dataset.mention;
+                        if (mentionedUser) viewUserProfile(mentionedUser);
+                      });
+                    });
                   }
                 }
               };
               messagesRemoveRef.on(
                 "child_changed",
-                messagesRemoveRef._childChangedListener,
+                messagesChangedListener,
                 (error) => console.error("[messages] child_changed listener error:", error)
               );
             },
@@ -10499,6 +10732,9 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           if (messagesRemoveRef && messagesRemoveListener) {
             messagesRemoveRef.off("child_removed", messagesRemoveListener);
           }
+          if (messagesRemoveRef && messagesChangedListener) {
+            messagesRemoveRef.off("child_changed", messagesChangedListener);
+          }
         } catch (err) {
           console.error("[messages] error while stopping listener:", err);
         }
@@ -10506,6 +10742,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         messagesListener = null;
         messagesRemoveRef = null;
         messagesRemoveListener = null;
+        messagesChangedListener = null;
         seenMessageKeys.clear();
 
         detachScrollListener();
@@ -10759,8 +10996,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             
             loadClearedNotifications();
             
-            
-            checkAndShowGuidelines(user.uid);
+            // Guidelines will be checked in the async IIFE below
 
             
             currentUsername = await fetchUsername(
@@ -10836,6 +11072,11 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             
             
             await loadDmInbox();
+            
+            // Start listening for incoming video calls
+            if (window.ChatraVideoCall) {
+              window.ChatraVideoCall.listenForIncomingCalls();
+            }
             
             
             setupPageNavListeners();
@@ -10939,10 +11180,21 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             loginBtn.textContent = 'Login';
             loginBtn.disabled = false;
           }
+          // Reset register button state
+          if (registerBtn) {
+            registerBtn.textContent = 'Register';
+            registerBtn.disabled = false;
+          }
           
           stopMessagesListener();
           stopTypingListener();
           stopRatingPromptLoop();
+
+          // End any active video call and stop listening
+          if (window.ChatraVideoCall) {
+            window.ChatraVideoCall.endCall();
+            window.ChatraVideoCall.stopListeningForCalls();
+          }
 
           ratingOptOut = false;
           ratingLastPrompt = 0;
@@ -11129,6 +11381,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         if (text) {
           
           for (let pattern of THREAT_PATTERNS) {
+            pattern.lastIndex = 0;
             if (pattern.test(text)) {
               currentWarningText = " Message blocked: Threats or violence are not allowed.";
               updateStatusBar();
@@ -11143,6 +11396,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           
           
           for (let pattern of HATE_PATTERNS) {
+            pattern.lastIndex = 0;
             if (pattern.test(text)) {
               currentWarningText = " Message blocked: Hateful or harassing language is not allowed.";
               updateStatusBar();
@@ -11258,6 +11512,91 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
               sendBtn.innerHTML = originalBtnText;
               sendBtn.disabled = false;
             }, 300);
+
+            // AI reply — only after message confirmed saved
+            if (aiQuery) {
+              let botReply = null;
+              
+              // Show AI typing indicator
+              setAiTyping(true);
+              
+              try {
+                addToAiMemory(uid, 'user', aiQuery, currentUsername);
+                const conversationHistory = getAiMemory(uid);
+                const talkingToUsername = getAiUsername(uid) || currentUsername || 'User';
+                
+                try {
+                  const aiWorkerUrl = 'https://recovery-modmojheh.modmojheh.workers.dev';
+                  if (aiWorkerUrl && !aiWorkerUrl.includes('your-worker-subdomain')) {
+                    const r = await fetch(aiWorkerUrl + '/ai', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ prompt: aiQuery, history: conversationHistory, username: talkingToUsername })
+                    });
+                    if (r.ok) {
+                      const jr = await r.json();
+                      if (jr && jr.reply) botReply = String(jr.reply).trim();
+                    } else {
+                      console.warn('[AI] worker /ai returned', r.status);
+                    }
+                  }
+                } catch (e) {
+                  console.warn('[AI] worker call failed, falling back to local AI mock', e);
+                }
+                if (!botReply) botReply = generateAiReply(aiQuery);
+                
+                // Clean AI response prefix and extra newlines
+                botReply = cleanAiResponse(botReply);
+                botReply = botReply.replace(/\n{3,}/g, '\n\n').trim();
+                
+                
+                botReply = botReply.replace(/@everyone/gi, '@​everyone'); 
+                
+                // Extract image context if AI showed an image
+                let imageCtx = null;
+                const imgMatch = botReply.match(/\[IMAGE:\s*(.+?)\]/i);
+                const imgSearchMatch = botReply.match(/\[IMAGE_SEARCH:\s*(.+?)\]/i);
+                if (imgMatch) {
+                  imageCtx = `[Showed image of: ${imgMatch[1].trim()}]`;
+                } else if (imgSearchMatch) {
+                  imageCtx = `[Showed image search results for: ${imgSearchMatch[1].trim()}]`;
+                }
+                
+                addToAiMemory(uid, 'assistant', botReply, currentUsername, imageCtx);
+
+                try {
+                  const botMessage = {
+                    user: 'Chatra AI',
+                    userId: AI_BOT_UID,
+                    isAiResponse: true,
+                    text: botReply,
+                    time: firebase.database.ServerValue.TIMESTAMP,
+                    timestamp: Date.now()
+                  };
+                  
+                  await new Promise(resolve => setTimeout(resolve, 600));
+                  
+                  await db.ref('messages').push(botMessage);
+                } catch (e) {
+                  console.error('[AI] failed to post bot message', e);
+                  setTimeout(async () => {
+                    try {
+                      await db.ref('messages').push({
+                        user: 'Chatra AI',
+                        userId: AI_BOT_UID,
+                        isAiResponse: true,
+                        text: botReply,
+                        time: firebase.database.ServerValue.TIMESTAMP
+                      });
+                    } catch (retryErr) {
+                      console.error('[AI] retry failed:', retryErr);
+                    }
+                  }, 1000);
+                }
+              } finally {
+                setAiTyping(false);
+              }
+            }
           })
           .catch((error) => {
             console.error("[send] error sending message:", error);
@@ -11283,96 +11622,6 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
               updateStatusBar();
             }, 3000);
           });
-
-        
-        if (aiQuery) {
-          (async () => {
-            let botReply = null;
-            
-            // Show AI typing indicator
-            setAiTyping(true);
-            
-            addToAiMemory(uid, 'user', aiQuery, currentUsername);
-            const conversationHistory = getAiMemory(uid);
-            const talkingToUsername = getAiUsername(uid) || currentUsername || 'User';
-            
-            try {
-              const aiWorkerUrl = 'https://recovery-modmojheh.modmojheh.workers.dev';
-              if (aiWorkerUrl && !aiWorkerUrl.includes('your-worker-subdomain')) {
-                const r = await fetch(aiWorkerUrl + '/ai', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ prompt: aiQuery, history: conversationHistory, username: talkingToUsername })
-                });
-                if (r.ok) {
-                  const jr = await r.json();
-                  if (jr && jr.reply) botReply = String(jr.reply).trim();
-                } else {
-                  console.warn('[AI] worker /ai returned', r.status);
-                }
-              }
-            } catch (e) {
-              console.warn('[AI] worker call failed, falling back to local AI mock', e);
-            }
-            if (!botReply) botReply = generateAiReply(aiQuery);
-            
-            // Clean AI response prefix and extra newlines
-            botReply = cleanAiResponse(botReply);
-            botReply = botReply.replace(/\n{3,}/g, '\n\n').trim();
-            
-            
-            botReply = botReply.replace(/@everyone/gi, '@​everyone'); 
-            
-            // Extract image context if AI showed an image
-            let imageCtx = null;
-            const imgMatch = botReply.match(/\[IMAGE:\s*(.+?)\]/i);
-            const imgSearchMatch = botReply.match(/\[IMAGE_SEARCH:\s*(.+?)\]/i);
-            if (imgMatch) {
-              imageCtx = `[Showed image of: ${imgMatch[1].trim()}]`;
-            } else if (imgSearchMatch) {
-              imageCtx = `[Showed image search results for: ${imgSearchMatch[1].trim()}]`;
-            }
-            
-            addToAiMemory(uid, 'assistant', botReply, currentUsername, imageCtx);
-
-            try {
-              // Mark as AI response with special field
-              const botMessage = {
-                user: 'Chatra AI', // Display name for AI
-                userId: AI_BOT_UID, // AI bot's UID for proper display
-                isAiResponse: true, // Flag to identify AI messages
-                text: botReply,
-                time: firebase.database.ServerValue.TIMESTAMP,
-                timestamp: Date.now() // Include server-side timestamp for compatibility
-              };
-              
-              // Wait 600ms to ensure rate limit passes (Firebase rule requires 500ms between messages)
-              // Admins are exempt from rate limit, but this ensures it works for everyone
-              await new Promise(resolve => setTimeout(resolve, 600));
-              
-              await db.ref('messages').push(botMessage);
-            } catch (e) {
-              console.error('[AI] failed to post bot message', e);
-              // Silently retry after a delay
-              setTimeout(async () => {
-                try {
-                  await db.ref('messages').push({
-                    user: 'Chatra AI',
-                    userId: AI_BOT_UID,
-                    isAiResponse: true,
-                    text: botReply,
-                    time: firebase.database.ServerValue.TIMESTAMP
-                  });
-                } catch (retryErr) {
-                  console.error('[AI] retry failed:', retryErr);
-                }
-              }, 1000);
-            } finally {
-              // Clear AI typing indicator
-              setAiTyping(false);
-            }
-          })();
-        }
       }
 
       
@@ -11430,7 +11679,6 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
       
       async function uploadToImageKit(file) {
         
-        const imageWorkerUrl = "https://chatra.modmojheh.workers.dev";
         const uploadWorkerUrl = "https://chatra.modmojheh.workers.dev";
 
         if (!uploadWorkerUrl || uploadWorkerUrl.includes("your-worker-subdomain")) {
@@ -11470,13 +11718,13 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           console.log("[upload] response received after", duration, "ms, status:", res.status);
 
           let data;
+          const responseText = await res.text();
           try {
-            data = await res.json();
+            data = JSON.parse(responseText);
           } catch (jsonErr) {
             console.error("[upload] failed to parse response as JSON:", jsonErr);
-            const text = await res.text();
-            console.error("[upload] response text:", text);
-            throw new Error(`Invalid response from worker: ${res.status} ${text.substring(0, 100)}`);
+            console.error("[upload] response text:", responseText);
+            throw new Error(`Invalid response from worker: ${res.status} ${responseText.substring(0, 100)}`);
           }
 
           if (!res.ok) {
@@ -11563,9 +11811,21 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             img.onload = () => {
               const canvas = document.createElement("canvas");
               const ctx = canvas.getContext("2d");
-              canvas.width = img.width;
-              canvas.height = img.height;
-              ctx.drawImage(img, 0, 0);
+              if (!ctx) {
+                reject(new Error("Canvas 2D context unavailable"));
+                return;
+              }
+              // Downscale large images to max 1920px
+              let w = img.width, h = img.height;
+              const MAX_DIM = 1920;
+              if (w > MAX_DIM || h > MAX_DIM) {
+                const scale = MAX_DIM / Math.max(w, h);
+                w = Math.round(w * scale);
+                h = Math.round(h * scale);
+              }
+              canvas.width = w;
+              canvas.height = h;
+              ctx.drawImage(img, 0, 0, w, h);
               canvas.toBlob(
                 (blob) => {
                   if (!blob) {
@@ -11628,7 +11888,10 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
 
           video.preload = 'metadata';
           video.src = url;
-          video.muted = true; 
+          video.muted = true;
+          video.style.position = 'fixed';
+          video.style.left = '-9999px';
+          video.style.visibility = 'hidden';
           document.body.appendChild(video); 
 
           video.onloadedmetadata = () => {
@@ -13113,6 +13376,11 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           console.log("[privacy] no uid");
           return;
         }
+        
+        // Reset save button state when loading settings
+        savePrivacyBtn.disabled = false;
+        savePrivacyBtn.textContent = "Save Settings";
+        savePrivacyBtn.style.background = "";
 
         try {
           console.log("[privacy] loading settings for uid:", uid);
@@ -13152,6 +13420,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           return;
         }
 
+        if (savePrivacyBtn.disabled) return;
         savePrivacyBtn.disabled = true;
         savePrivacyBtn.textContent = "Saving...";
 
@@ -13531,9 +13800,9 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             btn.className = "w-full text-left px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors flex items-center gap-3";
             btn.innerHTML = `
               <div class="w-10 h-10 rounded-full bg-slate-700 flex-shrink-0 overflow-hidden">
-                ${profilePic ? `<img src="${profilePic}" class="w-full h-full object-cover">` : `<div class="w-full h-full flex items-center justify-center text-slate-400 text-sm">${username.charAt(0).toUpperCase()}</div>`}
+                ${profilePic ? `<img src="${escapeHtml(profilePic)}" class="w-full h-full object-cover">` : `<div class="w-full h-full flex items-center justify-center text-slate-400 text-sm">${escapeHtml(username.charAt(0).toUpperCase())}</div>`}
               </div>
-              <div class="text-sm text-slate-100">${username}</div>
+              <div class="text-sm text-slate-100">${escapeHtml(username)}</div>
             `;
             btn.onclick = () => {
               dmUserSearch.value = username;
@@ -13550,24 +13819,40 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
       async function searchDmUsers(query) {
         if (!currentUserId) return;
         try {
-          
-          const usersSnap = await db.ref("users").once("value");
-          const allUsers = usersSnap.val() || {};
-          
-          const profilesSnap = await db.ref("userProfiles").once("value");
-          const allProfiles = profilesSnap.val() || {};
-
+          // Use server-side filtering to avoid downloading entire database
           const q = query.toLowerCase();
+          const usersSnap = await db.ref("users")
+            .orderByChild("usernameLower")
+            .startAt(q)
+            .endAt(q + "\uf8ff")
+            .limitToFirst(30)
+            .once("value");
+          let allUsers = usersSnap.val() || {};
+          
+          // Fallback if usernameLower index doesn't exist yet
+          if (Object.keys(allUsers).length === 0) {
+            const fallbackSnap = await db.ref("users").limitToFirst(500).once("value");
+            allUsers = fallbackSnap.val() || {};
+          }
+
           const matches = [];
+          const profilePromises = [];
+          
           Object.entries(allUsers).forEach(([uid, val]) => {
             const uname = val?.username || "";
             if (!uname) return;
             if (uid === currentUserId) return;
             if (uname.toLowerCase().includes(q)) {
-              const prof = allProfiles[uid] || {};
-              matches.push({ uid, username: uname, bio: prof.bio, profilePic: prof.profilePic });
+              profilePromises.push(
+                db.ref("userProfiles/" + uid).once("value").then(snap => {
+                  const prof = snap.val() || {};
+                  matches.push({ uid, username: uname, bio: prof.bio, profilePic: prof.profilePic });
+                })
+              );
             }
           });
+          
+          await Promise.all(profilePromises);
 
           if (!matches.length) {
             dmConversationList.innerHTML = '<p class="text-xs text-slate-400 p-2">No users found.</p>';
@@ -13634,6 +13919,18 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           const file = e.target.files && e.target.files[0];
           if (!file) return;
 
+          const allowedMediaTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'video/mp4', 'video/webm', 'video/quicktime'];
+          if (!allowedMediaTypes.includes(file.type)) {
+            dmError.textContent = 'Unsupported file type. Images and videos only.';
+            dmMediaInput.value = '';
+            return;
+          }
+          if (file.size > 50 * 1024 * 1024) {
+            dmError.textContent = 'File too large. Max 50MB.';
+            dmMediaInput.value = '';
+            return;
+          }
+
           if (!currentUserId) {
             dmError.textContent = "Please log in.";
             dmMediaInput.value = "";
@@ -13661,6 +13958,12 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             dmSendBtn.disabled = true;
 
             const privacyCheck = await checkDmPrivacy(activeDMTarget.uid);
+            if (!privacyCheck.allowed) {
+              dmError.textContent = privacyCheck.reason;
+              dmMediaUploadBtn.disabled = false;
+              dmSendBtn.disabled = false;
+              return;
+            }
             
             if (file.type && file.type.startsWith('video/')) {
               const dur = await getVideoDuration(file);
@@ -13672,15 +13975,11 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
                 return;
               }
             }
-            if (!privacyCheck.allowed) {
-              dmError.textContent = privacyCheck.reason;
-              dmMediaUploadBtn.disabled = false;
-              dmSendBtn.disabled = false;
-              return;
-            }
 
             if (!(await canUpload())) {
               dmError.textContent = "Slow down! Wait a few seconds.";
+              dmMediaUploadBtn.disabled = false;
+              dmSendBtn.disabled = false;
               return;
             }
 
@@ -13691,16 +13990,22 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             let caption = (dmInput.value || "").trim();
             if (caption) {
               for (let pattern of THREAT_PATTERNS) {
+                pattern.lastIndex = 0;
                 if (pattern.test(caption)) {
                   dmError.textContent = " Message blocked: Threats or violence are not allowed.";
                   dmInput.value = "";
+                  dmMediaUploadBtn.disabled = false;
+                  dmSendBtn.disabled = false;
                   return;
                 }
               }
               for (let pattern of HATE_PATTERNS) {
+                pattern.lastIndex = 0;
                 if (pattern.test(caption)) {
                   dmError.textContent = " Message blocked: Hateful or harassing language is not allowed.";
                   dmInput.value = "";
+                  dmMediaUploadBtn.disabled = false;
+                  dmSendBtn.disabled = false;
                   return;
                 }
               }
@@ -13802,6 +14107,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
 
         
         for (let pattern of THREAT_PATTERNS) {
+          pattern.lastIndex = 0;
           if (pattern.test(text)) {
             dmError.textContent = " Message blocked: Threats or violence are not allowed.";
             dmInput.value = "";
@@ -13810,6 +14116,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         }
         
         for (let pattern of HATE_PATTERNS) {
+          pattern.lastIndex = 0;
           if (pattern.test(text)) {
             dmError.textContent = " Message blocked: Hateful or harassing language is not allowed.";
             dmInput.value = "";
@@ -13826,7 +14133,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             currentWarningText = '';
             updateStatusBar();
           }, 4000);
-          msgInput.value = '';
+          dmInput.value = '';
           return;
         }
 
@@ -14154,6 +14461,18 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         const file = e.target.files[0];
         if (!file) return;
 
+        const allowedImageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+        if (!allowedImageTypes.includes(file.type)) {
+          showToast('Only JPEG, PNG, GIF, and WebP images are allowed', 'error');
+          profilePicInput.value = '';
+          return;
+        }
+        if (file.size > 10 * 1024 * 1024) {
+          showToast('File too large. Max 10MB', 'error');
+          profilePicInput.value = '';
+          return;
+        }
+
         try {
           uploadPicBtn.disabled = true;
           uploadPicBtn.textContent = "Uploading...";
@@ -14242,6 +14561,18 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         const file = e.target.files[0];
         if (!file) return;
 
+        const allowedImageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+        if (!allowedImageTypes.includes(file.type)) {
+          showToast('Only JPEG, PNG, GIF, and WebP images are allowed', 'error');
+          profileBannerInput.value = '';
+          return;
+        }
+        if (file.size > 10 * 1024 * 1024) {
+          showToast('File too large. Max 10MB', 'error');
+          profileBannerInput.value = '';
+          return;
+        }
+
         try {
           
           if (currentUserData.profileBannerFileId) {
@@ -14328,7 +14659,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
 
           
           if (data.profileBanner) {
-            profileBannerPreview.style.backgroundImage = `url('${data.profileBanner}')`;
+            profileBannerPreview.style.backgroundImage = `url('${encodeURI(data.profileBanner)}')`;
             profileBannerPreview.style.backgroundSize = "cover";
             profileBannerPreview.style.backgroundPosition = "center";
             profileBannerPreview.innerHTML = "";
@@ -14383,6 +14714,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
       
       async function viewUserProfile(username, options = {}) {
         console.log("[profile] viewing profile for", username);
+        currentViewingUsername = username;
 
         const isSelf = username === currentUsername;
 
@@ -14483,7 +14815,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
                   
                   const existingGif = viewProfileBanner.querySelector('img.banner-gif');
                   if (existingGif) existingGif.remove();
-                  viewProfileBanner.style.backgroundImage = `url('${bannerUrl}')`;
+                  viewProfileBanner.style.backgroundImage = `url('${encodeURI(bannerUrl)}')`;
                   viewProfileBanner.style.backgroundSize = "cover";
                   viewProfileBanner.style.backgroundPosition = "center";
                 }
@@ -14768,9 +15100,12 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           if (perms.canMute) {
             profileMuteBtn.classList.remove("hidden");
             profileMuteBtn.textContent = isMutedNow ? "🔊 Unmute" : "🔇 Mute";
-            profileMuteBtn.onclick = () => {
-              console.log("[admin-profile] mute button clicked, isMutedNow:", isMutedNow);
-              if (isMutedNow) {
+            profileMuteBtn.onclick = async () => {
+              console.log("[admin-profile] mute button clicked");
+              const latestMuteSnap = await db.ref("mutedUsers/" + targetUid).once("value");
+              const latestMuteData = latestMuteSnap.val();
+              const latestMuted = latestMuteData && latestMuteData.until && latestMuteData.until > Date.now();
+              if (latestMuted) {
                 console.log("[admin-profile] unMuting user:", targetUid);
                 db.ref("mutedUsers/" + targetUid).remove().then(() => {
                   console.log("[admin-profile] user unmuted successfully");
@@ -14863,7 +15198,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           if (sentReqSnap.exists()) {
             sendFriendRequestBtn.disabled = true;
             sendFriendRequestBtn.style.background = "rgb(100, 116, 139)";
-            sendFriendRequestBtn.textContent = "³ Pending";
+            sendFriendRequestBtn.textContent = "⏳ Pending";
             setFriendRequestStatus("Friend request already sent.", "info");
             return;
           }
@@ -14873,7 +15208,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           if (reverseReqSnap.exists()) {
             sendFriendRequestBtn.disabled = true;
             sendFriendRequestBtn.style.background = "rgb(100, 116, 139)";
-            sendFriendRequestBtn.textContent = "†© Incoming";
+            sendFriendRequestBtn.textContent = "📥 Incoming";
             setFriendRequestStatus("They sent you a friend request. Accept?", "info");
             return;
           }
@@ -14892,7 +15227,8 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
 
       
       function generateDefaultAvatar(username) {
-        const initial = (username || "?").charAt(0).toUpperCase();
+        const safeName = username || "?";
+        const initial = safeName.charAt(0).toUpperCase();
         const colors = [
           "from-red-500 to-red-600",
           "from-blue-500 to-blue-600",
@@ -14903,7 +15239,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           "from-cyan-500 to-cyan-600",
           "from-amber-500 to-amber-600"
         ];
-        const colorIdx = (username.charCodeAt(0) || 0) % colors.length;
+        const colorIdx = (safeName.charCodeAt(0) || 0) % colors.length;
         const color = colors[colorIdx];
         return `<div class="h-full w-full rounded-full overflow-hidden bg-gradient-to-br ${color} flex items-center justify-center text-4xl font-bold text-white">${initial}</div>`;
       }
@@ -15004,6 +15340,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             }
 
             
+            badWordPattern.lastIndex = 0;
             if (badWordPattern.test(newUsername)) {
               throw new Error("Username not allowed");
             }
@@ -15325,6 +15662,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
 
       
       sendFriendRequestBtn.addEventListener("click", async () => {
+        if (sendFriendRequestBtn.disabled) return;
         const uid = auth.currentUser?.uid;
         if (!uid) {
           logDetailedError("sendFriendRequest", new Error("Not logged in"));
@@ -15624,11 +15962,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
       }
 
       
-      const originalViewUserProfile = window.viewUserProfile;
-      window.viewUserProfile = function(username, ...args) {
-        currentViewingUsername = username;
-        return originalViewUserProfile.call(this, username, ...args);
-      };
+      // currentViewingUsername is now set directly inside viewUserProfile()
 
       
       let friendsFilterOnline = false;
@@ -15711,7 +16045,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             infoDiv.className = "flex flex-col flex-1 ml-3";
             infoDiv.innerHTML = `
               <span class="text-sm font-medium text-slate-100">Loading...</span>
-              <span class="text-xs text-slate-400">${isOnline ? '<span class="text-emerald-400">Online</span> €¢ ' : ''}Added ${addedAt}</span>
+              <span class="text-xs text-slate-400">${isOnline ? '<span class="text-emerald-400">Online</span> \u2022 ' : ''}Added ${addedAt}</span>
             `;
             
             const container = document.createElement("div");
@@ -15731,8 +16065,8 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
                   
                   avatarDiv.innerHTML = friendUsername.charAt(0).toUpperCase();
                   infoDiv.innerHTML = `
-                    <span class="text-sm font-medium text-slate-100">${friendUsername}</span>
-                    <span class="text-xs text-slate-400">${isOnline ? '<span class="text-emerald-400">Online</span> €¢ ' : ''}Added ${addedAt}</span>
+                    <span class="text-sm font-medium text-slate-100">${escapeHtml(friendUsername)}</span>
+                    <span class="text-xs text-slate-400">${isOnline ? '<span class="text-emerald-400">Online</span> \u2022 ' : ''}Added ${addedAt}</span>
                   `;
                   
                   
@@ -15773,10 +16107,11 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           }
           
           
-          if (filterOnlineOnly && visibleCount === 0) {
+          if (visibleCount === 0) {
             noFriendsMsg.style.display = "block";
-            noFriendsMsg.textContent = "No friends online";
+            noFriendsMsg.textContent = filterOnlineOnly ? "No friends online" : "No friends yet";
           } else {
+            noFriendsMsg.style.display = "none";
             noFriendsMsg.textContent = "No friends yet";
           }
         } catch (err) {
@@ -15980,7 +16315,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
                   
                   div.innerHTML = `
                     <div>
-                      <span class="text-sm font-medium text-slate-100">${username}</span>
+                      <span class="text-sm font-medium text-slate-100">${escapeHtml(username)}</span>
                       <span class="text-xs text-slate-400 block">Blocked ${blockedDate}</span>
                     </div>
                     <button class="unblock-btn px-3 py-1 bg-sky-600 hover:bg-sky-700 text-white text-xs rounded-lg transition-colors" data-blocked-uid="${item.blockedUid}">
@@ -16105,9 +16440,21 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         try {
           console.log("[search] searching for:", query);
           
+          // Use server-side filtering with limitToFirst to avoid downloading all users
+          const queryLower = query.toLowerCase();
+          const snap = await db.ref("users")
+            .orderByChild("usernameLower")
+            .startAt(queryLower)
+            .endAt(queryLower + "\uf8ff")
+            .limitToFirst(20)
+            .once("value");
+          let users = snap.val();
           
-          const snap = await db.ref("users").once("value");
-          const users = snap.val();
+          // Fallback: if no results with usernameLower index, try full download with limit
+          if (!users) {
+            const fallbackSnap = await db.ref("users").limitToFirst(500).once("value");
+            users = fallbackSnap.val();
+          }
           
           if (!users) {
             searchResults.innerHTML = '<p class="text-xs text-slate-400 p-2">No users found</p>';
@@ -16115,7 +16462,6 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           }
 
           const results = [];
-          const queryLower = query.toLowerCase();
 
           for (const [userId, userData] of Object.entries(users)) {
             if (userId === uid) continue; 
@@ -16148,7 +16494,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             const profile = profileSnap.val() || {};
             
             const avatarHTML = profile.profilePic
-              ? `<img src="${profile.profilePic}" class="h-10 w-10 rounded-full object-cover" />`
+              ? `<img src="${escapeHtml(profile.profilePic)}" class="h-10 w-10 rounded-full object-cover" />`
               : generateDefaultAvatar(user.username);
 
             div.innerHTML = `
@@ -16157,11 +16503,11 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
                   ${avatarHTML}
                 </div>
                 <div>
-                  <p class="text-sm font-medium text-slate-100">${user.username}</p>
-                  <p class="text-xs text-slate-400">${profile.bio || "No bio"}</p>
+                  <p class="text-sm font-medium text-slate-100">${escapeHtml(user.username)}</p>
+                  <p class="text-xs text-slate-400">${escapeHtml(profile.bio || "No bio")}</p>
                 </div>
               </div>
-              <button class="add-friend-btn px-3 py-1 bg-sky-600 hover:bg-sky-700 text-white text-xs rounded-lg transition-colors" data-username="${user.username}">
+              <button class="add-friend-btn px-3 py-1 bg-sky-600 hover:bg-sky-700 text-white text-xs rounded-lg transition-colors" data-username="${escapeHtml(user.username)}">
                 Add Friend
               </button>
             `;
@@ -16337,8 +16683,8 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             await deleteDmMessage(pendingDeleteOptions.threadId, pendingDeleteMessageId, pendingDeleteToken);
           } else if (pendingDeleteOptions && pendingDeleteOptions.isGroup && pendingDeleteOptions.groupId) {
             await deleteGroupMessage(pendingDeleteOptions.groupId, pendingDeleteMessageId, pendingDeleteToken);
-          } else if (activeGroupId) {
-            
+          } else if (!pendingDeleteOptions?.isDm && !pendingDeleteOptions?.isGroup && activeGroupId) {
+            // Only fall back to activeGroupId if no explicit options were set
             await deleteGroupMessage(activeGroupId, pendingDeleteMessageId, pendingDeleteToken);
           } else {
             await deleteMessage(pendingDeleteMessageId, pendingDeleteToken);
@@ -16357,7 +16703,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           }, 800);
         } catch (err) {
           
-          confirmDeleteBtn.innerHTML = 'œ— Failed';
+          confirmDeleteBtn.innerHTML = '✗ Failed';
           confirmDeleteBtn.className = "flex-1 px-4 py-2 bg-orange-600 text-white rounded-lg font-medium";
           
           setTimeout(() => {
@@ -16547,25 +16893,25 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         },
         {
           target: "#msgInput",
-          title: "Send Messages ðŸ’¬",
+          title: "Send Messages 💬",
           desc: "Type your message here and press Enter or click Send. You can chat with everyone in the Global Chat!",
           position: "top"
         },
         {
           target: "#mediaUploadBtn",
-          title: "Share Media ðŸ“·",
+          title: "Share Media 📷",
           desc: "Click here to upload images or videos to share with others. Supports most common formats.",
           position: "top"
         },
         {
           target: "#menuToggle",
-          title: "Open the Menu ˜°",
+          title: "Open the Menu ☰",
           desc: "Click the menu button (three dots) to access your profile, settings, friends, DMs, Patch Notes, Suggestions & Help (submit suggestions, bug reports, ideas, or ban appeals), and more!",
           position: "bottom"
         },
         {
           target: "#navDMs",
-          title: "Direct Messages ðŸ“¨",
+          title: "Direct Messages 📨",
           desc: "Click here to switch to Direct Messages. You can access DMs from the DMs tab next to Global Chat or via the Menu — use them for private conversations with friends.",
           position: "bottom"
         },
@@ -16577,13 +16923,13 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         },
         {
           target: "#messages",
-          title: "Chat Area ðŸ“œ",
+          title: "Chat Area 📜",
           desc: "Messages appear here. You can reply to messages, react to them, and report inappropriate content.",
           position: "left"
         },
         {
           target: null, 
-          title: "You're All Set! ‰",
+          title: "You're All Set! 🎉",
           desc: "That's the basics! Explore the menu for more features like adding friends, customizing your profile, and adjusting settings. Have fun chatting!",
           position: "center"
         }

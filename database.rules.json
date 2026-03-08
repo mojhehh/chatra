@@ -339,6 +339,30 @@
       }
     },
 
+    "calls": {
+      "$callId": {
+        ".read": "auth != null && (data.child('callerUid').val() === auth.uid || data.child('calleeUid').val() === auth.uid)",
+        ".write": "auth != null && (!data.exists() || data.child('callerUid').val() === auth.uid || data.child('calleeUid').val() === auth.uid)",
+        "callerCandidates": {
+          "$candId": {
+            ".validate": "newData.exists()"
+          }
+        },
+        "calleeCandidates": {
+          "$candId": {
+            ".validate": "newData.exists()"
+          }
+        }
+      }
+    },
+
+    "callSignals": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null"
+      }
+    },
+
     "groups": {
       ".read": "auth != null",
       ".indexOn": ["createdAt", "name"],
