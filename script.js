@@ -753,28 +753,25 @@
       // Clean up stale presence entries (run once on load for admins)
       async function cleanupStalePresence() {
         try {
-          const snap = await db.ref('presence').once('value');
-          const data = snap.val() || {};
+          const myUid = firebase.auth().currentUser?.uid;
+          if (!myUid) return;
+          const snap = await db.ref('presence/' + myUid).once('value');
+          const data = snap.val();
+          if (!data || typeof data !== 'object') return;
           const now = Date.now();
           const STALE_THRESHOLD = 2 * 60 * 1000;
           
-          for (const [uid, presence] of Object.entries(data)) {
-            if (presence && typeof presence === 'object') {
-              if (presence.state === 'online') {
-                // Old flat format - check if stale
-                const lastChanged = presence.lastChanged || 0;
+          if (data.state === 'online') {
+            const lastChanged = data.lastChanged || 0;
+            if (now - lastChanged > STALE_THRESHOLD) {
+              await db.ref('presence/' + myUid).remove();
+            }
+          } else {
+            for (const [connId, conn] of Object.entries(data)) {
+              if (conn && conn.state === 'online') {
+                const lastChanged = conn.lastChanged || 0;
                 if (now - lastChanged > STALE_THRESHOLD) {
-                  await db.ref('presence/' + uid).remove();
-                }
-              } else {
-                // New format with connection children
-                for (const [connId, conn] of Object.entries(presence)) {
-                  if (conn && conn.state === 'online') {
-                    const lastChanged = conn.lastChanged || 0;
-                    if (now - lastChanged > STALE_THRESHOLD) {
-                      await db.ref('presence/' + uid + '/' + connId).remove();
-                    }
-                  }
+                  await db.ref('presence/' + myUid + '/' + connId).remove();
                 }
               }
             }
