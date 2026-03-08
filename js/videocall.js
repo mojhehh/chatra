@@ -25,6 +25,9 @@
   let selectedAudioDeviceId = null; // null = default
   let devicePickerOpen = false;
   let disconnectTimer = null; // timer for ICE disconnected recovery
+  let pendingCandidates = []; // queue ICE candidates until remote description is set
+  let remoteStream = null;    // single persistent remote MediaStream
+  let playRetryTimer = null;  // retry .play() for Safari
 
   // Detect iPad / iOS Safari early
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
@@ -182,24 +185,51 @@
       }
     });
 
-    // Receive remote stream
-    pc.addEventListener('track', (event) => {
-      const remoteVideo = document.getElementById('vcRemoteVideo');
-      const waitingEl = document.getElementById('vcWaiting');
-      if (!remoteVideo) return;
+    // Create a single persistent remote stream up front
+    if (!remoteStream) remoteStream = new MediaStream();
+    const remoteVideo = document.getElementById('vcRemoteVideo');
+    if (remoteVideo) {
+      remoteVideo.srcObject = remoteStream;
+    }
 
-      // Safari may fire track events without associated streams
-      if (event.streams && event.streams[0]) {
-        remoteVideo.srcObject = event.streams[0];
-      } else {
-        if (!remoteVideo.srcObject) {
-          remoteVideo.srcObject = new MediaStream();
-        }
-        remoteVideo.srcObject.addTrack(event.track);
+    // Receive remote tracks
+    pc.addEventListener('track', (event) => {
+      console.log('[VideoCall] track event:', event.track.kind, 'readyState:', event.track.readyState);
+      const rv = document.getElementById('vcRemoteVideo');
+      const waitingEl = document.getElementById('vcWaiting');
+
+      // Always add to our single persistent stream
+      if (remoteStream) {
+        // Avoid duplicates
+        const existing = remoteStream.getTracks().find(t => t.id === event.track.id);
+        if (!existing) remoteStream.addTrack(event.track);
       }
 
-      remoteVideo.classList.remove('hidden');
-      remoteVideo.play().catch(() => {});
+      if (rv) {
+        // Ensure srcObject is set (Safari sometimes loses it)
+        if (rv.srcObject !== remoteStream) rv.srcObject = remoteStream;
+        rv.classList.remove('hidden');
+
+        // Aggressive play retry — Safari blocks .play() in non-user-gesture contexts
+        const tryPlay = () => {
+          rv.play().catch((e) => {
+            console.warn('[VideoCall] play() blocked, will retry:', e.name);
+          });
+        };
+        tryPlay();
+        // Retry every 500ms for 5 seconds
+        if (!playRetryTimer) {
+          let retries = 0;
+          playRetryTimer = setInterval(() => {
+            retries++;
+            if (rv.paused) tryPlay();
+            if (!rv.paused || retries >= 10) {
+              clearInterval(playRetryTimer);
+              playRetryTimer = null;
+            }
+          }, 500);
+        }
+      }
       if (waitingEl) waitingEl.classList.add('hidden');
       if (!callStartTime) {
         callStartTime = Date.now();
@@ -339,19 +369,32 @@
         timestamp: firebase.database.ServerValue.TIMESTAMP
       });
 
-      // Listen for answer
+      // Listen for answer — MUST set remote description before adding ICE candidates
       callRef.child('answer').on('value', async (snap) => {
         const answer = snap.val();
         if (answer && pc.signalingState === 'have-local-offer') {
+          console.log('[VideoCall] Caller: setting remote description (answer)');
           await pc.setRemoteDescription(new RTCSessionDescription(answer));
+          // Flush any ICE candidates that arrived before the answer
+          console.log('[VideoCall] Flushing', pendingCandidates.length, 'queued candidates');
+          while (pendingCandidates.length) {
+            const c = pendingCandidates.shift();
+            pc.addIceCandidate(c).catch(() => {});
+          }
         }
       });
 
-      // Listen for callee ICE candidates
+      // Listen for callee ICE candidates — queue if remote description not yet set
       callRef.child('calleeCandidates').on('child_added', (snap) => {
         const candidate = snap.val();
         if (candidate) {
-          pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
+          const iceCandidate = new RTCIceCandidate(candidate);
+          if (pc.remoteDescription && pc.remoteDescription.type) {
+            pc.addIceCandidate(iceCandidate).catch(() => {});
+          } else {
+            console.log('[VideoCall] Queuing candidate (no remote desc yet)');
+            pendingCandidates.push(iceCandidate);
+          }
         }
       });
 
@@ -474,6 +517,14 @@
       clearTimeout(disconnectTimer);
       disconnectTimer = null;
     }
+
+    if (playRetryTimer) {
+      clearInterval(playRetryTimer);
+      playRetryTimer = null;
+    }
+
+    pendingCandidates = [];
+    remoteStream = null;
 
     if (callRef) {
       callRef.update({ status: 'ended' }).catch(() => {});
