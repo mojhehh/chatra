@@ -74,13 +74,20 @@
 
   // ── Device Enumeration ─────────────────────────────────
   async function getDevices() {
-    // Need a temporary stream to trigger permission prompt so labels are visible
+    // If we already have a stream, permission is granted — enumerate directly
+    if (localStream) {
+      try { return await navigator.mediaDevices.enumerateDevices(); } catch (e) { return []; }
+    }
     let tempStream = null;
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
-      // If labels are empty, we need permission first
       if (devices.length && devices[0].label === '') {
-        tempStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+        // Try video+audio first, fall back to audio-only (Edge camera may be locked)
+        try {
+          tempStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+        } catch (_) {
+          try { tempStream = await navigator.mediaDevices.getUserMedia({ audio: true }); } catch (_2) {}
+        }
       }
       const all = await navigator.mediaDevices.enumerateDevices();
       if (tempStream) tempStream.getTracks().forEach(t => t.stop());
@@ -174,17 +181,24 @@
     pc.addEventListener('track', (event) => {
       const remoteVideo = document.getElementById('vcRemoteVideo');
       const waitingEl = document.getElementById('vcWaiting');
-      if (remoteVideo && event.streams && event.streams[0]) {
+      if (!remoteVideo) return;
+
+      // Safari may fire track events without associated streams
+      if (event.streams && event.streams[0]) {
         remoteVideo.srcObject = event.streams[0];
-        remoteVideo.classList.remove('hidden');
-        // Safari needs explicit play()
-        remoteVideo.play().catch(() => {});
-        if (waitingEl) waitingEl.classList.add('hidden');
-        // Start timer when connected
-        if (!callStartTime) {
-          callStartTime = Date.now();
-          startTimer();
+      } else {
+        if (!remoteVideo.srcObject) {
+          remoteVideo.srcObject = new MediaStream();
         }
+        remoteVideo.srcObject.addTrack(event.track);
+      }
+
+      remoteVideo.classList.remove('hidden');
+      remoteVideo.play().catch(() => {});
+      if (waitingEl) waitingEl.classList.add('hidden');
+      if (!callStartTime) {
+        callStartTime = Date.now();
+        startTimer();
       }
     });
 
@@ -246,26 +260,9 @@
       await acquireMedia();
       showLocalVideo();
 
-      // If we only got audio (camera failed), show notice and try to get video in background
+      // If we only got audio (camera failed), show notice
       if (localStream && localStream.getVideoTracks().length === 0) {
         if (typeof showToast === 'function') showToast('Camera unavailable \u2014 audio only', 'info');
-        // Try to add video after a brief delay (Edge sometimes releases the lock)
-        setTimeout(async () => {
-          if (!localStream || localStream.getVideoTracks().length > 0) return;
-          try {
-            const vs = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-            const vt = vs.getVideoTracks()[0];
-            if (vt && localStream) {
-              localStream.addTrack(vt);
-              if (peerConnection) {
-                const sender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
-                if (sender) await sender.replaceTrack(vt);
-                else peerConnection.addTrack(vt, localStream);
-              }
-              showLocalVideo();
-            }
-          } catch (_) { /* still no camera, stay audio-only */ }
-        }, 1500);
       }
 
       // Create call document in Firebase
