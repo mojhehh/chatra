@@ -29,6 +29,7 @@
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+  const isEdge = /Edg\//i.test(navigator.userAgent);
 
   // STUN/TURN servers — Google public + Metered free TURN for NAT traversal
   const ICE_SERVERS = [
@@ -41,22 +42,20 @@
 
   // Preferred video constraints — 1080p 60fps, graceful fallback
   function getVideoConstraints() {
-    const ideal = {
-      width: { ideal: 1920, min: 1280 },
-      height: { ideal: 1080, min: 720 },
-      frameRate: { ideal: 60, min: 30 },
-      facingMode: usingFrontCam ? 'user' : 'environment'
-    };
-    // Safari / iPad sometimes chokes on width/height ideal, so simplify
-    if (isIOS || isSafari) {
+    // Edge and Safari choke on min constraints and sometimes facingMode
+    if (isIOS || isSafari || isEdge) {
       return {
         width: { ideal: 1920 },
         height: { ideal: 1080 },
-        frameRate: { ideal: 60 },
-        facingMode: usingFrontCam ? 'user' : 'environment'
+        frameRate: { ideal: 60 }
       };
     }
-    return ideal;
+    return {
+      width: { ideal: 1920 },
+      height: { ideal: 1080 },
+      frameRate: { ideal: 60, min: 30 },
+      facingMode: usingFrontCam ? 'user' : 'environment'
+    };
   }
 
   // ── Firebase helpers ───────────────────────────────────
@@ -104,26 +103,31 @@
       : { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
 
     const constraints = { video: videoConstraint, audio: audioConstraint };
-    try {
-      localStream = await navigator.mediaDevices.getUserMedia(constraints);
-    } catch (e) {
-      // Fallback: lower resolution, keep device selection
-      console.warn('[VideoCall] HD failed, falling back', e);
-      const fbVideo = selectedVideoDeviceId
-        ? { deviceId: { exact: selectedVideoDeviceId } }
-        : { facingMode: usingFrontCam ? 'user' : 'environment' };
-      const fbAudio = selectedAudioDeviceId
-        ? { deviceId: { exact: selectedAudioDeviceId } }
-        : true;
+    const fbAudio = selectedAudioDeviceId
+      ? { deviceId: { exact: selectedAudioDeviceId } }
+      : true;
+
+    // Progressive fallback chain for browser compatibility (Edge, Safari, etc.)
+    const fallbacks = [
+      constraints,
+      // Drop resolution/fps, keep device if selected
+      { video: selectedVideoDeviceId ? { deviceId: { exact: selectedVideoDeviceId } } : true, audio: fbAudio },
+      // Bare minimum video
+      { video: true, audio: fbAudio },
+      // Audio only
+      { video: false, audio: fbAudio }
+    ];
+
+    for (let i = 0; i < fallbacks.length; i++) {
       try {
-        localStream = await navigator.mediaDevices.getUserMedia({ video: fbVideo, audio: fbAudio });
-      } catch (e2) {
-        // Video completely unavailable — audio-only fallback
-        console.warn('[VideoCall] Video unavailable, audio-only', e2);
-        localStream = await navigator.mediaDevices.getUserMedia({ video: false, audio: fbAudio });
+        localStream = await navigator.mediaDevices.getUserMedia(fallbacks[i]);
+        if (i > 0) console.warn('[VideoCall] Using fallback level', i);
+        return localStream;
+      } catch (e) {
+        console.warn('[VideoCall] getUserMedia attempt', i, 'failed:', e.name);
+        if (i === fallbacks.length - 1) throw e;
       }
     }
-    return localStream;
   }
 
   function stopMedia() {
