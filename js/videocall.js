@@ -23,6 +23,7 @@
   let usingFrontCam = true;
   let selectedVideoDeviceId = null; // null = default
   let selectedAudioDeviceId = null; // null = default
+  let selectedOutputDeviceId = null; // null = default (speaker output)
   let devicePickerOpen = false;
   let disconnectTimer = null; // timer for ICE disconnected recovery
   let pendingCandidates = []; // queue ICE candidates until remote description is set
@@ -35,7 +36,7 @@
   const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
   const isEdge = /Edg\//i.test(navigator.userAgent);
 
-  // STUN/TURN servers — Google STUN + free TURN relay for NAT traversal
+  // STUN/TURN servers — Google STUN + Metered TURN relay for NAT traversal
   const ICE_SERVERS = [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
@@ -43,9 +44,10 @@
     { urls: 'stun:stun3.l.google.com:19302' },
     { urls: 'stun:stun4.l.google.com:19302' },
     // Free TURN relay — needed when both peers are behind symmetric NAT (school networks)
-    { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
-    { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
-    { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' }
+    { urls: 'turn:a.relay.metered.ca:80', username: 'e44b2c44e7d089613232af0f', credential: 'ZYvJLJQBNVfOz4o5' },
+    { urls: 'turn:a.relay.metered.ca:80?transport=tcp', username: 'e44b2c44e7d089613232af0f', credential: 'ZYvJLJQBNVfOz4o5' },
+    { urls: 'turn:a.relay.metered.ca:443', username: 'e44b2c44e7d089613232af0f', credential: 'ZYvJLJQBNVfOz4o5' },
+    { urls: 'turn:a.relay.metered.ca:443?transport=tcp', username: 'e44b2c44e7d089613232af0f', credential: 'ZYvJLJQBNVfOz4o5' }
   ];
 
   // Preferred video constraints — 1080p 60fps, graceful fallback
@@ -117,6 +119,11 @@
     return all.filter(d => d.kind === 'audioinput');
   }
 
+  async function getOutputDevices() {
+    const all = await getDevices();
+    return all.filter(d => d.kind === 'audiooutput');
+  }
+
   // ── Media ──────────────────────────────────────────────
   async function acquireMedia() {
     const videoConstraint = selectedVideoDeviceId
@@ -163,7 +170,10 @@
 
   // ── Peer Connection ────────────────────────────────────
   function createPeerConnection(callId) {
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    const pc = new RTCPeerConnection({
+      iceServers: ICE_SERVERS,
+      iceCandidatePoolSize: 10
+    });
 
     // Add local tracks
     if (localStream) {
@@ -172,17 +182,17 @@
       });
     }
 
-    // Prefer high-bitrate for 1080p
-    pc.addEventListener('negotiationneeded', async () => {
-      // handled by offer/answer flow
-    });
-
     // Send ICE candidates to Firebase
     pc.addEventListener('icecandidate', (event) => {
       if (event.candidate && callId) {
         const side = isCaller ? 'callerCandidates' : 'calleeCandidates';
         getDb().ref('calls/' + callId + '/' + side).push(event.candidate.toJSON());
       }
+    });
+
+    // Log ICE gathering progress
+    pc.addEventListener('icegatheringstatechange', () => {
+      console.log('[VideoCall] ICE gathering state:', pc.iceGatheringState);
     });
 
     // Create a single persistent remote stream up front
@@ -194,36 +204,49 @@
 
     // Receive remote tracks
     pc.addEventListener('track', (event) => {
-      console.log('[VideoCall] track event:', event.track.kind, 'readyState:', event.track.readyState);
+      console.log('[VideoCall] track event:', event.track.kind, 'readyState:', event.track.readyState, 'streams:', event.streams ? event.streams.length : 0);
       const rv = document.getElementById('vcRemoteVideo');
       const waitingEl = document.getElementById('vcWaiting');
 
       // Always add to our single persistent stream
       if (remoteStream) {
-        // Avoid duplicates
         const existing = remoteStream.getTracks().find(t => t.id === event.track.id);
-        if (!existing) remoteStream.addTrack(event.track);
+        if (!existing) {
+          remoteStream.addTrack(event.track);
+          console.log('[VideoCall] Added remote track, total tracks:', remoteStream.getTracks().length);
+        }
       }
 
+      // Also listen for track ending/muting so we know
+      event.track.addEventListener('ended', () => console.log('[VideoCall] Remote track ended:', event.track.kind));
+      event.track.addEventListener('mute', () => console.log('[VideoCall] Remote track muted:', event.track.kind));
+      event.track.addEventListener('unmute', () => {
+        console.log('[VideoCall] Remote track unmuted:', event.track.kind);
+        // Safari sometimes mutes then unmutes — re-trigger play
+        if (rv && rv.paused) rv.play().catch(() => {});
+      });
+
       if (rv) {
-        // Ensure srcObject is set (Safari sometimes loses it)
         if (rv.srcObject !== remoteStream) rv.srcObject = remoteStream;
         rv.classList.remove('hidden');
 
-        // Aggressive play retry — Safari blocks .play() in non-user-gesture contexts
+        // Set output device if selected
+        if (selectedOutputDeviceId && typeof rv.setSinkId === 'function') {
+          rv.setSinkId(selectedOutputDeviceId).catch(() => {});
+        }
+
+        // Play with retries for Safari autoplay restrictions
         const tryPlay = () => {
-          rv.play().catch((e) => {
-            console.warn('[VideoCall] play() blocked, will retry:', e.name);
-          });
+          const p = rv.play();
+          if (p) p.catch((e) => console.warn('[VideoCall] play() blocked:', e.name));
         };
         tryPlay();
-        // Retry every 500ms for 5 seconds
         if (!playRetryTimer) {
           let retries = 0;
           playRetryTimer = setInterval(() => {
             retries++;
             if (rv.paused) tryPlay();
-            if (!rv.paused || retries >= 10) {
+            if (!rv.paused || retries >= 20) {
               clearInterval(playRetryTimer);
               playRetryTimer = null;
             }
@@ -242,7 +265,6 @@
       console.log('[VideoCall] ICE state:', state);
 
       if (state === 'connected' || state === 'completed') {
-        // Connection established or recovered — clear any reconnect timer
         if (disconnectTimer) {
           clearTimeout(disconnectTimer);
           disconnectTimer = null;
@@ -252,32 +274,73 @@
       }
 
       if (state === 'disconnected') {
-        // DON'T end call — 'disconnected' is temporary, ICE may recover.
-        // Show a reconnecting indicator and set a 30-second timeout.
         const waitEl = document.getElementById('vcWaiting');
         if (waitEl) {
           waitEl.classList.remove('hidden');
-          waitEl.querySelector('p').textContent = 'Reconnecting...';
+          const p = waitEl.querySelector('p');
+          if (p) p.textContent = 'Reconnecting...';
         }
         if (!disconnectTimer) {
           disconnectTimer = setTimeout(() => {
             disconnectTimer = null;
             if (peerConnection && peerConnection.iceConnectionState === 'disconnected') {
-              console.warn('[VideoCall] ICE disconnected for 30s, ending call');
-              endCall();
+              // Try ICE restart before giving up
+              console.warn('[VideoCall] ICE disconnected 15s, attempting restart');
+              attemptIceRestart();
             }
-          }, 30000);
+          }, 15000);
         }
       }
 
       if (state === 'failed') {
-        // ICE failed completely — end the call
-        endCall();
+        // Try ICE restart first, only end call if restart fails
+        console.warn('[VideoCall] ICE failed, attempting restart');
+        attemptIceRestart();
       }
     });
 
     peerConnection = pc;
     return pc;
+  }
+
+  // ICE restart — renegotiate without tearing down the call
+  let iceRestartAttempts = 0;
+  async function attemptIceRestart() {
+    if (!peerConnection || !callRef || !isCaller) {
+      // Only caller initiates ICE restart; callee just waits
+      if (!isCaller && peerConnection && peerConnection.iceConnectionState === 'failed') {
+        // Callee waits 10s for caller to restart, then ends
+        setTimeout(() => {
+          if (peerConnection && peerConnection.iceConnectionState === 'failed') {
+            endCall();
+          }
+        }, 10000);
+      }
+      return;
+    }
+    iceRestartAttempts++;
+    if (iceRestartAttempts > 3) {
+      console.error('[VideoCall] ICE restart failed after 3 attempts');
+      endCall();
+      return;
+    }
+    try {
+      console.log('[VideoCall] ICE restart attempt', iceRestartAttempts);
+      const offer = await peerConnection.createOffer({ iceRestart: true });
+      offer.sdp = setHighBitrate(offer.sdp);
+      await peerConnection.setLocalDescription(offer);
+      await callRef.update({
+        offer: { type: offer.type, sdp: offer.sdp },
+        answer: null  // clear old answer so callee re-answers
+      });
+      // Clear old candidates
+      await callRef.child('callerCandidates').remove();
+      await callRef.child('calleeCandidates').remove();
+      pendingCandidates = [];
+    } catch (e) {
+      console.error('[VideoCall] ICE restart error:', e);
+      endCall();
+    }
   }
 
   // Set SDP to prefer high bitrate
@@ -374,12 +437,18 @@
         const answer = snap.val();
         if (answer && pc.signalingState === 'have-local-offer') {
           console.log('[VideoCall] Caller: setting remote description (answer)');
-          await pc.setRemoteDescription(new RTCSessionDescription(answer));
-          // Flush any ICE candidates that arrived before the answer
-          console.log('[VideoCall] Flushing', pendingCandidates.length, 'queued candidates');
-          while (pendingCandidates.length) {
-            const c = pendingCandidates.shift();
-            pc.addIceCandidate(c).catch(() => {});
+          try {
+            await pc.setRemoteDescription(new RTCSessionDescription(answer));
+            // Flush any ICE candidates that arrived before the answer
+            console.log('[VideoCall] Flushing', pendingCandidates.length, 'queued candidates');
+            while (pendingCandidates.length) {
+              const c = pendingCandidates.shift();
+              pc.addIceCandidate(c).catch(() => {});
+            }
+            // Reset restart counter on successful reconnection
+            iceRestartAttempts = 0;
+          } catch (e) {
+            console.error('[VideoCall] setRemoteDescription(answer) error:', e);
           }
         }
       });
@@ -458,6 +527,7 @@
         throw new Error('Call data not found');
       }
 
+      console.log('[VideoCall] Callee: setting remote description (offer)');
       await pc.setRemoteDescription(new RTCSessionDescription(callData.offer));
 
       // Create answer
@@ -471,11 +541,37 @@
         status: 'active'
       });
 
-      // Listen for caller ICE candidates
+      // NOW listen for caller ICE candidates — after both descriptions are set
+      // Queue any that arrive during processing
+      const calleePendingCandidates = [];
+      let calleeRemoteReady = true; // remote desc already set above
+
       callRef.child('callerCandidates').on('child_added', (snap) => {
         const candidate = snap.val();
         if (candidate) {
-          pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
+          const iceCandidate = new RTCIceCandidate(candidate);
+          pc.addIceCandidate(iceCandidate).catch((e) => {
+            console.warn('[VideoCall] Callee addIceCandidate error:', e.name);
+          });
+        }
+      });
+
+      // Listen for ICE restart — caller may re-send offer
+      callRef.child('offer').on('value', async (snap) => {
+        const newOffer = snap.val();
+        if (!newOffer || !pc || pc.signalingState === 'closed') return;
+        // Only process if this is a NEW offer (ICE restart)
+        if (pc.remoteDescription && pc.remoteDescription.sdp === newOffer.sdp) return;
+        try {
+          console.log('[VideoCall] Callee: received ICE restart offer');
+          await pc.setRemoteDescription(new RTCSessionDescription(newOffer));
+          const newAnswer = await pc.createAnswer();
+          newAnswer.sdp = setHighBitrate(newAnswer.sdp);
+          await pc.setLocalDescription(newAnswer);
+          await callRef.update({ answer: { type: newAnswer.type, sdp: newAnswer.sdp } });
+          console.log('[VideoCall] Callee: sent ICE restart answer');
+        } catch (e) {
+          console.error('[VideoCall] Callee ICE restart error:', e);
         }
       });
 
@@ -525,10 +621,12 @@
 
     pendingCandidates = [];
     remoteStream = null;
+    iceRestartAttempts = 0;
 
     if (callRef) {
       callRef.update({ status: 'ended' }).catch(() => {});
       callRef.child('answer').off();
+      callRef.child('offer').off();
       callRef.child('callerCandidates').off();
       callRef.child('calleeCandidates').off();
       callRef.child('status').off();
@@ -559,6 +657,7 @@
     callStartTime = 0;
     selectedVideoDeviceId = null;
     selectedAudioDeviceId = null;
+    // Keep selectedOutputDeviceId across calls — user preference
     devicePickerOpen = false;
 
     hideCallUI();
@@ -804,6 +903,20 @@
     }
   }
 
+  // Switch audio output device (speaker/headphones)
+  async function switchOutputDevice(deviceId) {
+    selectedOutputDeviceId = deviceId;
+    const rv = document.getElementById('vcRemoteVideo');
+    if (rv && typeof rv.setSinkId === 'function') {
+      try {
+        await rv.setSinkId(deviceId);
+        console.log('[VideoCall] Output device set to', deviceId);
+      } catch (err) {
+        console.warn('[VideoCall] setSinkId failed', err);
+      }
+    }
+  }
+
   // ── Device Picker UI ───────────────────────────────────
   async function toggleDevicePicker() {
     const picker = document.getElementById('vcDevicePicker');
@@ -817,13 +930,18 @@
     picker.innerHTML = '<p style="color:#94a3b8;font-size:13px;padding:8px 12px;">Loading devices...</p>';
     picker.classList.remove('hidden');
 
-    const [videoDevices, audioDevices] = await Promise.all([getVideoDevices(), getAudioDevices()]);
+    const [videoDevices, audioDevices, outputDevices] = await Promise.all([
+      getVideoDevices(), getAudioDevices(), getOutputDevices()
+    ]);
 
     // Determine currently active device IDs from tracks
     const activeVideoId = localStream && localStream.getVideoTracks()[0]
       ? localStream.getVideoTracks()[0].getSettings().deviceId : null;
     const activeAudioId = localStream && localStream.getAudioTracks()[0]
       ? localStream.getAudioTracks()[0].getSettings().deviceId : null;
+    // For output, check remoteVideo's sinkId or our stored preference
+    const rv = document.getElementById('vcRemoteVideo');
+    const activeOutputId = selectedOutputDeviceId || (rv && rv.sinkId) || '';
 
     let html = '';
 
@@ -835,7 +953,7 @@
         html += '<button class="vc-picker-item' + (active ? ' active' : '') + '" data-type="video" data-id="' + escapeHtml(d.deviceId) + '">' +
           '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>' +
           '<span>' + escapeHtml(name) + '</span>' +
-          (active ? '<span class="vc-picker-check">✓</span>' : '') +
+          (active ? '<span class="vc-picker-check">\u2713</span>' : '') +
           '</button>';
       });
       html += '</div>';
@@ -849,7 +967,22 @@
         html += '<button class="vc-picker-item' + (active ? ' active' : '') + '" data-type="audio" data-id="' + escapeHtml(d.deviceId) + '">' +
           '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a4 4 0 0 0-4 4v7a4 4 0 0 0 8 0V5a4 4 0 0 0-4-4z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>' +
           '<span>' + escapeHtml(name) + '</span>' +
-          (active ? '<span class="vc-picker-check">✓</span>' : '') +
+          (active ? '<span class="vc-picker-check">\u2713</span>' : '') +
+          '</button>';
+      });
+      html += '</div>';
+    }
+
+    // Output devices (speakers/headphones) — only shown if setSinkId is supported
+    if (outputDevices.length > 0 && typeof HTMLMediaElement.prototype.setSinkId === 'function') {
+      html += '<div class="vc-picker-section"><div class="vc-picker-label">Speaker</div>';
+      outputDevices.forEach((d, i) => {
+        const active = d.deviceId === activeOutputId || (!activeOutputId && d.deviceId === 'default');
+        const name = d.label || ('Speaker ' + (i + 1));
+        html += '<button class="vc-picker-item' + (active ? ' active' : '') + '" data-type="output" data-id="' + escapeHtml(d.deviceId) + '">' +
+          '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>' +
+          '<span>' + escapeHtml(name) + '</span>' +
+          (active ? '<span class="vc-picker-check">\u2713</span>' : '') +
           '</button>';
       });
       html += '</div>';
@@ -868,8 +1001,10 @@
         const id = btn.dataset.id;
         if (type === 'video') {
           await switchVideoDevice(id);
-        } else {
+        } else if (type === 'audio') {
           await switchAudioDevice(id);
+        } else if (type === 'output') {
+          await switchOutputDevice(id);
         }
         // Re-render to update checkmarks
         toggleDevicePicker();
