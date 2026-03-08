@@ -115,7 +115,13 @@
       const fbAudio = selectedAudioDeviceId
         ? { deviceId: { exact: selectedAudioDeviceId } }
         : true;
-      localStream = await navigator.mediaDevices.getUserMedia({ video: fbVideo, audio: fbAudio });
+      try {
+        localStream = await navigator.mediaDevices.getUserMedia({ video: fbVideo, audio: fbAudio });
+      } catch (e2) {
+        // Video completely unavailable — audio-only fallback
+        console.warn('[VideoCall] Video unavailable, audio-only', e2);
+        localStream = await navigator.mediaDevices.getUserMedia({ video: false, audio: fbAudio });
+      }
     }
     return localStream;
   }

@@ -11004,6 +11004,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             if (!currentUsername) {
               throw new Error("Could not get username");
             }
+            window.currentUsername = currentUsername;
             
             updateChatUserLabel(currentUsername);
 
