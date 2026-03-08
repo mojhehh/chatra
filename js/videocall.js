@@ -42,12 +42,21 @@
 
   // Preferred video constraints — 1080p 60fps, graceful fallback
   function getVideoConstraints() {
-    // Edge and Safari choke on min constraints and sometimes facingMode
-    if (isIOS || isSafari || isEdge) {
+    // Edge chokes on min constraints and facingMode on desktop
+    if (isEdge) {
       return {
         width: { ideal: 1920 },
         height: { ideal: 1080 },
         frameRate: { ideal: 60 }
+      };
+    }
+    // Safari / iPad — keep facingMode but drop min constraints
+    if (isIOS || isSafari) {
+      return {
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+        frameRate: { ideal: 60 },
+        facingMode: usingFrontCam ? 'user' : 'environment'
       };
     }
     return {
@@ -237,6 +246,28 @@
       await acquireMedia();
       showLocalVideo();
 
+      // If we only got audio (camera failed), show notice and try to get video in background
+      if (localStream && localStream.getVideoTracks().length === 0) {
+        if (typeof showToast === 'function') showToast('Camera unavailable \u2014 audio only', 'info');
+        // Try to add video after a brief delay (Edge sometimes releases the lock)
+        setTimeout(async () => {
+          if (!localStream || localStream.getVideoTracks().length > 0) return;
+          try {
+            const vs = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+            const vt = vs.getVideoTracks()[0];
+            if (vt && localStream) {
+              localStream.addTrack(vt);
+              if (peerConnection) {
+                const sender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
+                if (sender) await sender.replaceTrack(vt);
+                else peerConnection.addTrack(vt, localStream);
+              }
+              showLocalVideo();
+            }
+          } catch (_) { /* still no camera, stay audio-only */ }
+        }, 1500);
+      }
+
       // Create call document in Firebase
       const callId = getDb().ref('calls').push().key;
       currentCallId = callId;
@@ -399,6 +430,10 @@
 
   // End current call
   function endCall() {
+    // Guard against double calls
+    if (endCall._running) return;
+    endCall._running = true;
+
     stopTimer();
 
     if (callRef) {
@@ -438,6 +473,7 @@
 
     hideCallUI();
     hideIncomingUI();
+    endCall._running = false;
   }
 
   // ── Incoming Call Listener ─────────────────────────────
@@ -611,31 +647,43 @@
   // Switch video device mid-call (deviceId = null uses facingMode)
   async function switchVideoDevice(deviceId) {
     if (!localStream) return;
+    // Stop existing video tracks FIRST so Edge releases the camera
     localStream.getVideoTracks().forEach(t => t.stop());
 
-    const videoConstraint = deviceId
-      ? { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 60 } }
-      : getVideoConstraints();
-
-    try {
-      const newStream = await navigator.mediaDevices.getUserMedia({ video: videoConstraint, audio: false });
-      const newTrack = newStream.getVideoTracks()[0];
-
-      const oldTrack = localStream.getVideoTracks()[0];
-      if (oldTrack) localStream.removeTrack(oldTrack);
-      localStream.addTrack(newTrack);
-
-      if (peerConnection) {
-        const sender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
-        if (sender) await sender.replaceTrack(newTrack);
-      }
-
-      if (deviceId) selectedVideoDeviceId = deviceId;
-      showLocalVideo();
-    } catch (err) {
-      console.warn('[VideoCall] switchVideoDevice failed', err);
-      if (!deviceId) usingFrontCam = !usingFrontCam;
+    const attempts = [];
+    if (deviceId) {
+      attempts.push({ deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 60 } });
+      attempts.push({ deviceId: { exact: deviceId } });
+    } else {
+      attempts.push(getVideoConstraints());
+      attempts.push({ facingMode: usingFrontCam ? 'user' : 'environment' });
+      attempts.push(true);
     }
+
+    for (let i = 0; i < attempts.length; i++) {
+      try {
+        const newStream = await navigator.mediaDevices.getUserMedia({ video: attempts[i], audio: false });
+        const newTrack = newStream.getVideoTracks()[0];
+
+        const oldTrack = localStream.getVideoTracks()[0];
+        if (oldTrack) localStream.removeTrack(oldTrack);
+        localStream.addTrack(newTrack);
+
+        if (peerConnection) {
+          const sender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
+          if (sender) await sender.replaceTrack(newTrack);
+        }
+
+        if (deviceId) selectedVideoDeviceId = deviceId;
+        showLocalVideo();
+        return; // success
+      } catch (err) {
+        console.warn('[VideoCall] switchVideoDevice attempt', i, 'failed:', err.name);
+      }
+    }
+    // All attempts failed — if not using deviceId, revert flip
+    if (!deviceId) usingFrontCam = !usingFrontCam;
+    console.warn('[VideoCall] switchVideoDevice: all attempts failed');
   }
 
   // Switch audio device mid-call
