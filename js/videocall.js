@@ -24,6 +24,7 @@
   let selectedVideoDeviceId = null; // null = default
   let selectedAudioDeviceId = null; // null = default
   let devicePickerOpen = false;
+  let disconnectTimer = null; // timer for ICE disconnected recovery
 
   // Detect iPad / iOS Safari early
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
@@ -31,13 +32,17 @@
   const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
   const isEdge = /Edg\//i.test(navigator.userAgent);
 
-  // STUN/TURN servers — Google public + Metered free TURN for NAT traversal
+  // STUN/TURN servers — Google STUN + free TURN relay for NAT traversal
   const ICE_SERVERS = [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' },
     { urls: 'stun:stun3.l.google.com:19302' },
-    { urls: 'stun:stun4.l.google.com:19302' }
+    { urls: 'stun:stun4.l.google.com:19302' },
+    // Free TURN relay — needed when both peers are behind symmetric NAT (school networks)
+    { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+    { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+    { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' }
   ];
 
   // Preferred video constraints — 1080p 60fps, graceful fallback
@@ -203,8 +208,40 @@
     });
 
     pc.addEventListener('iceconnectionstatechange', () => {
-      console.log('[VideoCall] ICE state:', pc.iceConnectionState);
-      if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
+      const state = pc.iceConnectionState;
+      console.log('[VideoCall] ICE state:', state);
+
+      if (state === 'connected' || state === 'completed') {
+        // Connection established or recovered — clear any reconnect timer
+        if (disconnectTimer) {
+          clearTimeout(disconnectTimer);
+          disconnectTimer = null;
+        }
+        const waitEl = document.getElementById('vcWaiting');
+        if (waitEl) waitEl.classList.add('hidden');
+      }
+
+      if (state === 'disconnected') {
+        // DON'T end call — 'disconnected' is temporary, ICE may recover.
+        // Show a reconnecting indicator and set a 30-second timeout.
+        const waitEl = document.getElementById('vcWaiting');
+        if (waitEl) {
+          waitEl.classList.remove('hidden');
+          waitEl.querySelector('p').textContent = 'Reconnecting...';
+        }
+        if (!disconnectTimer) {
+          disconnectTimer = setTimeout(() => {
+            disconnectTimer = null;
+            if (peerConnection && peerConnection.iceConnectionState === 'disconnected') {
+              console.warn('[VideoCall] ICE disconnected for 30s, ending call');
+              endCall();
+            }
+          }, 30000);
+        }
+      }
+
+      if (state === 'failed') {
+        // ICE failed completely — end the call
         endCall();
       }
     });
@@ -432,6 +469,11 @@
     endCall._running = true;
 
     stopTimer();
+
+    if (disconnectTimer) {
+      clearTimeout(disconnectTimer);
+      disconnectTimer = null;
+    }
 
     if (callRef) {
       callRef.update({ status: 'ended' }).catch(() => {});
