@@ -165,16 +165,24 @@
 
   // ── Peer Connection ────────────────────────────────────
   function createPeerConnection(callId) {
-    const pc = new RTCPeerConnection({
-      iceServers: ICE_SERVERS,
-      iceCandidatePoolSize: 10
-    });
+    const config = {
+      iceServers: ICE_SERVERS
+    };
+    // Safari does NOT support iceCandidatePoolSize — omit it entirely
+    if (!isSafari && !isIOS) {
+      config.iceCandidatePoolSize = 10;
+    }
+    const pc = new RTCPeerConnection(config);
 
     // Add local tracks
     if (localStream) {
       localStream.getTracks().forEach(track => {
         pc.addTrack(track, localStream);
       });
+    } else if (isSafari || isIOS) {
+      // Ensure transceivers exist even without local media so Safari negotiates receive channels
+      pc.addTransceiver('audio', { direction: 'recvonly' });
+      pc.addTransceiver('video', { direction: 'recvonly' });
     }
 
     // Send ICE candidates to Firebase
@@ -344,8 +352,10 @@
 
   // Set SDP to prefer high bitrate
   function setHighBitrate(sdp) {
+    // Safari uses different SDP format — skip manipulation to avoid breaking negotiation
+    if (isSafari || isIOS) return sdp;
+
     // Increase video bitrate to ~6 Mbps for 1080p60
-    // Modify the SDP b= line for video
     const lines = sdp.split('\r\n');
     const result = [];
     let isVideo = false;
@@ -384,6 +394,11 @@
     isCaller = true;
 
     showCallUI(peerUsername, true);
+
+    // Prime the remote video element for Safari — touch play() in user gesture chain
+    // so later programmatic play() calls are allowed
+    const warmRv = document.getElementById('vcRemoteVideo');
+    if (warmRv) warmRv.play().catch(() => {});
 
     try {
       await acquireMedia();
@@ -437,7 +452,7 @@
         if (answer && pc.signalingState === 'have-local-offer') {
           console.log('[VideoCall] Caller: setting remote description (answer)');
           try {
-            await pc.setRemoteDescription(new RTCSessionDescription(answer));
+            await pc.setRemoteDescription(answer);
             // Flush any ICE candidates that arrived before the answer
             console.log('[VideoCall] Flushing', pendingCandidates.length, 'queued candidates');
             while (pendingCandidates.length) {
@@ -512,6 +527,10 @@
     hideIncomingUI();
     showCallUI(callerName, false);
 
+    // Prime the remote video element for Safari — touch play() in user gesture chain
+    const warmRv = document.getElementById('vcRemoteVideo');
+    if (warmRv) warmRv.play().catch(() => {});
+
     try {
       await acquireMedia();
       showLocalVideo();
@@ -527,7 +546,7 @@
       }
 
       console.log('[VideoCall] Callee: setting remote description (offer)');
-      await pc.setRemoteDescription(new RTCSessionDescription(callData.offer));
+      await pc.setRemoteDescription(callData.offer);
 
       // Create answer
       const answer = await pc.createAnswer();
@@ -568,7 +587,7 @@
         lastOfferSdp = newOffer.sdp;
         try {
           console.log('[VideoCall] Callee: received ICE restart offer');
-          await pc.setRemoteDescription(new RTCSessionDescription(newOffer));
+          await pc.setRemoteDescription(newOffer);
           const newAnswer = await pc.createAnswer();
           newAnswer.sdp = setHighBitrate(newAnswer.sdp);
           await pc.setLocalDescription(newAnswer);
@@ -719,8 +738,8 @@
           <div class="pulse-ring"></div>
           <p style="font-size:16px;font-weight:500;">${isOutgoing ? 'Calling...' : 'Connecting...'}</p>
         </div>
-        <video id="vcRemoteVideo" class="videocall-remote hidden" autoplay playsinline></video>
-        <video id="vcLocalVideo" class="videocall-local" autoplay playsinline muted></video>
+        <video id="vcRemoteVideo" class="videocall-remote hidden" autoplay playsinline webkit-playsinline></video>
+        <video id="vcLocalVideo" class="videocall-local" autoplay playsinline webkit-playsinline muted></video>
       </div>
       <div class="videocall-controls">
         <button id="vcToggleMic" class="vc-btn vc-btn-toggle" title="Toggle microphone">
