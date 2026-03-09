@@ -36,18 +36,13 @@
   const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
   const isEdge = /Edg\//i.test(navigator.userAgent);
 
-  // STUN/TURN servers — Google STUN + Metered TURN relay for NAT traversal
+  // STUN servers for NAT traversal
   const ICE_SERVERS = [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' },
     { urls: 'stun:stun3.l.google.com:19302' },
-    { urls: 'stun:stun4.l.google.com:19302' },
-    // Free TURN relay — needed when both peers are behind symmetric NAT (school networks)
-    { urls: 'turn:a.relay.metered.ca:80', username: 'e44b2c44e7d089613232af0f', credential: 'ZYvJLJQBNVfOz4o5' },
-    { urls: 'turn:a.relay.metered.ca:80?transport=tcp', username: 'e44b2c44e7d089613232af0f', credential: 'ZYvJLJQBNVfOz4o5' },
-    { urls: 'turn:a.relay.metered.ca:443', username: 'e44b2c44e7d089613232af0f', credential: 'ZYvJLJQBNVfOz4o5' },
-    { urls: 'turn:a.relay.metered.ca:443?transport=tcp', username: 'e44b2c44e7d089613232af0f', credential: 'ZYvJLJQBNVfOz4o5' }
+    { urls: 'stun:stun4.l.google.com:19302' }
   ];
 
   // Preferred video constraints — 1080p 60fps, graceful fallback
@@ -186,7 +181,11 @@
     pc.addEventListener('icecandidate', (event) => {
       if (event.candidate && callId) {
         const side = isCaller ? 'callerCandidates' : 'calleeCandidates';
+        console.log('[VideoCall]', side, 'pushing candidate:', event.candidate.candidate.substring(0, 60));
         getDb().ref('calls/' + callId + '/' + side).push(event.candidate.toJSON());
+      }
+      if (!event.candidate) {
+        console.log('[VideoCall] ICE gathering complete (null candidate)');
       }
     });
 
@@ -535,33 +534,38 @@
       answer.sdp = setHighBitrate(answer.sdp);
       await pc.setLocalDescription(answer);
 
+      console.log('[VideoCall] Callee: local/remote descriptions set, signaling:', pc.signalingState);
+
       // Write answer to Firebase
       await callRef.update({
         answer: { type: answer.type, sdp: answer.sdp },
         status: 'active'
       });
 
-      // NOW listen for caller ICE candidates — after both descriptions are set
-      // Queue any that arrive during processing
-      const calleePendingCandidates = [];
-      let calleeRemoteReady = true; // remote desc already set above
+      console.log('[VideoCall] Callee: answer written to Firebase');
 
+      // NOW listen for caller ICE candidates — after both descriptions are set
       callRef.child('callerCandidates').on('child_added', (snap) => {
         const candidate = snap.val();
         if (candidate) {
           const iceCandidate = new RTCIceCandidate(candidate);
+          console.log('[VideoCall] Callee: adding caller candidate');
           pc.addIceCandidate(iceCandidate).catch((e) => {
-            console.warn('[VideoCall] Callee addIceCandidate error:', e.name);
+            console.warn('[VideoCall] Callee addIceCandidate error:', e.name, e.message);
           });
         }
       });
 
       // Listen for ICE restart — caller may re-send offer
+      // IMPORTANT: Track the raw Firebase SDP to detect changes.
+      // Do NOT compare pc.remoteDescription.sdp (browser-normalized) with Firebase SDP.
+      let lastOfferSdp = callData.offer.sdp;
       callRef.child('offer').on('value', async (snap) => {
         const newOffer = snap.val();
         if (!newOffer || !pc || pc.signalingState === 'closed') return;
-        // Only process if this is a NEW offer (ICE restart)
-        if (pc.remoteDescription && pc.remoteDescription.sdp === newOffer.sdp) return;
+        // Compare raw Firebase SDP against what we last processed
+        if (newOffer.sdp === lastOfferSdp) return;
+        lastOfferSdp = newOffer.sdp;
         try {
           console.log('[VideoCall] Callee: received ICE restart offer');
           await pc.setRemoteDescription(new RTCSessionDescription(newOffer));
