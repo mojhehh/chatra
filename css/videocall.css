@@ -633,6 +633,25 @@
   background: rgba(0,0,0,0.4);
 }
 
+.gc-tile-status {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 13px;
+  font-weight: 500;
+  color: #fbbf24;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.7);
+  padding: 4px 12px;
+  border-radius: 6px;
+  background: rgba(0,0,0,0.5);
+  animation: vc-pulse 1.5s ease-in-out infinite;
+}
+
+.gc-cam-off video {
+  opacity: 0;
+}
+
 /* Group call join banner (shown in group chat) */
 .gc-join-banner {
   display: flex;
