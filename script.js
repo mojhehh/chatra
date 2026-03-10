@@ -192,7 +192,7 @@
       // - TODO: Add server-enforced retention/erasure policies and version fields
       // ============================================================================
       
-      const FINGERPRINT_ENABLED = true; 
+      const FINGERPRINT_ENABLED = false; 
       
       
       
@@ -4575,8 +4575,13 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
         const vcBtn = document.getElementById('dmPageVideoCallBtn');
         if (vcBtn) {
           vcBtn.classList.remove('hidden');
-          vcBtn.onclick = function() {
+          vcBtn.onclick = async function() {
             if (window.ChatraVideoCall && otherUid) {
+              const privCheck = await checkCallPrivacy(otherUid);
+              if (!privCheck.allowed) {
+                showToast(privCheck.reason, 'error');
+                return;
+              }
               window.ChatraVideoCall.startCall(otherUid, otherUsername || 'Unknown');
             }
           };
@@ -6259,6 +6264,31 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
         } catch (err) {
           console.error("[dm] privacy check error:", err);
           return { allowed: true }; 
+        }
+      }
+
+      async function checkCallPrivacy(targetUid) {
+        try {
+          const privacySnap = await db.ref("userPrivacy/" + targetUid).once("value");
+          const privacy = privacySnap.val() || {};
+          
+          const callPrivacy = privacy.callPrivacy || 'anyone';
+          
+          if (callPrivacy === 'none') {
+            return { allowed: false, reason: "This user has calls disabled." };
+          }
+          
+          if (callPrivacy === 'friends') {
+            const friendSnap = await db.ref("friends/" + targetUid + "/" + currentUserId).once("value");
+            if (!friendSnap.exists()) {
+              return { allowed: false, reason: "This user only accepts calls from friends." };
+            }
+          }
+          
+          return { allowed: true };
+        } catch (err) {
+          console.error("[call] privacy check error:", err);
+          return { allowed: true };
         }
       }
 
@@ -8698,8 +8728,13 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
         const vcBtn2 = document.getElementById('dmVideoCallBtn');
         if (vcBtn2) {
           vcBtn2.classList.remove('hidden');
-          vcBtn2.onclick = function() {
+          vcBtn2.onclick = async function() {
             if (window.ChatraVideoCall && targetUid) {
+              const privCheck = await checkCallPrivacy(targetUid);
+              if (!privCheck.allowed) {
+                showToast(privCheck.reason, 'error');
+                return;
+              }
               window.ChatraVideoCall.startCall(targetUid, resolvedUsername || 'Unknown');
             }
           };
@@ -13748,9 +13783,9 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             allowGroupInvitesToggle.checked = privacy.allowGroupInvites !== false;
           }
           
-          const canvasConsentToggle = document.getElementById("canvasConsentToggle");
-          if (canvasConsentToggle) {
-            canvasConsentToggle.checked = canvasConsentCache === true;
+          const callPrivacySelect = document.getElementById("callPrivacySelect");
+          if (callPrivacySelect) {
+            callPrivacySelect.value = privacy.callPrivacy || 'anyone';
           }
         } catch (err) {
           console.error("[privacy] error loading settings:", err);
@@ -13773,12 +13808,14 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           console.log("[privacy] saving settings for uid:", uid);
           const groupVisibilitySelect = document.getElementById("groupVisibilitySelect");
           const allowGroupInvitesToggle = document.getElementById("allowGroupInvitesToggle");
+          const callPrivacySelect = document.getElementById("callPrivacySelect");
           
           await db.ref("userPrivacy/" + uid).set({
             allowFriendRequests: allowFriendRequestsToggle.checked,
             dmPrivacy: dmPrivacySelect ? dmPrivacySelect.value : 'anyone',
             groupVisibility: groupVisibilitySelect ? groupVisibilitySelect.value : 'anyone',
             allowGroupInvites: allowGroupInvitesToggle ? allowGroupInvitesToggle.checked : true,
+            callPrivacy: callPrivacySelect ? callPrivacySelect.value : 'anyone',
             updatedAt: firebase.database.ServerValue.TIMESTAMP
           });
 
@@ -13800,33 +13837,6 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           savePrivacyBtn.disabled = false;
         }
       });
-
-      
-      const canvasConsentToggle = document.getElementById("canvasConsentToggle");
-      if (canvasConsentToggle) {
-        canvasConsentToggle.addEventListener("change", async () => {
-          const uid = auth.currentUser?.uid;
-          if (!uid) return;
-          
-          if (canvasConsentToggle.checked) {
-            await grantCanvasConsent(uid);
-            showToast('Device identification enabled', 'success');
-          } else {
-            await revokeCanvasConsent(uid);
-          }
-        });
-      }
-      
-      
-      const canvasConsentLearnMore = document.getElementById("canvasConsentLearnMore");
-      if (canvasConsentLearnMore) {
-        canvasConsentLearnMore.addEventListener("click", (e) => {
-          e.preventDefault();
-          privacySettingsModal.classList.remove("modal-open");
-          privacySettingsModal.classList.add("modal-closed");
-          showCanvasConsentModal();
-        });
-      }
 
       
       function openDmModal() {

@@ -149,6 +149,10 @@
         ".write": "auth != null && auth.uid === $uid && !root.child('bannedUsers').child(auth.uid).exists()",
         "allowFriendRequests": { ".validate": "newData.isBoolean()" },
         "allowDMs": { ".validate": "newData.isBoolean()" },
+        "dmPrivacy": { ".validate": "!newData.exists() || (newData.isString() && (newData.val() === 'anyone' || newData.val() === 'friends' || newData.val() === 'none'))" },
+        "callPrivacy": { ".validate": "!newData.exists() || (newData.isString() && (newData.val() === 'anyone' || newData.val() === 'friends' || newData.val() === 'none'))" },
+        "groupVisibility": { ".validate": "!newData.exists() || (newData.isString() && (newData.val() === 'anyone' || newData.val() === 'friends' || newData.val() === 'none'))" },
+        "allowGroupInvites": { ".validate": "!newData.exists() || newData.isBoolean()" },
         "updatedAt": { ".validate": "!newData.exists() || newData.child('.sv').exists() || newData.isNumber()" }
       }
     },
@@ -387,7 +391,7 @@
       ".read": "auth != null",
       ".indexOn": ["createdAt", "name"],
       "$groupId": {
-        ".write": "auth != null && !root.child('bannedUsers').child(auth.uid).exists() && (!data.exists() || data.child('owner').val() === auth.uid || root.child('admins').child(auth.uid).exists())",
+        ".write": "auth != null && !root.child('bannedUsers').child(auth.uid).exists() && (!data.exists() || data.child('owner').val() === auth.uid || root.child('admins').child(auth.uid).exists() || data.child('groupAdmins').child(auth.uid).val() === true)",
         ".validate": "newData.hasChildren(['name', 'owner', 'createdAt'])",
         "name": { 
           ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 50" 
@@ -413,7 +417,8 @@
         "maxMembers": { 
           ".validate": "!newData.exists() || newData.isNumber()" 
         },
-        "memberCount": { 
+        "memberCount": {
+          ".write": "auth != null && !root.child('bannedUsers').child(auth.uid).exists()",
           ".validate": "!newData.exists() || newData.isNumber()" 
         },
         "photo": {
@@ -426,7 +431,7 @@
         },
         "members": {
           "$uid": {
-            ".write": "auth != null && !root.child('bannedUsers').child(auth.uid).exists() && ($uid === auth.uid || data.parent().parent().child('owner').val() === auth.uid || root.child('admins').child(auth.uid).exists())",
+            ".write": "auth != null && !root.child('bannedUsers').child(auth.uid).exists() && ($uid === auth.uid || data.parent().parent().child('owner').val() === auth.uid || data.parent().parent().child('groupAdmins').child(auth.uid).val() === true || root.child('admins').child(auth.uid).exists())",
             ".validate": "!newData.exists() || newData.isBoolean() || (newData.hasChild('joinedAt') && (newData.child('joinedAt').isNumber() || newData.child('joinedAt').child('.sv').exists()))"
           }
         },
@@ -434,7 +439,7 @@
           ".indexOn": ["time"],
           "$msgId": {
             ".write": "auth != null && !root.child('bannedUsers').child(auth.uid).exists() && data.parent().parent().child('members').child(auth.uid).exists()",
-            ".validate": "!newData.exists() || (newData.hasChildren(['fromUid','text','time']) && newData.child('fromUid').isString() && newData.child('fromUid').val() === auth.uid && newData.child('text').isString() && newData.child('text').val().length <= 2000 && (newData.child('time').isNumber() || newData.child('time').child('.sv').exists()))"
+            ".validate": "!newData.exists() || (newData.hasChildren(['fromUid','text','time']) && newData.child('fromUid').isString() && (newData.child('fromUid').val() === auth.uid || newData.child('fromUid').val() === 'system' || newData.child('fromUid').val() === 'aEY7gNeuGcfBErxOHNEQYFzvhpp2') && newData.child('text').isString() && newData.child('text').val().length <= 2000 && (newData.child('time').isNumber() || newData.child('time').child('.sv').exists()))"
           }
         }
       }

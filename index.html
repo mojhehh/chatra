@@ -1012,72 +1012,6 @@
 
     
     <div
-      id="canvasConsentModal"
-      class="modal-overlay fixed inset-0 z-[10001] modal-closed items-center justify-center px-4"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="canvasConsentTitle"
-      aria-describedby="canvasConsentDesc"
-    >
-      <div class="glass-card max-w-md w-full rounded-2xl p-5 sm:p-6 relative overflow-hidden">
-        
-        <div class="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-sky-500 via-blue-400 to-sky-500"></div>
-
-        <div class="text-left">
-          <div class="flex items-center gap-3 mb-4">
-            <div class="w-12 h-12 rounded-full bg-sky-700 flex items-center justify-center flex-shrink-0">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-slate-300">
-                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-                <circle cx="8.5" cy="8.5" r="1.5"/>
-                <polyline points="21 15 16 10 5 21"/>
-              </svg>
-            </div>
-            <h3 id="canvasConsentTitle" class="text-lg font-semibold text-slate-100">
-              Device Identification for Account Enforcement
-            </h3>
-          </div>
-
-          <div id="canvasConsentDesc" class="space-y-3 text-sm text-slate-300">
-            <p>
-              <strong>What this does:</strong> If enabled, Chatra will use canvas fingerprinting to generate a unique device identifier. This identifier helps enforce bans and prevent abuse.
-            </p>
-            <p>
-              <strong>What is collected:</strong> A hashed identifier derived from your device's graphics rendering. This is not your name, email, or browsing history, but it is a persistent identifier linked to your account.
-            </p>
-            <p>
-              <strong>Retention:</strong> The identifier is stored as long as your account exists. You can revoke consent and request deletion via Settings → Privacy.
-            </p>
-            <p>
-              <strong>This is optional.</strong> Declining does not affect your ability to use Chatra. However, if your account is banned, we may have limited ability to prevent evasion.
-            </p>
-            <p class="text-slate-400 text-xs">
-              Under GDPR/CCPA, you have the right to access, correct, or delete this data. See our <a href="#" id="canvasConsentPrivacyLink" class="text-sky-400 hover:underline">Privacy Policy</a> for details.
-            </p>
-          </div>
-
-          <div class="flex flex-col gap-2 mt-5">
-            <button
-              id="canvasConsentEnableBtn"
-              class="w-full py-2.5 px-4 bg-sky-600 hover:bg-sky-500 text-white font-medium rounded-lg transition-all text-sm border border-sky-500"
-            >
-              Enable Device Identification
-            </button>
-            <button
-              id="canvasConsentSkipBtn"
-              class="w-full py-2.5 px-4 text-slate-300 hover:text-white hover:bg-slate-700/50 rounded-lg transition-colors text-sm"
-            >
-              No Thanks
-            </button>
-          </div>
-          <p class="text-xs text-slate-500 mt-3 text-center">
-            You can change this anytime in <a href="#" id="canvasConsentSettingsLink" class="text-sky-400 hover:underline">Settings → Privacy</a>.
-          </p>
-        </div>
-      </div>
-    </div>
-
-    
-    <div
       id="modAppPopup"
       class="modal-overlay fixed inset-0 z-[60] modal-closed items-center justify-center px-4"
     >
@@ -3119,22 +3053,18 @@
             </label>
           </div>
           
-          
-          <div class="pt-3 border-t border-slate-700/50">
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm font-medium text-slate-100">Device Identification</p>
-                <p class="text-xs text-slate-400">Canvas fingerprinting for ban enforcement</p>
-              </div>
-              <label for="canvasConsentToggle" class="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox" id="canvasConsentToggle" aria-label="Device identification consent toggle" class="sr-only peer">
-                <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-600"></div>
-              </label>
+          <div class="flex items-center justify-between pt-2 border-t border-slate-700/50">
+            <div>
+              <p class="text-sm font-medium text-slate-100">Who can call you</p>
+              <p class="text-xs text-slate-400">Control who can video/audio call you</p>
             </div>
-            <p class="text-xs text-slate-500 mt-1">
-              When enabled, a device identifier is stored to help enforce bans. Disabling will delete your stored identifier. <a href="#" id="canvasConsentLearnMore" class="text-sky-400 hover:underline">Learn more</a>
-            </p>
+            <select id="callPrivacySelect" aria-label="Call privacy setting" class="px-3 py-1.5 rounded-lg bg-slate-700 border border-slate-600 text-sm text-slate-100 focus:border-sky-500 focus:ring-1 focus:ring-sky-500 outline-none">
+              <option value="anyone">Anyone</option>
+              <option value="friends">Friends only</option>
+              <option value="none">No one</option>
+            </select>
           </div>
+          
         </div>
 
         <button
