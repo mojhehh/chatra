@@ -363,6 +363,18 @@
       }
     },
 
+    "groupCalls": {
+      ".read": "auth != null",
+      "$roomId": {
+        ".write": "auth != null && !root.child('bannedUsers').child(auth.uid).exists()",
+        "participants": {
+          "$uid": {
+            ".write": "auth != null && auth.uid === $uid"
+          }
+        }
+      }
+    },
+
     "groups": {
       ".read": "auth != null",
       ".indexOn": ["createdAt", "name"],

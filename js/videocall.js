@@ -415,6 +415,7 @@
       callRef = getDb().ref('calls/' + callId);
 
       const pc = createPeerConnection(callId);
+      startCallChat(callId);
 
       // Create offer
       const offer = await pc.createOffer({
@@ -498,6 +499,10 @@
           callRef.child('status').once('value', (snap) => {
             if (snap.val() === 'ringing') {
               callRef.update({ status: 'missed' });
+              // Clean up callee's signal so they don't see a stale incoming call
+              if (currentPeerUid) {
+                getDb().ref('callSignals/' + currentPeerUid).remove().catch(() => {});
+              }
               if (typeof showToast === 'function') showToast('No answer', 'info');
               endCall();
             }
@@ -537,6 +542,7 @@
 
       callRef = getDb().ref('calls/' + callId);
       const pc = createPeerConnection(callId);
+      startCallChat(callId);
 
       // Get the offer
       const callSnap = await callRef.once('value');
@@ -645,6 +651,7 @@
     pendingCandidates = [];
     remoteStream = null;
     iceRestartAttempts = 0;
+    stopCallChat();
 
     if (callRef) {
       callRef.update({ status: 'ended' }).catch(() => {});
@@ -667,9 +674,10 @@
 
     stopMedia();
 
-    // Clear signals
+    // Clear signals — both our own and the peer's
     const uid = myUid();
     if (uid) getDb().ref('callSignals/' + uid).remove().catch(() => {});
+    if (currentPeerUid) getDb().ref('callSignals/' + currentPeerUid).remove().catch(() => {});
 
     currentCallId = null;
     currentPeerUid = null;
@@ -699,7 +707,7 @@
     }
 
     incomingRef = getDb().ref('callSignals/' + uid);
-    incomingRef.on('value', (snap) => {
+    incomingRef.on('value', async (snap) => {
       const data = snap.val();
       if (!data || data.type !== 'incoming') return;
       if (peerConnection) {
@@ -707,6 +715,28 @@
         declineCall(data.callId);
         return;
       }
+
+      // Validate the call still exists and isn't stale
+      try {
+        const callSnap = await getDb().ref('calls/' + data.callId).once('value');
+        const callData = callSnap.val();
+        if (!callData || callData.status === 'ended' || callData.status === 'missed') {
+          // Stale call — clean up and show missed call notification
+          getDb().ref('callSignals/' + uid).remove().catch(() => {});
+          if (typeof showToast === 'function') {
+            showToast('Missed call from ' + (data.callerName || 'Unknown'), 'info');
+          }
+          return;
+        }
+      } catch (e) {
+        // Call data doesn't exist — stale signal
+        getDb().ref('callSignals/' + uid).remove().catch(() => {});
+        if (typeof showToast === 'function') {
+          showToast('Missed call from ' + (data.callerName || 'Unknown'), 'info');
+        }
+        return;
+      }
+
       showIncomingUI(data.callId, data.callerUid, data.callerName);
     });
   }
@@ -757,7 +787,22 @@
         <button id="vcDevicePickerBtn" class="vc-btn vc-btn-toggle" title="Switch camera or mic">
           <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
         </button>
+        <button id="vcChatBtn" class="vc-btn vc-btn-toggle" title="In-call chat">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <span id="vcChatBadge" class="vc-chat-badge hidden">0</span>
+        </button>
         <div id="vcDevicePicker" class="vc-device-picker hidden"></div>
+      </div>
+      <div id="vcChatPanel" class="vc-chat-panel hidden">
+        <div class="vc-chat-header">
+          <span>Chat</span>
+          <button id="vcChatClose" class="vc-chat-close">&times;</button>
+        </div>
+        <div id="vcChatMessages" class="vc-chat-messages"></div>
+        <form id="vcChatForm" class="vc-chat-form" onsubmit="return false">
+          <input id="vcChatInput" type="text" placeholder="Type a message..." autocomplete="off" maxlength="500" />
+          <button type="submit" class="vc-chat-send">Send</button>
+        </form>
       </div>
     `;
 
@@ -769,9 +814,16 @@
     document.getElementById('vcEndCall').addEventListener('click', () => endCall());
     document.getElementById('vcFlipCam').addEventListener('click', flipCamera);
     document.getElementById('vcDevicePickerBtn').addEventListener('click', toggleDevicePicker);
+    document.getElementById('vcChatBtn').addEventListener('click', toggleCallChat);
+    document.getElementById('vcChatClose').addEventListener('click', () => {
+      document.getElementById('vcChatPanel').classList.add('hidden');
+    });
+    document.getElementById('vcChatForm').addEventListener('submit', sendCallChatMessage);
 
-    // Prevent iOS scroll bounce
-    overlay.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
+    // Prevent iOS scroll bounce on overlay (but allow chat panel scroll)
+    overlay.addEventListener('touchmove', (e) => {
+      if (!e.target.closest('.vc-chat-messages')) e.preventDefault();
+    }, { passive: false });
   }
 
   function hideCallUI() {
@@ -1033,6 +1085,85 @@
         toggleDevicePicker();
         setTimeout(toggleDevicePicker, 50);
       });
+    });
+  }
+
+  // ── In-Call Chat ───────────────────────────────────────
+  let chatRef = null;
+  let chatListener = null;
+  let chatOpen = false;
+  let unreadChatCount = 0;
+
+  function toggleCallChat() {
+    const panel = document.getElementById('vcChatPanel');
+    if (!panel) return;
+    chatOpen = !chatOpen;
+    panel.classList.toggle('hidden', !chatOpen);
+    if (chatOpen) {
+      unreadChatCount = 0;
+      updateChatBadge();
+      const msgs = document.getElementById('vcChatMessages');
+      if (msgs) msgs.scrollTop = msgs.scrollHeight;
+      const input = document.getElementById('vcChatInput');
+      if (input) input.focus();
+    }
+  }
+
+  function updateChatBadge() {
+    const badge = document.getElementById('vcChatBadge');
+    if (!badge) return;
+    if (unreadChatCount > 0) {
+      badge.textContent = unreadChatCount > 99 ? '99+' : unreadChatCount;
+      badge.classList.remove('hidden');
+    } else {
+      badge.classList.add('hidden');
+    }
+  }
+
+  function startCallChat(callId) {
+    if (chatRef) stopCallChat();
+    chatRef = getDb().ref('calls/' + callId + '/chat');
+    chatListener = chatRef.orderByChild('time').on('child_added', (snap) => {
+      const msg = snap.val();
+      if (!msg) return;
+      const msgsEl = document.getElementById('vcChatMessages');
+      if (!msgsEl) return;
+      const isMine = msg.uid === myUid();
+      const div = document.createElement('div');
+      div.className = 'vc-chat-msg' + (isMine ? ' vc-chat-mine' : '');
+      div.innerHTML = (!isMine ? '<span class="vc-chat-name">' + escapeHtml(msg.name || 'User') + '</span>' : '') +
+        '<span class="vc-chat-text">' + escapeHtml(msg.text) + '</span>';
+      msgsEl.appendChild(div);
+      msgsEl.scrollTop = msgsEl.scrollHeight;
+      if (!isMine && !chatOpen) {
+        unreadChatCount++;
+        updateChatBadge();
+      }
+    });
+  }
+
+  function stopCallChat() {
+    if (chatRef && chatListener) {
+      chatRef.off('child_added', chatListener);
+    }
+    chatRef = null;
+    chatListener = null;
+    chatOpen = false;
+    unreadChatCount = 0;
+  }
+
+  function sendCallChatMessage(e) {
+    if (e) e.preventDefault();
+    const input = document.getElementById('vcChatInput');
+    if (!input || !currentCallId) return;
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = '';
+    getDb().ref('calls/' + currentCallId + '/chat').push({
+      uid: myUid(),
+      name: window.currentUsername || 'Me',
+      text: text.slice(0, 500),
+      time: Date.now()
     });
   }
 

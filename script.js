@@ -2702,6 +2702,41 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
         
         updateGroupHeaderMemberCount();
         
+        // Show group video call button
+        const groupVidBtn = document.getElementById('groupVideoCallBtn');
+        if (groupVidBtn) {
+          groupVidBtn.classList.remove('hidden');
+          // Remove old listener to avoid duplicates
+          const newBtn = groupVidBtn.cloneNode(true);
+          groupVidBtn.parentNode.replaceChild(newBtn, groupVidBtn);
+          newBtn.addEventListener('click', () => {
+            if (window.ChatraGroupCall) {
+              if (window.ChatraGroupCall.isInGroupCall()) {
+                showToast('Already in a video call', 'error');
+                return;
+              }
+              window.ChatraGroupCall.startGroupCall(activeGroupId, title);
+            }
+          });
+        }
+
+        // Listen for active group calls and show join banner
+        if (window.ChatraGroupCall) {
+          window.ChatraGroupCall.listenGroupCallStatus(groupId);
+        }
+        const joinBanner = document.getElementById('groupCallJoinBanner');
+        const joinBtn = document.getElementById('groupCallJoinBtn');
+        if (joinBanner) joinBanner.classList.add('hidden');
+        if (joinBtn) {
+          const newJoinBtn = joinBtn.cloneNode(true);
+          joinBtn.parentNode.replaceChild(newJoinBtn, joinBtn);
+          newJoinBtn.addEventListener('click', () => {
+            if (window.ChatraGroupCall) {
+              window.ChatraGroupCall.joinGroupCall(activeGroupId, title);
+            }
+          });
+        }
+
         const messagesEl = document.getElementById('groupsPageMessages');
         if (messagesEl) messagesEl.innerHTML = '';
         startGroupMessagesListener(groupId);
@@ -3932,7 +3967,8 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
         
         if (addMemberInput && addMemberResults) {
           addMemberInput.addEventListener('input', () => {
-            const query = addMemberInput.value.trim().toLowerCase();
+            const rawQuery = addMemberInput.value.trim();
+            const query = rawQuery.toLowerCase();
             clearTimeout(addMemberDebounce);
             
             if (!query) {
@@ -3943,13 +3979,20 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
             
             addMemberDebounce = setTimeout(async () => {
               try {
+                // Firebase queries are case-sensitive, so search multiple capitalizations
+                const queries = [query, query.charAt(0).toUpperCase() + query.slice(1), rawQuery];
+                const uniqueQueries = [...new Set(queries)];
+                const allResults = {};
                 
-                const usersSnap = await db.ref('users').orderByChild('username').startAt(query).endAt(query + '\uf8ff').limitToFirst(10).once('value');
-                const users = usersSnap.val() || {};
+                for (const q of uniqueQueries) {
+                  const usersSnap = await db.ref('users').orderByChild('username').startAt(q).endAt(q + '\uf8ff').limitToFirst(10).once('value');
+                  const users = usersSnap.val() || {};
+                  Object.assign(allResults, users);
+                }
                 
                 
                 const currentMembers = currentGroupInfo?.members || {};
-                const results = Object.entries(users).filter(([uid]) => !currentMembers[uid]);
+                const results = Object.entries(allResults).filter(([uid]) => !currentMembers[uid] && uid !== currentUserId);
                 
                 if (results.length === 0) {
                   addMemberResults.innerHTML = '<p class="text-xs text-slate-500 p-3">No users found</p>';
@@ -11074,6 +11117,23 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             // Start listening for incoming video calls
             if (window.ChatraVideoCall) {
               window.ChatraVideoCall.listenForIncomingCalls();
+            }
+            
+            // Start listening for global video room count + wire button
+            if (window.ChatraGroupCall) {
+              window.ChatraGroupCall.listenGlobalRoomCount();
+              const globalVidBtn = document.getElementById('globalVideoRoomBtn');
+              if (globalVidBtn) {
+                globalVidBtn.classList.remove('hidden');
+                globalVidBtn.classList.add('flex');
+                globalVidBtn.addEventListener('click', () => {
+                  if (window.ChatraGroupCall.isInGroupCall()) {
+                    showToast('Already in a video call', 'error');
+                    return;
+                  }
+                  window.ChatraGroupCall.joinGlobalRoom();
+                });
+              }
             }
             
             
