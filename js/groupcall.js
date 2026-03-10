@@ -9,7 +9,9 @@
   let roomId = null;
   let roomRef = null;
   let roomType = null; // 'group' or 'global'
-  let participants = {}; // uid -> { pc, videoEl, audioEl, username }
+  let participants = {}; // uid -> { pc, videoEl, remoteStream, username }
+  let pendingCandidates = {}; // uid -> [RTCIceCandidate]
+  let videoHealthTimer = null;
   let myParticipantRef = null;
   let callStartTime = 0;
   let timerInterval = null;
@@ -169,37 +171,21 @@
     const remoteStream = new MediaStream();
     pc.addEventListener('track', (event) => {
       const existing = remoteStream.getTracks().find(t => t.id === event.track.id);
-      if (!existing) remoteStream.addTrack(event.track);
-
-      const p = participants[peerUid];
-      if (p && p.videoEl) {
-        p.videoEl.srcObject = remoteStream;
-
-        // Set output device if selected
-        if (selectedOutputDeviceId && typeof p.videoEl.setSinkId === 'function') {
-          p.videoEl.setSinkId(selectedOutputDeviceId).catch(() => {});
-        }
-
-        // Play with retries for Safari autoplay restrictions
-        const tryPlay = () => { const r = p.videoEl.play(); if (r) r.catch(() => {}); };
-        tryPlay();
-        if (!playRetryTimers[peerUid]) {
-          let retries = 0;
-          playRetryTimers[peerUid] = setInterval(() => {
-            retries++;
-            if (p.videoEl && p.videoEl.paused) tryPlay();
-            if ((p.videoEl && !p.videoEl.paused) || retries >= 20) {
-              clearInterval(playRetryTimers[peerUid]);
-              delete playRetryTimers[peerUid];
-            }
-          }, 500);
-        }
+      if (!existing) {
+        remoteStream.addTrack(event.track);
+        console.log('[GroupCall] Added remote track from', peerUid, event.track.kind, 'total:', remoteStream.getTracks().length);
       }
 
-      // Listen for track unmute → re-trigger play for Safari
+      // Connect stream to video element (it may not exist yet — connectVideoToEl handles that)
+      connectVideoToEl(peerUid, remoteStream);
+
+      // Listen for track unmute/ended → re-trigger play for Safari
       event.track.addEventListener('unmute', () => {
-        const pe = participants[peerUid];
-        if (pe && pe.videoEl && pe.videoEl.paused) pe.videoEl.play().catch(() => {});
+        console.log('[GroupCall] Track unmuted from', peerUid, event.track.kind);
+        connectVideoToEl(peerUid, remoteStream);
+      });
+      event.track.addEventListener('ended', () => {
+        console.log('[GroupCall] Track ended from', peerUid, event.track.kind);
       });
     });
 
@@ -214,6 +200,8 @@
           const label = tile.querySelector('.gc-tile-status');
           if (label) label.remove();
         }
+        // Force re-play video in case it failed earlier
+        connectVideoToEl(peerUid, remoteStream);
       }
 
       if (state === 'disconnected') {
@@ -261,14 +249,26 @@
 
     const { pc, remoteStream } = createPeerConnection(peerUid);
     const videoEl = addVideoTile(peerUid, peerName);
+    pendingCandidates[peerUid] = [];
     participants[peerUid] = { pc, remoteStream, videoEl, username: peerName };
 
-    // Listen for ICE candidates FROM the peer TO me
+    // If tracks already arrived before participants was set, connect now
+    if (remoteStream.getTracks().length > 0) {
+      connectVideoToEl(peerUid, remoteStream);
+    }
+
+    // Listen for ICE candidates FROM the peer TO me — queue if no remote desc yet
     const sigRef = roomRef.child('signals/' + peerUid + '_' + myUid());
     const sigListener = sigRef.on('child_added', (snap) => {
       const candidate = snap.val();
-      if (candidate && pc.remoteDescription && pc.remoteDescription.type) {
-        pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
+      if (!candidate) return;
+      const iceCandidate = new RTCIceCandidate(candidate);
+      if (pc.remoteDescription && pc.remoteDescription.type) {
+        pc.addIceCandidate(iceCandidate).catch(() => {});
+      } else {
+        // Queue it — will be flushed when remote description is set
+        console.log('[GroupCall] Queuing ICE candidate for', peerUid);
+        if (pendingCandidates[peerUid]) pendingCandidates[peerUid].push(iceCandidate);
       }
     });
     signalListeners.push({ ref: sigRef, event: 'child_added', fn: sigListener });
@@ -287,14 +287,14 @@
       const ansListener = ansRef.on('value', async (snap) => {
         const answer = snap.val();
         if (answer && pc.signalingState === 'have-local-offer') {
-          await pc.setRemoteDescription(answer);
-          // Process any queued ICE candidates
-          sigRef.once('value', (candSnap) => {
-            const cands = candSnap.val() || {};
-            Object.values(cands).forEach(c => {
-              pc.addIceCandidate(new RTCIceCandidate(c)).catch(() => {});
-            });
-          });
+          try {
+            await pc.setRemoteDescription(answer);
+            console.log('[GroupCall] Set remote desc (answer) from', peerUid);
+            // Flush queued ICE candidates
+            flushPendingCandidates(peerUid, pc);
+          } catch (e) {
+            console.error('[GroupCall] setRemoteDescription(answer) error:', e);
+          }
         }
       });
       signalListeners.push({ ref: ansRef, event: 'value', fn: ansListener });
@@ -305,26 +305,68 @@
         const offer = snap.val();
         if (!offer || pc.signalingState === 'closed') return;
         if (pc.signalingState === 'stable' || pc.signalingState === 'have-remote-offer') {
-          await pc.setRemoteDescription(offer);
-          const answer = await pc.createAnswer();
-          answer.sdp = setHighBitrate(answer.sdp);
-          await pc.setLocalDescription(answer);
-          await roomRef.child('answers/' + myUid() + '_' + peerUid).set({
-            type: answer.type, sdp: answer.sdp
-          });
-          // Process any queued ICE candidates
-          sigRef.once('value', (candSnap) => {
-            const cands = candSnap.val() || {};
-            Object.values(cands).forEach(c => {
-              pc.addIceCandidate(new RTCIceCandidate(c)).catch(() => {});
+          try {
+            await pc.setRemoteDescription(offer);
+            console.log('[GroupCall] Set remote desc (offer) from', peerUid);
+            const answer = await pc.createAnswer();
+            answer.sdp = setHighBitrate(answer.sdp);
+            await pc.setLocalDescription(answer);
+            await roomRef.child('answers/' + myUid() + '_' + peerUid).set({
+              type: answer.type, sdp: answer.sdp
             });
-          });
+            // Flush queued ICE candidates
+            flushPendingCandidates(peerUid, pc);
+          } catch (e) {
+            console.error('[GroupCall] offer handling error:', e);
+          }
         }
       });
       signalListeners.push({ ref: offerRef, event: 'value', fn: offerListener });
     }
 
     updateParticipantCount();
+  }
+
+  // Flush queued ICE candidates after remote description is set
+  function flushPendingCandidates(peerUid, pc) {
+    const queued = pendingCandidates[peerUid];
+    if (queued && queued.length > 0) {
+      console.log('[GroupCall] Flushing', queued.length, 'queued candidates for', peerUid);
+      while (queued.length) {
+        const c = queued.shift();
+        pc.addIceCandidate(c).catch(() => {});
+      }
+    }
+  }
+
+  // Connect remoteStream to the peer's video element and play it
+  function connectVideoToEl(peerUid, remoteStream) {
+    const p = participants[peerUid];
+    if (!p || !p.videoEl) return;
+
+    if (p.videoEl.srcObject !== remoteStream) {
+      p.videoEl.srcObject = remoteStream;
+    }
+
+    // Set output device if selected
+    if (selectedOutputDeviceId && typeof p.videoEl.setSinkId === 'function') {
+      p.videoEl.setSinkId(selectedOutputDeviceId).catch(() => {});
+    }
+
+    // Play with retries
+    const tryPlay = () => { const r = p.videoEl.play(); if (r) r.catch(() => {}); };
+    tryPlay();
+    if (!playRetryTimers[peerUid]) {
+      let retries = 0;
+      playRetryTimers[peerUid] = setInterval(() => {
+        retries++;
+        if (p.videoEl && p.videoEl.paused) tryPlay();
+        if ((p.videoEl && !p.videoEl.paused) || retries >= 30) {
+          clearInterval(playRetryTimers[peerUid]);
+          delete playRetryTimers[peerUid];
+        }
+      }, 500);
+    }
   }
 
   function removePeer(peerUid) {
@@ -336,7 +378,9 @@
       clearInterval(playRetryTimers[peerUid]);
       delete playRetryTimers[peerUid];
     }
+    delete pendingCandidates[peerUid];
     delete participants[peerUid];
+    updateGridLayout();
     updateParticipantCount();
   }
 
@@ -421,6 +465,9 @@
     // Start in-call chat
     startGroupCallChat();
 
+    // Start periodic video health check — catches any stuck/black videos
+    startVideoHealthCheck();
+
     // If group call, notify members
     if (type === 'group') {
       roomRef.child('meta').update({
@@ -437,6 +484,7 @@
 
     stopTimer();
     stopGroupCallChat();
+    stopVideoHealthCheck();
 
     // Remove ourselves
     if (myParticipantRef) {
@@ -473,6 +521,7 @@
       clearInterval(playRetryTimers[uid]);
     }
     playRetryTimers = {};
+    pendingCandidates = {};
 
     stopMedia();
 
@@ -643,6 +692,38 @@
     if (el) {
       const count = Object.keys(participants).length + 1; // +1 for self
       el.textContent = count + (count === 1 ? ' person' : ' people');
+    }
+  }
+
+  // ── Video Health Check ─────────────────────────────────
+  // Periodically checks all peer videos and re-plays any that are paused/stuck
+  function startVideoHealthCheck() {
+    stopVideoHealthCheck();
+    videoHealthTimer = setInterval(() => {
+      for (const uid of Object.keys(participants)) {
+        const p = participants[uid];
+        if (!p || !p.videoEl) continue;
+
+        // If video element has a srcObject with tracks but is paused, try playing
+        if (p.videoEl.srcObject && p.videoEl.srcObject.getTracks().length > 0 && p.videoEl.paused) {
+          console.log('[GroupCall] Health check: re-playing paused video for', uid);
+          p.videoEl.play().catch(() => {});
+        }
+
+        // If video element has no srcObject but remoteStream has tracks, reconnect
+        if ((!p.videoEl.srcObject || p.videoEl.srcObject.getTracks().length === 0) && p.remoteStream && p.remoteStream.getTracks().length > 0) {
+          console.log('[GroupCall] Health check: reconnecting stream for', uid);
+          p.videoEl.srcObject = p.remoteStream;
+          p.videoEl.play().catch(() => {});
+        }
+      }
+    }, 3000);
+  }
+
+  function stopVideoHealthCheck() {
+    if (videoHealthTimer) {
+      clearInterval(videoHealthTimer);
+      videoHealthTimer = null;
     }
   }
 
