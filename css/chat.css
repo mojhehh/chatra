@@ -135,6 +135,23 @@ body.light-mode .mention-highlight {
   background: rgba(14, 165, 233, 0.15);
   color: #0284c7;
 }
+
+/* When images are disabled by a moderator, hide all media in message bubbles */
+body.chat-images-hidden .chat-media,
+body.chat-images-hidden .message-bubble-anim img:not(.avatar-img):not(.profile-pic):not(.chat-media-placeholder),
+body.chat-images-hidden .message-bubble-anim video,
+body.chat-images-hidden #dmPageMessages .message-bubble-anim img:not(.avatar-img):not(.profile-pic),
+body.chat-images-hidden #dmPageMessages .message-bubble-anim video,
+body.chat-images-hidden .group-messages img:not(.avatar-img):not(.profile-pic),
+body.chat-images-hidden .group-messages video {
+  display: none !important;
+}
+
+/* Show placeholder text when images are hidden */
+body.chat-images-hidden .chat-media-placeholder {
+  display: block !important;
+}
+
 body.light-mode .mention-highlight:hover {
   background: rgba(14, 165, 233, 0.25);
 }

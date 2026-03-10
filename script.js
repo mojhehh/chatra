@@ -849,6 +849,54 @@
       let staffRolesCache = {};
       let staffRolesLoaded = false;
       
+      // Global image toggle state (controlled by HEAD_ADMIN+ via mod panel)
+      let chatImagesEnabled = true;
+      let imagesSettingListenerRef = null;
+      
+      function startImagesSettingListener() {
+        if (imagesSettingListenerRef) {
+          imagesSettingListenerRef.off('value');
+        }
+        imagesSettingListenerRef = db.ref('settings/imagesEnabled');
+        imagesSettingListenerRef.on('value', (snap) => {
+          // Default to true if not set
+          const val = snap.val();
+          chatImagesEnabled = val !== false;
+          console.log('[settings] imagesEnabled:', chatImagesEnabled);
+          applyImageVisibility();
+        });
+      }
+      
+      function applyImageVisibility() {
+        // Toggle a CSS class on the body to hide/show all chat media
+        if (chatImagesEnabled) {
+          document.body.classList.remove('chat-images-hidden');
+        } else {
+          document.body.classList.add('chat-images-hidden');
+        }
+        // Update upload buttons state
+        const mediaBtn = document.getElementById('mediaUploadBtn');
+        const dmMediaBtn = document.getElementById('dmPageMediaBtn');
+        if (mediaBtn) {
+          if (!chatImagesEnabled) {
+            mediaBtn.disabled = true;
+            mediaBtn.title = 'Images are currently disabled by a moderator';
+          } else {
+            mediaBtn.disabled = false;
+            mediaBtn.title = '';
+          }
+        }
+        if (dmMediaBtn) {
+          if (!chatImagesEnabled) {
+            dmMediaBtn.disabled = true;
+            dmMediaBtn.title = 'Images are currently disabled by a moderator';
+          } else {
+            dmMediaBtn.disabled = false;
+            dmMediaBtn.title = '';
+          }
+        }
+      }
+      
       // Load staff roles from database
       async function loadStaffRoles() {
         try {
@@ -4705,14 +4753,14 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
             const video = document.createElement('video');
             video.src = mediaUrl;
             video.controls = true;
-            video.className = 'w-full rounded-lg mb-2';
+            video.className = 'w-full rounded-lg mb-2 chat-media';
             video.setAttribute('playsinline', '');
             video.setAttribute('webkit-playsinline', '');
             bubble.appendChild(video);
           } else {
             const img = document.createElement('img');
             img.src = mediaUrl;
-            img.className = 'w-full rounded-lg mb-2 cursor-pointer';
+            img.className = 'w-full rounded-lg mb-2 cursor-pointer chat-media';
             img.onclick = () => openImageViewer(mediaUrl);
             
             if (isGif) {
@@ -4729,6 +4777,11 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
               bubble.appendChild(img);
             }
           }
+          // Add placeholder shown when images are disabled
+          const mediaPlaceholder = document.createElement('div');
+          mediaPlaceholder.className = 'chat-media-placeholder text-xs text-slate-500 italic py-2 hidden';
+          mediaPlaceholder.textContent = '🖼️ Image hidden by moderator';
+          bubble.appendChild(mediaPlaceholder);
         }
 
         
@@ -4901,6 +4954,7 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
           // Still start listeners that need to be re-attached
           startOnlineCountListener();
           startStaffRolesListener();
+          startImagesSettingListener();
           setTimeout(() => checkPendingRoleNotification(), 2000);
           return;
         }
@@ -4990,6 +5044,9 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
         
         // Start listening for staff roles
         startStaffRolesListener();
+        
+        // Start listening for image toggle setting
+        startImagesSettingListener();
         
         // Check for pending role notification (delayed to ensure staffRoles loaded)
         setTimeout(() => {
@@ -5308,6 +5365,12 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
           dmPageMediaInput.addEventListener('change', async () => {
             const file = dmPageMediaInput.files[0];
             if (!file || !activeDMThread) {
+              dmPageMediaInput.value = '';
+              return;
+            }
+
+            if (!chatImagesEnabled) {
+              showToast('Images are currently disabled by a moderator', 'error');
               dmPageMediaInput.value = '';
               return;
             }
@@ -6525,6 +6588,7 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
         const modPanelTabMuted = document.getElementById("modPanelTabMuted");
         const modPanelTabHardware = document.getElementById("modPanelTabHardware");
         const modPanelTabStaff = document.getElementById("modPanelTabStaff");
+        const modPanelTabSettings = document.getElementById("modPanelTabSettings");
         const modPanelContent = document.getElementById("modPanelContent");
         
         if (!modPanelBtn || !modPanelModal) return;
@@ -6567,6 +6631,17 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
               modPanelTabStaff.classList.remove("hidden");
             } else {
               modPanelTabStaff.classList.add("hidden");
+            }
+          }
+          
+          // Show settings tab for HEAD_ADMIN+ (priority >= 4), Owner, and Co-Owner
+          if (modPanelTabSettings) {
+            const staffRole = getUserStaffRole(currentUserId);
+            const canSeeSettings = perms.isOwner || perms.isCoOwner || (staffRole && staffRole.priority >= 4);
+            if (canSeeSettings) {
+              modPanelTabSettings.classList.remove("hidden");
+            } else {
+              modPanelTabSettings.classList.add("hidden");
             }
           }
           
@@ -6621,9 +6696,9 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
         
         const setTab = (tab) => {
           modPanelCurrentTab = tab;
-          const allTabs = [modPanelTabBanned, modPanelTabMuted, modPanelTabHardware, modPanelTabStaff].filter(t => t);
+          const allTabs = [modPanelTabBanned, modPanelTabMuted, modPanelTabHardware, modPanelTabStaff, modPanelTabSettings].filter(t => t);
           allTabs.forEach(btn => {
-            btn.classList.remove('bg-red-600', 'bg-yellow-600', 'bg-purple-600', 'bg-rose-600', 'text-white');
+            btn.classList.remove('bg-red-600', 'bg-yellow-600', 'bg-purple-600', 'bg-rose-600', 'bg-sky-600', 'text-white');
             btn.classList.add('bg-slate-700', 'text-slate-300');
           });
           if (tab === 'banned' && modPanelTabBanned) {
@@ -6638,6 +6713,9 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
           } else if (tab === 'staff' && modPanelTabStaff) {
             modPanelTabStaff.classList.remove('bg-slate-700', 'text-slate-300');
             modPanelTabStaff.classList.add('bg-rose-600', 'text-white');
+          } else if (tab === 'settings' && modPanelTabSettings) {
+            modPanelTabSettings.classList.remove('bg-slate-700', 'text-slate-300');
+            modPanelTabSettings.classList.add('bg-sky-600', 'text-white');
           }
           loadModPanelTab(tab);
         };
@@ -6646,6 +6724,7 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
         if (modPanelTabMuted) modPanelTabMuted.onclick = () => setTab('muted');
         if (modPanelTabHardware) modPanelTabHardware.onclick = () => setTab('hardware');
         if (modPanelTabStaff) modPanelTabStaff.onclick = () => setTab('staff');
+        if (modPanelTabSettings) modPanelTabSettings.onclick = () => setTab('settings');
       }
       
       async function loadModPanelTab(tab) {
@@ -6661,6 +6740,8 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
             await loadHardwareBans();
           } else if (tab === 'staff') {
             await loadStaffManagement();
+          } else if (tab === 'settings') {
+            await loadModPanelSettings();
           }
         } catch (e) {
           modPanelContent.innerHTML = '<div class="text-center py-8 text-red-400">Error loading data</div>';
@@ -6929,6 +7010,69 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
             loadStaffManagement(); // Refresh
           };
         });
+      }
+      
+      // Settings tab for mod panel (HEAD_ADMIN+ only)
+      async function loadModPanelSettings() {
+        const modPanelContent = document.getElementById("modPanelContent");
+        const perms = getCurrentUserPermissions();
+        const staffRole = getUserStaffRole(currentUserId);
+        const canSeeSettings = perms.isOwner || perms.isCoOwner || (staffRole && staffRole.priority >= 4);
+        
+        if (!canSeeSettings) {
+          modPanelContent.innerHTML = '<div class="text-center py-8 text-red-400">You do not have permission to manage settings</div>';
+          return;
+        }
+        
+        // Read current setting
+        const snap = await db.ref('settings/imagesEnabled').once('value');
+        const imagesOn = snap.val() !== false;
+        
+        let html = '<div class="space-y-4">';
+        html += '<div class="bg-slate-800/50 rounded-lg p-4 border border-slate-700">';
+        html += '<h4 class="text-sm font-semibold text-slate-200 mb-3 flex items-center gap-2">🖼️ Chat Images</h4>';
+        html += '<p class="text-xs text-slate-400 mb-4">When disabled, all images and videos in chat are hidden and users cannot upload new media.</p>';
+        html += '<div class="flex items-center justify-between">';
+        html += '<span class="text-sm text-slate-300">Images in chat</span>';
+        html += '<label class="relative inline-flex items-center cursor-pointer">';
+        html += '<input type="checkbox" id="modSettingsImagesToggle" class="sr-only peer" ' + (imagesOn ? 'checked' : '') + '>';
+        html += '<div class="w-11 h-6 bg-slate-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[\'\'] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>';
+        html += '</label>';
+        html += '</div>';
+        html += '<div id="modSettingsImagesStatus" class="mt-2 text-xs ' + (imagesOn ? 'text-emerald-400' : 'text-red-400') + '">';
+        html += imagesOn ? '✓ Images are enabled' : '✕ Images are disabled — all media hidden from chat';
+        html += '</div>';
+        html += '</div>';
+        html += '</div>';
+        
+        modPanelContent.innerHTML = html;
+        
+        const toggle = document.getElementById('modSettingsImagesToggle');
+        const status = document.getElementById('modSettingsImagesStatus');
+        if (toggle) {
+          toggle.addEventListener('change', async () => {
+            const enabled = toggle.checked;
+            try {
+              await db.ref('settings/imagesEnabled').set(enabled);
+              if (status) {
+                status.className = 'mt-2 text-xs ' + (enabled ? 'text-emerald-400' : 'text-red-400');
+                status.textContent = enabled ? '✓ Images are enabled' : '✕ Images are disabled — all media hidden from chat';
+              }
+              showToast(enabled ? 'Images enabled in chat' : 'Images disabled in chat — all media hidden', enabled ? 'success' : 'info');
+              // Log the action
+              db.ref('auditLog/settings').push({
+                action: enabled ? 'images_enabled' : 'images_disabled',
+                adminUid: currentUserId,
+                adminUsername: currentUsername,
+                timestamp: firebase.database.ServerValue.TIMESTAMP
+              });
+            } catch (e) {
+              console.error('[modPanel] failed to update images setting:', e);
+              showToast('Failed to update setting', 'error');
+              toggle.checked = !enabled; // Revert
+            }
+          });
+        }
       }
       
       async function loadBannedUsers() {
@@ -7662,7 +7806,7 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
         
         "fuck", "fck", "shit", "bitch", "asshole", "bastard", "cunt",
         
-        "faggot", "fag", "nigger", "chink", "slut", "whore",
+        "faggot", "fagot", "fag", "nigger", "niger", "nigga", "niga", "chink", "slut", "whore",
         
         "retard", "retarded", "tranny", "homo", "dyke", "kike",
         
@@ -7675,44 +7819,50 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
       function createFlexiblePattern(word) {
         
         const subs = {
-          'a': '[a@4àáâãäåα]',
-          'b': '[b8ß]',
-          'c': '[cç(\\[]',
-          'd': '[dδ]',
-          'e': '[e3èéêë€]',
-          'f': '[f]',
-          'g': '[g9q]',
-          'h': '[h#]',
-          'i': '[i1!|ìíîï]',
-          'j': '[j]',
-          'k': '[k]',
-          'l': '[l1|!ìíîï]',
-          'm': '[m]',
-          'n': '[nñ]',
-          'o': '[o0óòôõöø]',
-          'p': '[p]',
+          'a': '[a@4àáâãäåαаᴀɑ🅰️]',
+          'b': '[b8ßᵇ🅱️]',
+          'c': '[cç(\\[сᴄ¢©]',
+          'd': '[dδᴅ]',
+          'e': '[e3èéêëе€ᴇɛ]',
+          'f': '[fƒ]',
+          'g': '[g9qɡᶃ6]',
+          'h': '[h#ʜ]',
+          'i': '[i1!|ìíîïіᴉ¡l]',
+          'j': '[jј]',
+          'k': '[kкᴋ]',
+          'l': '[l1|!ìíîïіᶅ]',
+          'm': '[mмᴍ]',
+          'n': '[nñпɴ]',
+          'o': '[o0óòôõöøоᴏ]',
+          'p': '[pрᴘ]',
           'q': '[q9]',
-          'r': '[r]',
-          's': '[s5$]',
-          't': '[t7+]',
-          'u': '[uùúûü]',
-          'v': '[v]',
-          'w': '[w]',
-          'x': '[x%×]',
-          'y': '[yÿ]',
-          'z': '[z2]'
+          'r': '[rгᴿʀ]',
+          's': '[s5$śšṡ§]',
+          't': '[t7+ᴛ†]',
+          'u': '[uùúûüцᴜ]',
+          'v': '[vνᴠ]',
+          'w': '[wᴡω]',
+          'x': '[x%×хᴿ]',
+          'y': '[yÿуʏ]',
+          'z': '[z2ᴢ]'
         };
 
         
         const letters = word.toLowerCase().split('');
         
-        const gap = '[^a-z0-9]{0,4}';
+        // Allow up to 6 non-alpha chars between letters (catches spaces, dots, dashes, underscores, asterisks, etc.)
+        const gap = '[^a-zA-Z0-9]{0,6}';
         const parts = letters.map(ch => {
           const cls = subs[ch] || ('[' + ch + ']');
           
           return cls + '+(' + gap + ')?';
         });
         let pattern = parts.join('');
+        
+        // For short words (3-4 chars), add word boundary to reduce false positives
+        if (word.length <= 4) {
+          pattern = '(?<![a-zA-Z])' + pattern + '(?![a-zA-Z])';
+        }
         
         return new RegExp(pattern, 'giu');
       }
@@ -7721,7 +7871,7 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
       const FLEXIBLE_BAD_WORD_PATTERNS = BAD_WORDS.map(word => createFlexiblePattern(word));
 
       
-      const SEVERE_SLURS = ['nigger','faggot','kike','chink','tranny'];
+      const SEVERE_SLURS = ['nigger','niger','nigga','niga','faggot','fagot','fag','kike','chink','tranny'];
       const FLEXIBLE_SEVERE_PATTERNS = SEVERE_SLURS.map(w => createFlexiblePattern(w));
 
       
@@ -7751,8 +7901,41 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
 
       const badWordPattern = new RegExp("\\b(" + BAD_WORDS.map((w) => w.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&")).join("|") + ")\\b", "gi");
 
+      // Normalize text by stripping zero-width chars, converting lookalike unicode to ASCII, and collapsing diacritics
+      function normalizeForFilter(text) {
+        if (!text) return text;
+        // Remove zero-width characters and invisible formatting
+        let result = text.replace(/[\u200B\u200C\u200D\u2060\u2063\uFEFF\u00AD\u034F\u061C\u180E]/g, '');
+        // Normalize unicode (NFD then strip combining marks)
+        result = result.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        // Map common Cyrillic/Greek lookalikes to Latin
+        const lookalikes = {
+          'а': 'a', 'е': 'e', 'о': 'o', 'р': 'p', 'с': 'c', 'у': 'y', 'х': 'x',
+          'і': 'i', 'ї': 'i', 'к': 'k', 'м': 'm', 'н': 'n', 'т': 't',
+          'А': 'A', 'Е': 'E', 'О': 'O', 'Р': 'P', 'С': 'C', 'У': 'Y', 'Х': 'X',
+          'І': 'I', 'К': 'K', 'М': 'M', 'Н': 'N', 'Т': 'T',
+          'α': 'a', 'β': 'b', 'ε': 'e', 'η': 'n', 'ι': 'i', 'κ': 'k', 'ν': 'v',
+          'ο': 'o', 'ρ': 'p', 'τ': 't', 'υ': 'u', 'ω': 'w',
+          'ᴀ': 'a', 'ᴄ': 'c', 'ᴅ': 'd', 'ᴇ': 'e', 'ɛ': 'e', 'ᴋ': 'k',
+          'ᴍ': 'm', 'ɴ': 'n', 'ᴏ': 'o', 'ᴘ': 'p', 'ʀ': 'r', 'ᴛ': 't',
+          'ᴜ': 'u', 'ᴠ': 'v', 'ᴡ': 'w', 'ʏ': 'y', 'ᴢ': 'z',
+          'ɑ': 'a', 'ɡ': 'g', 'ɪ': 'i', 'ᶅ': 'l', 'ᶃ': 'g',
+          'ƒ': 'f', 'ј': 'j',
+          '🅰': 'a', '🅱': 'b',
+        };
+        result = result.split('').map(ch => lookalikes[ch] || ch).join('');
+        // Convert fullwidth characters to ASCII
+        result = result.replace(/[\uFF01-\uFF5E]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0));
+        // Strip regional indicator symbols
+        result = result.replace(/[\u{1F1E6}-\u{1F1FF}]/gu, '');
+        return result;
+      }
+      
       function filterBadWords(text) {
         if (!text) return text;
+        
+        // Normalize to strip zero-width chars, lookalike unicode, diacritics
+        const normalized = normalizeForFilter(text);
         
         // Whitelist common false positives (like "of a gif")
         const WHITELIST_PHRASES = [
@@ -7761,7 +7944,7 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
         ];
         
         // Replace whitelisted phrases with placeholders
-        let processed = text;
+        let processed = normalized;
         for (const item of WHITELIST_PHRASES) {
           processed = processed.replace(item.pattern, item.placeholder);
         }
@@ -8220,7 +8403,7 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
             video.src = mediaUrl;
             video.controls = true;
             video.preload = "metadata";
-            video.className = "w-full rounded-lg";
+            video.className = "w-full rounded-lg chat-media";
             video.setAttribute("playsinline", ""); 
             video.setAttribute("webkit-playsinline", ""); 
 
@@ -8233,13 +8416,18 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
             const img = document.createElement("img");
             img.src = mediaUrl;
             img.alt = "DM media";
-            img.className = "w-full rounded-lg cursor-pointer active:opacity-70 transition-opacity";
+            img.className = "w-full rounded-lg cursor-pointer active:opacity-70 transition-opacity chat-media";
             img.crossOrigin = "anonymous"; 
             img.onclick = () => openImageViewer(mediaUrl);
 
             imgContainer.appendChild(img);
             bubble.appendChild(imgContainer);
           }
+          // Placeholder shown when images are disabled
+          const mediaPlaceholder = document.createElement('div');
+          mediaPlaceholder.className = 'chat-media-placeholder text-xs text-slate-500 italic py-2 hidden';
+          mediaPlaceholder.textContent = '🖼️ Image hidden by moderator';
+          bubble.appendChild(mediaPlaceholder);
         }
 
         if (msg && msg.text) {
@@ -9898,7 +10086,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             const video = document.createElement("video");
             video.controls = true;
             video.preload = "metadata";
-            video.className = "w-full rounded-lg";
+            video.className = "w-full rounded-lg chat-media";
             video.style.maxHeight = "300px";
             video.style.display = "block";
             video.setAttribute("playsinline", ""); 
@@ -9923,7 +10111,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             gifContainer.style.maxWidth = "400px";
             
             const img = document.createElement("img");
-            img.className = "w-full rounded-lg cursor-pointer active:opacity-70 transition-opacity";
+            img.className = "w-full rounded-lg cursor-pointer active:opacity-70 transition-opacity chat-media";
             img.style.maxHeight = "300px";
             img.style.display = "block";
             img.style.objectFit = "contain";
@@ -9949,7 +10137,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             imgContainer.style.maxWidth = "400px";
             
             const img = document.createElement("img");
-            img.className = "w-full rounded-lg cursor-pointer active:opacity-70 transition-opacity";
+            img.className = "w-full rounded-lg cursor-pointer active:opacity-70 transition-opacity chat-media";
             img.style.maxHeight = "300px";
             img.style.display = "block";
             img.style.objectFit = "contain";
@@ -9970,6 +10158,11 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             imgContainer.appendChild(img);
             bubble.appendChild(imgContainer);
           }
+          // Placeholder shown when images are disabled
+          const mediaPlaceholder = document.createElement('div');
+          mediaPlaceholder.className = 'chat-media-placeholder text-xs text-slate-500 italic py-2 hidden';
+          mediaPlaceholder.textContent = '🖼️ Image hidden by moderator';
+          bubble.appendChild(mediaPlaceholder);
         }
 
         
@@ -11734,6 +11927,71 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         }
       }
 
+      // NSFW image detection using nsfwjs
+      let nsfwModel = null;
+      let nsfwModelLoading = false;
+      
+      async function loadNsfwModel() {
+        if (nsfwModel) return nsfwModel;
+        if (nsfwModelLoading) {
+          // Wait for model that's already loading
+          for (let i = 0; i < 100; i++) {
+            await new Promise(r => setTimeout(r, 200));
+            if (nsfwModel) return nsfwModel;
+          }
+          throw new Error('NSFW model load timeout');
+        }
+        nsfwModelLoading = true;
+        try {
+          if (typeof nsfwjs === 'undefined') {
+            throw new Error('nsfwjs library not loaded');
+          }
+          // Use MobileNetV2 model (smaller, faster)
+          nsfwModel = await nsfwjs.load('MobileNetV2');
+          console.log('[nsfw] model loaded successfully');
+          return nsfwModel;
+        } catch (e) {
+          console.error('[nsfw] model load error:', e);
+          nsfwModelLoading = false;
+          throw e;
+        }
+      }
+      
+      async function checkImageNSFW(file) {
+        const model = await loadNsfwModel();
+        
+        // Create an image element from the file
+        const imgUrl = URL.createObjectURL(file);
+        try {
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+          await new Promise((resolve, reject) => {
+            img.onload = resolve;
+            img.onerror = () => reject(new Error('Failed to load image for NSFW check'));
+            img.src = imgUrl;
+          });
+          
+          const predictions = await model.classify(img);
+          console.log('[nsfw] predictions:', predictions);
+          
+          // Check for NSFW content - block if Porn or Hentai probability is high
+          const pornScore = predictions.find(p => p.className === 'Porn')?.probability || 0;
+          const hentaiScore = predictions.find(p => p.className === 'Hentai')?.probability || 0;
+          const sexyScore = predictions.find(p => p.className === 'Sexy')?.probability || 0;
+          
+          // Block if porn/hentai is >30% or combined sexy+porn+hentai >60%
+          const combined = pornScore + hentaiScore + sexyScore;
+          const blocked = pornScore > 0.3 || hentaiScore > 0.3 || combined > 0.6;
+          
+          return {
+            blocked,
+            scores: { porn: pornScore, hentai: hentaiScore, sexy: sexyScore, combined },
+            predictions
+          };
+        } finally {
+          URL.revokeObjectURL(imgUrl);
+        }
+      }
       
       async function uploadToImageKit(file) {
         
@@ -11756,7 +12014,22 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         if (isVideo) {
           console.log("[upload] video file detected — skipping moderation and uploading directly");
         } else {
-          console.log("[upload] image file detected — moderation disabled, uploading directly");
+          // Run NSFW check on images
+          console.log("[upload] image file detected — running NSFW check");
+          try {
+            const nsfwResult = await checkImageNSFW(file);
+            if (nsfwResult.blocked) {
+              console.warn("[upload] image blocked by NSFW filter:", nsfwResult);
+              throw new Error("Image rejected: This image appears to contain inappropriate content and cannot be uploaded.");
+            }
+            console.log("[upload] NSFW check passed:", nsfwResult);
+          } catch (nsfwErr) {
+            if (nsfwErr.message.includes("Image rejected")) {
+              throw nsfwErr; // Re-throw block messages
+            }
+            // If the NSFW check itself errors, log it but allow upload (fail-open so uploads don't break)
+            console.warn("[upload] NSFW check error (allowing upload):", nsfwErr.message);
+          }
         }
 
         
@@ -11974,6 +12247,10 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
       async function sendImageMessage(file) {
         const userObj = auth.currentUser;
         if (!userObj || !currentUsername) return;
+        if (!chatImagesEnabled) {
+          showToast("Images are currently disabled by a moderator", "error");
+          return;
+        }
         if (!(await canUpload())) {
           showToast("Slow down! Wait a few seconds", "error");
           return;
@@ -12000,6 +12277,10 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
       }
 
       mediaUploadBtn.addEventListener("click", () => {
+        if (!chatImagesEnabled) {
+          showToast("Images are currently disabled by a moderator", "error");
+          return;
+        }
         mediaInput.click();
       });
 
@@ -12018,6 +12299,12 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         const userObj = auth.currentUser;
         if (!userObj) {
           showToast("Please log in to send media", "error");
+          return;
+        }
+
+        if (!chatImagesEnabled) {
+          showToast("Images are currently disabled by a moderator", "error");
+          mediaInput.value = "";
           return;
         }
 
@@ -13976,6 +14263,12 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         dmMediaInput.addEventListener("change", async (e) => {
           const file = e.target.files && e.target.files[0];
           if (!file) return;
+
+          if (!chatImagesEnabled) {
+            showToast('Images are currently disabled by a moderator', 'error');
+            dmMediaInput.value = '';
+            return;
+          }
 
           const allowedMediaTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'video/mp4', 'video/webm', 'video/quicktime'];
           if (!allowedMediaTypes.includes(file.type)) {

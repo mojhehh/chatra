@@ -107,6 +107,14 @@
       }
     },
 
+    "settings": {
+      ".read": "auth != null",
+      "imagesEnabled": {
+        ".write": "auth != null && (auth.uid === 'u5yKqiZvioWuBGcGK3SWUBpUVrc2' || auth.uid === '6n8hjmrUxhMHskX4BG8Ik9boMqa2' || (root.child('staffRoles').child(auth.uid).child('role').val() === 'HEAD_ADMIN'))",
+        ".validate": "newData.isBoolean()"
+      }
+    },
+
     "userMentionNotified": {
       "$uid": {
         ".read": "auth != null && auth.uid === $uid",
