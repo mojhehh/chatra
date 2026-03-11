@@ -30,44 +30,177 @@
   let remoteStream = null;    // single persistent remote MediaStream
   let playRetryTimer = null;  // retry .play() for Safari
 
+  // Speaking indicator state
+  let localAudioContext = null;
+  let localAnalyser = null;
+  let speakingCheckTimer = null;
+  let isSpeakingLocal = false;
+  let isSpeakingRemote = false;
+  let remoteAudioContext = null;
+  let remoteAnalyser = null;
+
   // Detect iPad / iOS Safari early
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
   const isEdge = /Edg\//i.test(navigator.userAgent);
 
-  // STUN servers for NAT traversal
+  // STUN + TURN servers for NAT traversal
+  // TURN relay servers are critical for connections behind symmetric NATs
   const ICE_SERVERS = [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' },
     { urls: 'stun:stun3.l.google.com:19302' },
-    { urls: 'stun:stun4.l.google.com:19302' }
+    { urls: 'stun:stun4.l.google.com:19302' },
+    // Free TURN relay servers (Open Relay Project by Metered)
+    { urls: 'stun:stun.relay.metered.ca:80' },
+    {
+      urls: 'turn:global.relay.metered.ca:80',
+      username: 'e8dd65b92f6bceea5c748e51',
+      credential: 'kfm2QQqcGy/mj0jv'
+    },
+    {
+      urls: 'turn:global.relay.metered.ca:80?transport=tcp',
+      username: 'e8dd65b92f6bceea5c748e51',
+      credential: 'kfm2QQqcGy/mj0jv'
+    },
+    {
+      urls: 'turn:global.relay.metered.ca:443',
+      username: 'e8dd65b92f6bceea5c748e51',
+      credential: 'kfm2QQqcGy/mj0jv'
+    },
+    {
+      urls: 'turns:global.relay.metered.ca:443?transport=tcp',
+      username: 'e8dd65b92f6bceea5c748e51',
+      credential: 'kfm2QQqcGy/mj0jv'
+    }
   ];
+
+  // ── Quality Settings & Presets ───────────────────────────
+  const QUALITY_PRESETS = {
+    '1080p': { width: 1920, height: 1080, maxBitrate: 6000 },
+    '720p':  { width: 1280, height: 720,  maxBitrate: 2500 },
+    '480p':  { width: 854,  height: 480,  maxBitrate: 1200 },
+    '360p':  { width: 640,  height: 360,  maxBitrate: 600  }
+  };
+
+  // Current quality settings (loaded from localStorage)
+  let qualitySettings = {
+    quality: 'auto',      // 'auto', '1080p', '720p', '480p', '360p'
+    fps: 'auto',          // 'auto', '60', '30', '24', '15'
+    autoAdjust: true,
+    showNetworkIndicator: true
+  };
+
+  function loadQualitySettings() {
+    try {
+      const saved = localStorage.getItem('chatra_call_quality');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        qualitySettings = Object.assign(qualitySettings, parsed);
+      }
+    } catch (e) {}
+    // Sync UI if settings modal is open
+    syncQualityUI();
+  }
+
+  function saveQualitySettings() {
+    try {
+      localStorage.setItem('chatra_call_quality', JSON.stringify(qualitySettings));
+    } catch (e) {}
+  }
+
+  function syncQualityUI() {
+    const qs = document.getElementById('callQualitySelect');
+    const fs = document.getElementById('callFpsSelect');
+    const aa = document.getElementById('callAutoAdjustToggle');
+    const ni = document.getElementById('callNetworkIndicatorToggle');
+    if (qs) qs.value = qualitySettings.quality;
+    if (fs) fs.value = qualitySettings.fps;
+    if (aa) aa.checked = qualitySettings.autoAdjust;
+    if (ni) ni.checked = qualitySettings.showNetworkIndicator;
+  }
+
+  function initQualitySettingsUI() {
+    const qs = document.getElementById('callQualitySelect');
+    const fs = document.getElementById('callFpsSelect');
+    const aa = document.getElementById('callAutoAdjustToggle');
+    const ni = document.getElementById('callNetworkIndicatorToggle');
+
+    if (qs) qs.addEventListener('change', () => {
+      qualitySettings.quality = qs.value;
+      saveQualitySettings();
+    });
+    if (fs) fs.addEventListener('change', () => {
+      qualitySettings.fps = fs.value;
+      saveQualitySettings();
+    });
+    if (aa) aa.addEventListener('change', () => {
+      qualitySettings.autoAdjust = aa.checked;
+      saveQualitySettings();
+    });
+    if (ni) ni.addEventListener('change', () => {
+      qualitySettings.showNetworkIndicator = ni.checked;
+      saveQualitySettings();
+      // Hide indicator if turned off mid-call
+      const ind = document.getElementById('vcNetworkIndicator');
+      if (ind) ind.classList.toggle('hidden', !ni.checked);
+    });
+  }
+
+  // Get the target resolution based on quality setting and adaptive state
+  function getTargetQuality() {
+    const q = currentAdaptiveQuality || qualitySettings.quality;
+    if (q === 'auto' || !QUALITY_PRESETS[q]) {
+      // Default to 720p for auto — adaptive will scale up/down
+      return QUALITY_PRESETS['720p'];
+    }
+    return QUALITY_PRESETS[q];
+  }
+
+  function getTargetFps() {
+    if (qualitySettings.fps === 'auto') {
+      return currentAdaptiveFps || 30;
+    }
+    return parseInt(qualitySettings.fps) || 30;
+  }
+
+  // ── Adaptive Bitrate State ─────────────────────────────
+  let currentAdaptiveQuality = null; // null = use settings, or '720p' etc.
+  let currentAdaptiveFps = null;
+  let statsTimer = null;
+  let prevStats = null;
+  let networkQuality = 'good'; // 'excellent', 'good', 'fair', 'poor'
+  let consecutivePoor = 0;
+  let consecutiveGood = 0;
 
   // Preferred video constraints — 1080p 60fps, graceful fallback
   function getVideoConstraints() {
+    const target = getTargetQuality();
+    const fps = getTargetFps();
+
     // Edge chokes on min constraints and facingMode on desktop
     if (isEdge) {
       return {
-        width: { ideal: 1920 },
-        height: { ideal: 1080 },
-        frameRate: { ideal: 60 }
+        width: { ideal: target.width },
+        height: { ideal: target.height },
+        frameRate: { ideal: fps }
       };
     }
     // Safari / iPad — keep facingMode but drop min constraints
     if (isIOS || isSafari) {
       return {
-        width: { ideal: 1920 },
-        height: { ideal: 1080 },
-        frameRate: { ideal: 60 },
+        width: { ideal: target.width },
+        height: { ideal: target.height },
+        frameRate: { ideal: fps },
         facingMode: usingFrontCam ? 'user' : 'environment'
       };
     }
     return {
-      width: { ideal: 1920 },
-      height: { ideal: 1080 },
-      frameRate: { ideal: 60, min: 30 },
+      width: { ideal: target.width },
+      height: { ideal: target.height },
+      frameRate: { ideal: fps, min: Math.min(15, fps) },
       facingMode: usingFrontCam ? 'user' : 'environment'
     };
   }
@@ -76,6 +209,112 @@
   function getDb() { return firebase.database(); }
   function getAuth() { return firebase.auth(); }
   function myUid() { return getAuth().currentUser && getAuth().currentUser.uid; }
+
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.appendChild(document.createTextNode(text || ''));
+    return div.innerHTML;
+  }
+
+  // Fetch a user's profile pic from Firebase (returns URL or null)
+  async function fetchProfilePic(uid) {
+    if (!uid) return null;
+    try {
+      const snap = await getDb().ref('users/' + uid + '/profilePic').once('value');
+      return snap.val() || null;
+    } catch (e) { return null; }
+  }
+
+  // Truncate long names with ellipsis
+  function truncName(name, max) {
+    if (!name) return 'Unknown';
+    return name.length > max ? name.slice(0, max) + '..' : name;
+  }
+
+  // ── Speaking Indicator ─────────────────────────────────
+  function startSpeakingDetection() {
+    stopSpeakingDetection();
+    // Local audio analysis
+    if (localStream) {
+      try {
+        localAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const source = localAudioContext.createMediaStreamSource(localStream);
+        localAnalyser = localAudioContext.createAnalyser();
+        localAnalyser.fftSize = 256;
+        localAnalyser.smoothingTimeConstant = 0.5;
+        source.connect(localAnalyser);
+      } catch (e) { console.warn('[VideoCall] Local audio analyser failed:', e); }
+    }
+    // Remote audio analysis
+    if (remoteStream) {
+      try {
+        remoteAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const src = remoteAudioContext.createMediaStreamSource(remoteStream);
+        remoteAnalyser = remoteAudioContext.createAnalyser();
+        remoteAnalyser.fftSize = 256;
+        remoteAnalyser.smoothingTimeConstant = 0.5;
+        src.connect(remoteAnalyser);
+      } catch (e) { console.warn('[VideoCall] Remote audio analyser failed:', e); }
+    }
+
+    speakingCheckTimer = setInterval(() => {
+      // Check local speaking
+      const wasLocal = isSpeakingLocal;
+      if (localAnalyser) {
+        const data = new Uint8Array(localAnalyser.frequencyBinCount);
+        localAnalyser.getByteFrequencyData(data);
+        const avg = data.reduce((a, b) => a + b, 0) / data.length;
+        isSpeakingLocal = avg > 15;
+      }
+      if (isSpeakingLocal !== wasLocal) updateSpeakingUI('local', isSpeakingLocal);
+
+      // Check remote speaking
+      const wasRemote = isSpeakingRemote;
+      if (remoteAnalyser) {
+        const data = new Uint8Array(remoteAnalyser.frequencyBinCount);
+        remoteAnalyser.getByteFrequencyData(data);
+        const avg = data.reduce((a, b) => a + b, 0) / data.length;
+        isSpeakingRemote = avg > 15;
+      }
+      if (isSpeakingRemote !== wasRemote) updateSpeakingUI('remote', isSpeakingRemote);
+    }, 150);
+  }
+
+  function stopSpeakingDetection() {
+    if (speakingCheckTimer) { clearInterval(speakingCheckTimer); speakingCheckTimer = null; }
+    if (localAudioContext) { localAudioContext.close().catch(() => {}); localAudioContext = null; localAnalyser = null; }
+    if (remoteAudioContext) { remoteAudioContext.close().catch(() => {}); remoteAudioContext = null; remoteAnalyser = null; }
+    isSpeakingLocal = false;
+    isSpeakingRemote = false;
+  }
+
+  function updateSpeakingUI(who, speaking) {
+    if (who === 'local') {
+      const el = document.getElementById('vcLocalVideo');
+      if (el) el.classList.toggle('vc-speaking', speaking);
+      // Also highlight camera-off overlay if cam is off
+      const coff = document.getElementById('vcLocalCamOff');
+      if (coff) coff.classList.toggle('vc-speaking', speaking);
+    } else {
+      const el = document.getElementById('vcRemoteVideo');
+      if (el) el.classList.toggle('vc-speaking', speaking);
+      const coff = document.getElementById('vcRemoteCamOff');
+      if (coff) coff.classList.toggle('vc-speaking', speaking);
+    }
+  }
+
+  // Connect remote stream to speaking analyser (called when remote tracks arrive)
+  function hookRemoteSpeaking() {
+    if (!remoteStream || remoteAudioContext) return;
+    try {
+      remoteAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const src = remoteAudioContext.createMediaStreamSource(remoteStream);
+      remoteAnalyser = remoteAudioContext.createAnalyser();
+      remoteAnalyser.fftSize = 256;
+      remoteAnalyser.smoothingTimeConstant = 0.5;
+      src.connect(remoteAnalyser);
+    } catch (e) {}
+  }
 
   // ── Device Enumeration ─────────────────────────────────
   async function getDevices() {
@@ -225,13 +464,23 @@
       }
 
       // Also listen for track ending/muting so we know
-      event.track.addEventListener('ended', () => console.log('[VideoCall] Remote track ended:', event.track.kind));
-      event.track.addEventListener('mute', () => console.log('[VideoCall] Remote track muted:', event.track.kind));
+      event.track.addEventListener('ended', () => {
+        console.log('[VideoCall] Remote track ended:', event.track.kind);
+        if (event.track.kind === 'video') updateRemoteCamOff(true);
+      });
+      event.track.addEventListener('mute', () => {
+        console.log('[VideoCall] Remote track muted:', event.track.kind);
+        if (event.track.kind === 'video') updateRemoteCamOff(true);
+      });
       event.track.addEventListener('unmute', () => {
         console.log('[VideoCall] Remote track unmuted:', event.track.kind);
+        if (event.track.kind === 'video') updateRemoteCamOff(false);
         // Safari sometimes mutes then unmutes — re-trigger play
         if (rv && rv.paused) rv.play().catch(() => {});
       });
+
+      // Hook remote audio for speaking detection
+      if (event.track.kind === 'audio') hookRemoteSpeaking();
 
       if (rv) {
         if (rv.srcObject !== remoteStream) rv.srcObject = remoteStream;
@@ -291,11 +540,10 @@
           disconnectTimer = setTimeout(() => {
             disconnectTimer = null;
             if (peerConnection && peerConnection.iceConnectionState === 'disconnected') {
-              // Try ICE restart before giving up
-              console.warn('[VideoCall] ICE disconnected 15s, attempting restart');
+              console.warn('[VideoCall] ICE disconnected 8s, attempting restart');
               attemptIceRestart();
             }
-          }, 15000);
+          }, 8000);
         }
       }
 
@@ -326,8 +574,8 @@
       return;
     }
     iceRestartAttempts++;
-    if (iceRestartAttempts > 3) {
-      console.error('[VideoCall] ICE restart failed after 3 attempts');
+    if (iceRestartAttempts > 5) {
+      console.error('[VideoCall] ICE restart failed after 5 attempts');
       endCall();
       return;
     }
@@ -350,12 +598,14 @@
     }
   }
 
-  // Set SDP to prefer high bitrate
+  // Set SDP to prefer appropriate bitrate based on quality settings
   function setHighBitrate(sdp) {
     // Safari uses different SDP format — skip manipulation to avoid breaking negotiation
     if (isSafari || isIOS) return sdp;
 
-    // Increase video bitrate to ~6 Mbps for 1080p60
+    const target = getTargetQuality();
+    const maxBitrate = target.maxBitrate || 2500;
+
     const lines = sdp.split('\r\n');
     const result = [];
     let isVideo = false;
@@ -372,10 +622,300 @@
         if (i + 1 < lines.length && lines[i + 1].startsWith('b=')) {
           i++; // skip old b= line
         }
-        result.push('b=AS:6000');
+        result.push('b=AS:' + maxBitrate);
       }
     }
     return result.join('\r\n');
+  }
+
+  // ── Video Health Check ──────────────────────────────────
+  // Periodically checks remote video and re-plays if paused/stuck
+  let videoHealthTimer = null;
+
+  function startVideoHealthCheck() {
+    stopVideoHealthCheck();
+    videoHealthTimer = setInterval(() => {
+      const rv = document.getElementById('vcRemoteVideo');
+      if (!rv || !peerConnection) return;
+
+      // If video element has srcObject with tracks but is paused, try playing
+      if (rv.srcObject && rv.srcObject.getTracks().length > 0 && rv.paused) {
+        console.log('[VideoCall] Health check: re-playing paused remote video');
+        rv.play().catch(() => {});
+      }
+
+      // If remoteStream has tracks but video element lost them, reconnect
+      if (remoteStream && remoteStream.getTracks().length > 0 && (!rv.srcObject || rv.srcObject.getTracks().length === 0)) {
+        console.log('[VideoCall] Health check: reconnecting remote stream');
+        rv.srcObject = remoteStream;
+        rv.classList.remove('hidden');
+        rv.play().catch(() => {});
+      }
+
+      // If connected but remote video still hidden, force show
+      if (peerConnection.iceConnectionState === 'connected' || peerConnection.iceConnectionState === 'completed') {
+        if (remoteStream && remoteStream.getVideoTracks().length > 0 && rv.classList.contains('hidden')) {
+          rv.classList.remove('hidden');
+          const waitEl = document.getElementById('vcWaiting');
+          if (waitEl) waitEl.classList.add('hidden');
+        }
+      }
+    }, 3000);
+  }
+
+  function stopVideoHealthCheck() {
+    if (videoHealthTimer) {
+      clearInterval(videoHealthTimer);
+      videoHealthTimer = null;
+    }
+  }
+
+  // ── Adaptive Bitrate & Network Quality Monitor ─────────
+  // Monitors WebRTC stats every 2 seconds and adapts encoding parameters
+
+  function startStatsMonitor() {
+    stopStatsMonitor();
+    prevStats = null;
+    consecutivePoor = 0;
+    consecutiveGood = 0;
+    networkQuality = 'good';
+    currentAdaptiveQuality = null;
+    currentAdaptiveFps = null;
+
+    statsTimer = setInterval(() => {
+      if (!peerConnection) return;
+      collectStats();
+    }, 2000);
+  }
+
+  function stopStatsMonitor() {
+    if (statsTimer) {
+      clearInterval(statsTimer);
+      statsTimer = null;
+    }
+    prevStats = null;
+    const ind = document.getElementById('vcNetworkIndicator');
+    if (ind) ind.remove();
+  }
+
+  async function collectStats() {
+    if (!peerConnection) return;
+    try {
+      const stats = await peerConnection.getStats();
+      let rtt = null;
+      let packetLoss = 0;
+      let bytesSent = 0;
+      let bytesReceived = 0;
+      let framesSent = 0;
+      let framesReceived = 0;
+      let jitter = 0;
+      let timestamp = 0;
+
+      stats.forEach((report) => {
+        if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+          if (report.currentRoundTripTime != null) rtt = report.currentRoundTripTime * 1000; // to ms
+        }
+        if (report.type === 'outbound-rtp' && report.kind === 'video') {
+          bytesSent = report.bytesSent || 0;
+          framesSent = report.framesEncoded || 0;
+          timestamp = report.timestamp;
+        }
+        if (report.type === 'inbound-rtp' && report.kind === 'video') {
+          bytesReceived = report.bytesReceived || 0;
+          framesReceived = report.framesDecoded || 0;
+          if (report.packetsLost != null && report.packetsReceived != null) {
+            const total = report.packetsReceived + report.packetsLost;
+            if (total > 0) packetLoss = (report.packetsLost / total) * 100;
+          }
+          if (report.jitter != null) jitter = report.jitter * 1000; // to ms
+        }
+      });
+
+      const current = { bytesSent, bytesReceived, framesSent, framesReceived, timestamp };
+
+      if (prevStats && timestamp > prevStats.timestamp) {
+        const dt = (timestamp - prevStats.timestamp) / 1000; // seconds
+        const sendBitrate = ((bytesSent - prevStats.bytesSent) * 8) / (dt * 1000); // kbps
+        const recvBitrate = ((bytesReceived - prevStats.bytesReceived) * 8) / (dt * 1000); // kbps
+        const sendFps = (framesSent - prevStats.framesSent) / dt;
+        const recvFps = (framesReceived - prevStats.framesReceived) / dt;
+
+        // Evaluate network quality
+        const quality = evaluateNetworkQuality(rtt, packetLoss, sendBitrate, recvBitrate, jitter);
+        networkQuality = quality;
+
+        // Update UI indicator
+        updateNetworkIndicator(quality, rtt, sendBitrate, recvBitrate, sendFps, recvFps, packetLoss);
+
+        // Adaptive adjustment
+        if (qualitySettings.autoAdjust && qualitySettings.quality === 'auto') {
+          adaptQuality(quality, sendBitrate, rtt, packetLoss);
+        }
+
+        console.log('[VideoCall] Stats: rtt=' + (rtt ? rtt.toFixed(0) + 'ms' : '?') +
+          ' loss=' + packetLoss.toFixed(1) + '% send=' + sendBitrate.toFixed(0) + 'kbps' +
+          ' recv=' + recvBitrate.toFixed(0) + 'kbps fps=' + sendFps.toFixed(0) +
+          '/' + recvFps.toFixed(0) + ' quality=' + quality);
+      }
+
+      prevStats = current;
+    } catch (e) {
+      // getStats not available or failed
+    }
+  }
+
+  function evaluateNetworkQuality(rtt, packetLoss, sendBitrate, recvBitrate, jitter) {
+    // Score-based approach
+    let score = 100;
+
+    if (rtt != null) {
+      if (rtt > 500) score -= 40;
+      else if (rtt > 300) score -= 25;
+      else if (rtt > 150) score -= 10;
+    }
+
+    if (packetLoss > 10) score -= 35;
+    else if (packetLoss > 5) score -= 20;
+    else if (packetLoss > 2) score -= 10;
+
+    if (jitter > 100) score -= 15;
+    else if (jitter > 50) score -= 8;
+
+    // Low bitrate relative to target
+    const target = getTargetQuality();
+    if (sendBitrate > 0 && sendBitrate < target.maxBitrate * 0.2) score -= 20;
+    else if (sendBitrate > 0 && sendBitrate < target.maxBitrate * 0.5) score -= 10;
+
+    if (score >= 80) return 'excellent';
+    if (score >= 55) return 'good';
+    if (score >= 30) return 'fair';
+    return 'poor';
+  }
+
+  function adaptQuality(quality, sendBitrate, rtt, packetLoss) {
+    if (!peerConnection) return;
+
+    const QUALITY_LADDER = ['360p', '480p', '720p', '1080p'];
+    const FPS_LADDER = [15, 24, 30, 60];
+
+    // Get current adaptive level
+    const curQ = currentAdaptiveQuality || '720p';
+    const curQIdx = QUALITY_LADDER.indexOf(curQ);
+    const curFps = currentAdaptiveFps || 30;
+    const curFIdx = FPS_LADDER.indexOf(curFps);
+
+    if (quality === 'poor' || quality === 'fair') {
+      consecutivePoor++;
+      consecutiveGood = 0;
+    } else {
+      consecutiveGood++;
+      consecutivePoor = 0;
+    }
+
+    let newQIdx = curQIdx;
+    let newFIdx = curFIdx >= 0 ? curFIdx : 2;
+
+    // Scale DOWN if poor for 2+ consecutive checks (4+ seconds)
+    if (consecutivePoor >= 2) {
+      // Drop FPS first, then resolution
+      if (newFIdx > 0) {
+        newFIdx--;
+      } else if (newQIdx > 0) {
+        newQIdx--;
+        newFIdx = Math.min(2, FPS_LADDER.length - 1); // reset FPS to 30
+      }
+      consecutivePoor = 0; // reset so it doesn't keep dropping every cycle
+    }
+
+    // Scale UP if good for 5+ consecutive checks (10+ seconds)
+    if (consecutiveGood >= 5) {
+      // Raise FPS first, then resolution
+      if (newFIdx < FPS_LADDER.length - 1) {
+        newFIdx++;
+      } else if (newQIdx < QUALITY_LADDER.length - 1) {
+        newQIdx++;
+        newFIdx = 2; // start at 30 FPS for new resolution
+      }
+      consecutiveGood = 0;
+    }
+
+    const newQ = QUALITY_LADDER[newQIdx];
+    const newFps = FPS_LADDER[newFIdx];
+
+    if (newQ !== curQ || newFps !== curFps) {
+      console.log('[VideoCall] Adaptive: changing', curQ, curFps + 'fps ->', newQ, newFps + 'fps');
+      currentAdaptiveQuality = newQ;
+      currentAdaptiveFps = newFps;
+      applyAdaptiveParams(newQ, newFps);
+    }
+  }
+
+  async function applyAdaptiveParams(qualityKey, fps) {
+    if (!peerConnection) return;
+
+    const preset = QUALITY_PRESETS[qualityKey];
+    if (!preset) return;
+
+    // Use RTCRtpSender.setParameters to change encoding without renegotiation
+    const sender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
+    if (!sender) return;
+
+    try {
+      const params = sender.getParameters();
+      if (!params.encodings || params.encodings.length === 0) {
+        params.encodings = [{}];
+      }
+      params.encodings[0].maxBitrate = preset.maxBitrate * 1000; // kbps to bps
+      params.encodings[0].maxFramerate = fps;
+
+      // scaleResolutionDownBy — scale from actual captured to target
+      // Only if we know the captured dimensions
+      if (localStream) {
+        const settings = localStream.getVideoTracks()[0]?.getSettings();
+        if (settings && settings.width && settings.height) {
+          const scaleFactor = Math.max(1, settings.width / preset.width);
+          params.encodings[0].scaleResolutionDownBy = Math.round(scaleFactor * 10) / 10;
+        }
+      }
+
+      await sender.setParameters(params);
+    } catch (e) {
+      console.warn('[VideoCall] setParameters failed:', e.message);
+    }
+  }
+
+  function updateNetworkIndicator(quality, rtt, sendBitrate, recvBitrate, sendFps, recvFps, packetLoss) {
+    if (!qualitySettings.showNetworkIndicator) return;
+
+    const overlay = document.getElementById('vcOverlay');
+    if (!overlay) return;
+
+    let ind = document.getElementById('vcNetworkIndicator');
+    if (!ind) {
+      ind = document.createElement('div');
+      ind.id = 'vcNetworkIndicator';
+      ind.className = 'vc-network-indicator';
+      overlay.appendChild(ind);
+    }
+
+    const colors = { excellent: '#22c55e', good: '#22c55e', fair: '#eab308', poor: '#ef4444' };
+    const labels = { excellent: 'Excellent', good: 'Good', fair: 'Unstable', poor: 'Poor' };
+    const bars = quality === 'excellent' ? 4 : quality === 'good' ? 3 : quality === 'fair' ? 2 : 1;
+    const color = colors[quality];
+
+    let barsHtml = '';
+    for (let i = 0; i < 4; i++) {
+      const h = 4 + i * 4;
+      const active = i < bars;
+      barsHtml += '<div style="width:3px;height:' + h + 'px;border-radius:1px;background:' + (active ? color : 'rgba(255,255,255,0.2)') + ';"></div>';
+    }
+
+    const rttStr = rtt != null ? Math.round(rtt) + 'ms' : '--';
+    const bitrateStr = sendBitrate > 1000 ? (sendBitrate / 1000).toFixed(1) + 'Mbps' : Math.round(sendBitrate) + 'kbps';
+
+    ind.innerHTML = '<div class="vc-net-bars">' + barsHtml + '</div>' +
+      '<span class="vc-net-label" style="color:' + color + '">' + labels[quality] + '</span>' +
+      '<span class="vc-net-detail">' + rttStr + ' · ' + bitrateStr + '</span>';
   }
 
   // ── Calling Flow ───────────────────────────────────────
@@ -416,6 +956,15 @@
 
       const pc = createPeerConnection(callId);
       startCallChat(callId);
+      startVideoHealthCheck();
+      startStatsMonitor();
+      startSpeakingDetection();
+
+      // Apply initial quality params after first track is sent
+      setTimeout(() => applyAdaptiveParams(
+        currentAdaptiveQuality || (qualitySettings.quality === 'auto' ? '720p' : qualitySettings.quality),
+        getTargetFps()
+      ), 2000);
 
       // Create offer
       const offer = await pc.createOffer({
@@ -499,6 +1048,19 @@
           callRef.child('status').once('value', (snap) => {
             if (snap.val() === 'ringing') {
               callRef.update({ status: 'missed' });
+              // Log as unanswered outgoing call
+              const uid = myUid();
+              if (uid && currentPeerUid) {
+                logCallHistory(uid, {
+                  peerUid: currentPeerUid,
+                  peerName: currentPeerName || 'Unknown',
+                  type: 'outgoing',
+                  callType: 'dm',
+                  startedAt: Date.now(),
+                  endedAt: Date.now(),
+                  duration: 0
+                });
+              }
               // Clean up callee's signal so they don't see a stale incoming call
               if (currentPeerUid) {
                 getDb().ref('callSignals/' + currentPeerUid).remove().catch(() => {});
@@ -543,6 +1105,15 @@
       callRef = getDb().ref('calls/' + callId);
       const pc = createPeerConnection(callId);
       startCallChat(callId);
+      startVideoHealthCheck();
+      startStatsMonitor();
+      startSpeakingDetection();
+
+      // Apply initial quality params after connection
+      setTimeout(() => applyAdaptiveParams(
+        currentAdaptiveQuality || (qualitySettings.quality === 'auto' ? '720p' : qualitySettings.quality),
+        getTargetFps()
+      ), 2000);
 
       // Get the offer
       const callSnap = await callRef.once('value');
@@ -637,6 +1208,9 @@
     endCall._running = true;
 
     stopTimer();
+    stopVideoHealthCheck();
+    stopStatsMonitor();
+    stopSpeakingDetection();
 
     if (disconnectTimer) {
       clearTimeout(disconnectTimer);
@@ -674,8 +1248,22 @@
 
     stopMedia();
 
-    // Clear signals — both our own and the peer's
+    // Log call to history before clearing state
     const uid = myUid();
+    if (uid && currentPeerUid && callStartTime > 0) {
+      const duration = Math.floor((Date.now() - callStartTime) / 1000);
+      logCallHistory(uid, {
+        peerUid: currentPeerUid,
+        peerName: currentPeerName || 'Unknown',
+        type: isCaller ? 'outgoing' : 'incoming',
+        callType: 'dm',
+        startedAt: callStartTime,
+        endedAt: Date.now(),
+        duration: duration
+      });
+    }
+
+    // Clear signals — both our own and the peer's
     if (uid) getDb().ref('callSignals/' + uid).remove().catch(() => {});
     if (currentPeerUid) getDb().ref('callSignals/' + currentPeerUid).remove().catch(() => {});
 
@@ -723,6 +1311,15 @@
         if (!callData || callData.status === 'ended' || callData.status === 'missed') {
           // Stale call — clean up and show missed call notification
           getDb().ref('callSignals/' + uid).remove().catch(() => {});
+          logCallHistory(uid, {
+            peerUid: data.callerUid,
+            peerName: data.callerName || 'Unknown',
+            type: 'missed',
+            callType: 'dm',
+            startedAt: Date.now(),
+            endedAt: Date.now(),
+            duration: 0
+          });
           if (typeof showToast === 'function') {
             showToast('Missed call from ' + (data.callerName || 'Unknown'), 'info');
           }
@@ -731,6 +1328,15 @@
       } catch (e) {
         // Call data doesn't exist — stale signal
         getDb().ref('callSignals/' + uid).remove().catch(() => {});
+        logCallHistory(uid, {
+          peerUid: data.callerUid,
+          peerName: data.callerName || 'Unknown',
+          type: 'missed',
+          callType: 'dm',
+          startedAt: Date.now(),
+          endedAt: Date.now(),
+          duration: 0
+        });
         if (typeof showToast === 'function') {
           showToast('Missed call from ' + (data.callerName || 'Unknown'), 'info');
         }
@@ -755,21 +1361,35 @@
     let overlay = document.getElementById('vcOverlay');
     if (overlay) overlay.remove();
 
+    const safeName = escapeHtml(truncName(peerName, 20));
+    const initial = escapeHtml((peerName || '?')[0].toUpperCase());
+
     overlay = document.createElement('div');
     overlay.id = 'vcOverlay';
     overlay.className = 'videocall-overlay';
     overlay.innerHTML = `
       <div class="videocall-status">
-        <span class="vc-peer-name">${escapeHtml(peerName)}</span>
+        <span class="vc-peer-name">${safeName}</span>
         <span id="vcTimer" class="vc-timer">00:00</span>
       </div>
       <div class="videocall-videos">
         <div id="vcWaiting" class="videocall-waiting">
-          <div class="pulse-ring"></div>
-          <p style="font-size:16px;font-weight:500;">${isOutgoing ? 'Calling...' : 'Connecting...'}</p>
+          <div class="pulse-ring">
+            <div id="vcRingAvatar" class="vc-ring-avatar"><span>${initial}</span></div>
+          </div>
+          <p class="vc-ring-name">${safeName}</p>
+          <p style="font-size:14px;color:#94a3b8;">${isOutgoing ? 'Calling...' : 'Connecting...'}</p>
         </div>
         <video id="vcRemoteVideo" class="videocall-remote hidden" autoplay playsinline webkit-playsinline></video>
+        <div id="vcRemoteCamOff" class="vc-cam-off-overlay hidden">
+          <div id="vcRemoteCamAvatar" class="vc-cam-off-avatar"><span>${initial}</span></div>
+          <p id="vcRemoteCamName" class="vc-cam-off-name">${safeName}</p>
+        </div>
         <video id="vcLocalVideo" class="videocall-local" autoplay playsinline webkit-playsinline muted></video>
+        <div id="vcLocalCamOff" class="vc-local-cam-off hidden">
+          <div id="vcLocalCamAvatar" class="vc-cam-off-avatar vc-cam-off-avatar-sm"><span id="vcLocalInitial"></span></div>
+          <p id="vcLocalCamName" class="vc-cam-off-name-sm"></p>
+        </div>
       </div>
       <div class="videocall-controls">
         <button id="vcToggleMic" class="vc-btn vc-btn-toggle" title="Toggle microphone">
@@ -824,11 +1444,47 @@
     overlay.addEventListener('touchmove', (e) => {
       if (!e.target.closest('.vc-chat-messages')) e.preventDefault();
     }, { passive: false });
+
+    // Load peer profile pic into ring avatar and cam-off overlay
+    if (currentPeerUid) {
+      fetchProfilePic(currentPeerUid).then((url) => {
+        if (url) {
+          const ringAv = document.getElementById('vcRingAvatar');
+          if (ringAv) ringAv.innerHTML = '<img src="' + escapeHtml(url) + '" class="vc-ring-avatar-img" onerror="this.parentElement.innerHTML=\'<span>' + initial + '</span>\'" />';
+          const camAv = document.getElementById('vcRemoteCamAvatar');
+          if (camAv) camAv.innerHTML = '<img src="' + escapeHtml(url) + '" class="vc-cam-off-img" onerror="this.parentElement.innerHTML=\'<span>' + initial + '</span>\'" />';
+        }
+      });
+    }
+    // Set local user info for cam-off overlay
+    const myName = window.currentUsername || 'You';
+    const myInitial = myName[0].toUpperCase();
+    const lcn = document.getElementById('vcLocalCamName');
+    if (lcn) lcn.textContent = truncName(myName, 14);
+    const lci = document.getElementById('vcLocalInitial');
+    if (lci) lci.textContent = myInitial;
+    // Load own profile pic
+    const myId = myUid();
+    if (myId) {
+      fetchProfilePic(myId).then((url) => {
+        if (url) {
+          const lcAv = document.getElementById('vcLocalCamAvatar');
+          if (lcAv) lcAv.innerHTML = '<img src="' + escapeHtml(url) + '" class="vc-cam-off-img" onerror="this.parentElement.innerHTML=\'<span>' + escapeHtml(myInitial) + '</span>\'" />';
+        }
+      });
+    }
   }
 
   function hideCallUI() {
     const overlay = document.getElementById('vcOverlay');
     if (overlay) overlay.remove();
+  }
+
+  function updateRemoteCamOff(isOff) {
+    const rv = document.getElementById('vcRemoteVideo');
+    const coff = document.getElementById('vcRemoteCamOff');
+    if (rv) rv.classList.toggle('hidden', isOff);
+    if (coff) coff.classList.toggle('hidden', !isOff);
   }
 
   function showLocalVideo() {
@@ -844,13 +1500,16 @@
     // Remove existing
     hideIncomingUI();
 
+    const safeName = escapeHtml(truncName(callerName, 20));
+    const initial = escapeHtml((callerName || '?')[0].toUpperCase());
+
     const modal = document.createElement('div');
     modal.id = 'vcIncoming';
     modal.className = 'videocall-incoming';
     modal.innerHTML = `
       <div class="videocall-incoming-card">
-        <div class="caller-avatar">${escapeHtml((callerName || '?')[0].toUpperCase())}</div>
-        <div class="caller-name">${escapeHtml(callerName || 'Unknown')}</div>
+        <div id="vcIncomingAvatar" class="caller-avatar">${initial}</div>
+        <div class="caller-name">${safeName}</div>
         <div class="caller-label">Incoming video call</div>
         <div class="videocall-incoming-actions">
           <button id="vcDeclineBtn" class="vc-decline-btn" title="Decline">
@@ -864,6 +1523,16 @@
     `;
 
     document.body.appendChild(modal);
+
+    // Fetch and show caller's profile pic
+    if (callerUid) {
+      fetchProfilePic(callerUid).then((url) => {
+        const av = document.getElementById('vcIncomingAvatar');
+        if (av && url) {
+          av.innerHTML = '<img src="' + escapeHtml(url) + '" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.parentElement.textContent=\'' + initial + '\'" />';
+        }
+      });
+    }
 
     document.getElementById('vcDeclineBtn').addEventListener('click', () => declineCall(callId));
     document.getElementById('vcAnswerBtn').addEventListener('click', () => answerCall(callId, callerUid, callerName));
@@ -899,6 +1568,9 @@
     if (btn) btn.classList.toggle('off', camMuted);
     const localVideo = document.getElementById('vcLocalVideo');
     if (localVideo) localVideo.classList.toggle('hidden-video', camMuted);
+    // Show/hide local cam-off overlay
+    const lco = document.getElementById('vcLocalCamOff');
+    if (lco) lco.classList.toggle('hidden', !camMuted);
   }
 
   async function flipCamera() {
@@ -1120,6 +1792,27 @@
     }
   }
 
+  // Show a floating chat message toast at the bottom of the call screen
+  function showFloatingChatMsg(name, text) {
+    const overlay = document.getElementById('vcOverlay');
+    if (!overlay) return;
+
+    const toast = document.createElement('div');
+    toast.className = 'vc-floating-msg';
+    toast.innerHTML = '<strong>' + escapeHtml(name) + '</strong> ' + escapeHtml(text.length > 80 ? text.slice(0, 80) + '...' : text);
+    toast.addEventListener('click', () => {
+      toast.remove();
+      toggleCallChat();
+    });
+    overlay.appendChild(toast);
+
+    // Auto-remove after 2.5 seconds
+    setTimeout(() => {
+      toast.classList.add('vc-floating-msg-out');
+      setTimeout(() => toast.remove(), 300);
+    }, 2500);
+  }
+
   function startCallChat(callId) {
     if (chatRef) stopCallChat();
     chatRef = getDb().ref('calls/' + callId + '/chat');
@@ -1138,6 +1831,7 @@
       if (!isMine && !chatOpen) {
         unreadChatCount++;
         updateChatBadge();
+        showFloatingChatMsg(msg.name || 'User', msg.text);
       }
     });
   }
@@ -1187,11 +1881,178 @@
     }
   }
 
-  // ── Util ───────────────────────────────────────────────
-  function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.appendChild(document.createTextNode(text || ''));
-    return div.innerHTML;
+  // ── Call History Logging ───────────────────────────────
+  function logCallHistory(uid, entry) {
+    if (!uid) return;
+    try {
+      getDb().ref('callHistory/' + uid).push({
+        peerUid: entry.peerUid || '',
+        peerName: entry.peerName || 'Unknown',
+        type: entry.type || 'outgoing',     // outgoing, incoming, missed
+        callType: entry.callType || 'dm',   // dm, group, global
+        startedAt: entry.startedAt || Date.now(),
+        endedAt: entry.endedAt || Date.now(),
+        duration: entry.duration || 0,
+        timestamp: firebase.database.ServerValue.TIMESTAMP
+      });
+    } catch (e) {
+      console.warn('[VideoCall] Failed to log call history:', e);
+    }
+  }
+
+  // ── Call History Panel UI ──────────────────────────────
+  let callHistoryLoaded = false;
+  let callHistoryFilter = 'all';
+
+  function openCallHistory() {
+    const panel = document.getElementById('callHistoryPanel');
+    if (!panel) return;
+    panel.classList.remove('hidden');
+    loadCallHistory();
+  }
+
+  function closeCallHistory() {
+    const panel = document.getElementById('callHistoryPanel');
+    if (panel) panel.classList.add('hidden');
+  }
+
+  function loadCallHistory() {
+    const uid = myUid();
+    if (!uid) return;
+
+    const list = document.getElementById('callHistoryList');
+    if (!list) return;
+    list.innerHTML = '<p class="call-history-empty">Loading...</p>';
+
+    getDb().ref('callHistory/' + uid).orderByChild('timestamp').limitToLast(100).once('value', (snap) => {
+      const data = snap.val();
+      if (!data) {
+        list.innerHTML = '<p class="call-history-empty">No call history yet</p>';
+        return;
+      }
+
+      const entries = Object.values(data).sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0));
+      renderCallHistory(entries);
+      callHistoryLoaded = true;
+    });
+  }
+
+  function renderCallHistory(entries) {
+    const list = document.getElementById('callHistoryList');
+    if (!list) return;
+    list.innerHTML = '';
+
+    const filtered = callHistoryFilter === 'all' ? entries : entries.filter(e => e.type === callHistoryFilter);
+
+    if (filtered.length === 0) {
+      list.innerHTML = '<p class="call-history-empty">No ' + (callHistoryFilter === 'all' ? '' : callHistoryFilter + ' ') + 'calls</p>';
+      return;
+    }
+
+    filtered.forEach(entry => {
+      const item = document.createElement('div');
+      item.className = 'call-history-item';
+
+      // Icon based on type
+      let icon = '', typeClass = '';
+      if (entry.type === 'missed') {
+        icon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.362 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.574 2.81.7A2 2 0 0 1 22 16.92z"/><line x1="1" y1="1" x2="23" y2="23" stroke="#ef4444" stroke-width="2"/></svg>';
+        typeClass = 'missed';
+      } else if (entry.type === 'incoming') {
+        icon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.362 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.574 2.81.7A2 2 0 0 1 22 16.92z"/><polyline points="16 2 16 8 22 8" stroke="#22c55e"/></svg>';
+        typeClass = 'incoming';
+      } else {
+        icon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.362 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.574 2.81.7A2 2 0 0 1 22 16.92z"/><polyline points="8 22 8 16 2 16" stroke="#38bdf8"/></svg>';
+        typeClass = 'outgoing';
+      }
+
+      // Format duration
+      const dur = entry.duration || 0;
+      let durStr = '';
+      if (dur > 0) {
+        const h = Math.floor(dur / 3600);
+        const m = Math.floor((dur % 3600) / 60);
+        const s = dur % 60;
+        if (h > 0) durStr = h + 'h ' + m + 'm';
+        else if (m > 0) durStr = m + 'm ' + s + 's';
+        else durStr = s + 's';
+      }
+
+      // Format timestamp
+      const date = new Date(entry.startedAt || 0);
+      const now = new Date();
+      let timeStr = '';
+      if (date.toDateString() === now.toDateString()) {
+        timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      } else {
+        timeStr = date.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      }
+
+      item.innerHTML =
+        '<div class="call-history-icon ' + typeClass + '">' + icon + '</div>' +
+        '<div class="call-history-info">' +
+          '<span class="call-history-name">' + escapeHtml(entry.peerName) + '</span>' +
+          '<span class="call-history-meta">' +
+            '<span class="call-history-type">' + entry.type.charAt(0).toUpperCase() + entry.type.slice(1) +
+            (entry.callType !== 'dm' ? ' (' + entry.callType + ')' : '') + '</span>' +
+            (durStr ? ' &middot; ' + durStr : '') +
+          '</span>' +
+        '</div>' +
+        '<span class="call-history-time">' + timeStr + '</span>';
+
+      // Click to call back (DM calls only)
+      if (entry.callType === 'dm' && entry.peerUid) {
+        item.style.cursor = 'pointer';
+        item.title = 'Call ' + escapeHtml(entry.peerName);
+        item.addEventListener('click', () => {
+          closeCallHistory();
+          startCall(entry.peerUid, entry.peerName);
+        });
+      }
+
+      list.appendChild(item);
+    });
+  }
+
+  // Wire up call history panel events
+  function initCallHistoryUI() {
+    const closeBtn = document.getElementById('callHistoryClose');
+    if (closeBtn) closeBtn.addEventListener('click', closeCallHistory);
+
+    const sideBtn = document.getElementById('sidePanelCallHistory');
+    if (sideBtn) {
+      sideBtn.addEventListener('click', () => {
+        openCallHistory();
+        // Close side panel if open
+        const sidePanel = document.getElementById('sidePanel');
+        if (sidePanel) sidePanel.style.transform = 'translateX(-100%)';
+        const overlay = document.getElementById('sideOverlay');
+        if (overlay) overlay.classList.add('hidden');
+      });
+    }
+
+    // Tab filtering
+    document.querySelectorAll('.call-history-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.call-history-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        callHistoryFilter = tab.dataset.filter;
+        loadCallHistory();
+      });
+    });
+  }
+
+  // Initialize call history + quality settings UI when DOM is ready
+  function initAllUI() {
+    initCallHistoryUI();
+    loadQualitySettings();
+    initQualitySettingsUI();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initAllUI);
+  } else {
+    initAllUI();
   }
 
   // ── Exports ────────────────────────────────────────────
@@ -1202,7 +2063,10 @@
     endCall: endCall,
     listenForIncomingCalls: listenForIncomingCalls,
     stopListeningForCalls: stopListeningForCalls,
-    isInCall: function () { return !!peerConnection; }
+    isInCall: function () { return !!peerConnection; },
+    openCallHistory: openCallHistory,
+    closeCallHistory: closeCallHistory,
+    logCallHistory: logCallHistory
   };
 
 })();

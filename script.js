@@ -11580,6 +11580,12 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         let text = msgInput.value.trim();
         if (text === "" && !pendingMediaUrl) return;
 
+        // Message length limit
+        if (text.length > 2000) {
+          showToast('Message too long (max 2000 characters)', 'error');
+          return;
+        }
+
         const userObj = auth.currentUser;
         if (!userObj) {
           console.warn("[send] tried to send while not logged in");
@@ -13921,6 +13927,267 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           applyFastMode(fastModeToggle.checked, true);
         });
       }
+
+      // ── Cloak / Stealth System ───────────────────────────
+      (function initCloakSystem() {
+        const CLOAK_KEY = 'chatra_cloak';
+        const CLOAK_PRESETS = {
+          drive: { title: 'My Drive - Google Drive', icon: 'https://ssl.gstatic.com/docs/doclist/images/drive_2022q3_32dp.png' },
+          docs: { title: 'Untitled document - Google Docs', icon: 'https://ssl.gstatic.com/docs/documents/images/kix-favicon7.ico' },
+          classroom: { title: 'Google Classroom', icon: 'https://ssl.gstatic.com/classroom/favicon.png' },
+          canvas: { title: 'Dashboard', icon: 'https://du11hjcvx0uqb.cloudfront.net/dist/images/favicon-e10d657a73.ico' },
+          khan: { title: 'Khan Academy', icon: 'https://cdn.kastatic.org/images/favicon.ico?logo' },
+          gmail: { title: 'Inbox - Gmail', icon: 'https://ssl.gstatic.com/ui/v1/icons/mail/rfr/gmail.ico' }
+        };
+
+        let cloakSettings = { tabDisguise: false, blackout: false, tabTitle: 'Google Drive', tabIcon: '', panicKey: '', autoRotate: false, autoRotateInterval: 30, blackoutDelay: 0 };
+        let originalTitle = document.title;
+        let originalFavicon = '';
+        let blackoutEl = null;
+        let rotateTimer = null;
+        let rotateIndex = 0;
+        let panicBtnEl = null;
+
+        function loadCloakSettings() {
+          try {
+            const saved = localStorage.getItem(CLOAK_KEY);
+            if (saved) cloakSettings = Object.assign(cloakSettings, JSON.parse(saved));
+          } catch (e) {}
+        }
+
+        function saveCloakSettings() {
+          try { localStorage.setItem(CLOAK_KEY, JSON.stringify(cloakSettings)); } catch (e) {}
+        }
+
+        function syncCloakUI() {
+          const tabToggle = document.getElementById('cloakTabToggle');
+          const blackoutToggle = document.getElementById('cloakBlackoutToggle');
+          const tabTitle = document.getElementById('cloakTabTitle');
+          const tabIcon = document.getElementById('cloakTabIcon');
+          const tabOpts = document.getElementById('cloakTabOptions');
+          const panicKey = document.getElementById('cloakPanicKey');
+
+          if (tabToggle) tabToggle.checked = cloakSettings.tabDisguise;
+          if (blackoutToggle) blackoutToggle.checked = cloakSettings.blackout;
+          if (tabTitle) tabTitle.value = cloakSettings.tabTitle || 'Google Drive';
+          if (tabIcon) tabIcon.value = cloakSettings.tabIcon || '';
+          if (tabOpts) tabOpts.classList.toggle('hidden', !cloakSettings.tabDisguise);
+          if (panicKey) panicKey.value = cloakSettings.panicKey || '';
+
+          const autoRotateToggle = document.getElementById('cloakAutoRotate');
+          const autoRotateInt = document.getElementById('cloakRotateInterval');
+          const autoRotateOpts = document.getElementById('cloakAutoRotateOpts');
+          const blackoutDelay = document.getElementById('cloakBlackoutDelay');
+          if (autoRotateToggle) autoRotateToggle.checked = cloakSettings.autoRotate;
+          if (autoRotateInt) autoRotateInt.value = cloakSettings.autoRotateInterval || 30;
+          if (autoRotateOpts) autoRotateOpts.classList.toggle('hidden', !cloakSettings.autoRotate);
+          if (blackoutDelay) blackoutDelay.value = cloakSettings.blackoutDelay || 0;
+        }
+
+        // Save original favicon
+        const existingIcon = document.querySelector('link[rel*="icon"]');
+        if (existingIcon) originalFavicon = existingIcon.href;
+
+        function setFavicon(url) {
+          let link = document.querySelector('link[rel*="icon"]');
+          if (!link) {
+            link = document.createElement('link');
+            link.rel = 'icon';
+            document.head.appendChild(link);
+          }
+          link.href = url;
+        }
+
+        function applyDisguise() {
+          document.title = cloakSettings.tabTitle || 'Google Drive';
+          if (cloakSettings.tabIcon) setFavicon(cloakSettings.tabIcon);
+          else {
+            const preset = Object.values(CLOAK_PRESETS).find(p => p.title === cloakSettings.tabTitle);
+            if (preset) setFavicon(preset.icon);
+          }
+        }
+
+        // Auto-rotate through presets while tab is hidden
+        function startAutoRotate() {
+          stopAutoRotate();
+          if (!cloakSettings.autoRotate || !cloakSettings.tabDisguise) return;
+          const keys = Object.keys(CLOAK_PRESETS);
+          rotateIndex = 0;
+          rotateTimer = setInterval(function() {
+            rotateIndex = (rotateIndex + 1) % keys.length;
+            const p = CLOAK_PRESETS[keys[rotateIndex]];
+            document.title = p.title;
+            setFavicon(p.icon);
+          }, (cloakSettings.autoRotateInterval || 30) * 1000);
+        }
+
+        function stopAutoRotate() {
+          if (rotateTimer) { clearInterval(rotateTimer); rotateTimer = null; }
+        }
+
+        function removeDisguise() {
+          document.title = originalTitle;
+          if (originalFavicon) setFavicon(originalFavicon);
+        }
+
+        function showBlackout() {
+          if (!blackoutEl) {
+            blackoutEl = document.createElement('div');
+            blackoutEl.id = 'cloakBlackout';
+            blackoutEl.style.cssText = 'position:fixed;inset:0;background:#000;z-index:99999;cursor:pointer;';
+            blackoutEl.addEventListener('click', function() { blackoutEl.style.display = 'none'; });
+            document.body.appendChild(blackoutEl);
+          }
+          blackoutEl.style.display = 'block';
+        }
+
+        function hideBlackout() {
+          if (blackoutEl) blackoutEl.style.display = 'none';
+        }
+
+        // Visibility change handler
+        document.addEventListener('visibilitychange', function() {
+          if (document.hidden) {
+            if (cloakSettings.tabDisguise) {
+              applyDisguise();
+              startAutoRotate();
+            }
+            if (cloakSettings.blackout) showBlackout();
+          } else {
+            stopAutoRotate();
+            if (cloakSettings.tabDisguise) removeDisguise();
+            // Auto-unblack after delay
+            if (cloakSettings.blackout && blackoutEl && blackoutEl.style.display !== 'none') {
+              var delay = parseInt(cloakSettings.blackoutDelay) || 0;
+              if (delay <= 0) {
+                hideBlackout();
+              } else {
+                setTimeout(function() { hideBlackout(); }, delay * 1000);
+              }
+            }
+          }
+        });
+
+        // Panic key handler
+        function triggerPanic() {
+          window.close();
+          // Fallback: replace page
+          document.documentElement.innerHTML = '';
+          window.location.replace('https://classroom.google.com');
+        }
+
+        document.addEventListener('keydown', function(e) {
+          if (cloakSettings.panicKey && e.key === cloakSettings.panicKey) {
+            triggerPanic();
+          }
+        });
+
+        // On-screen panic button (subtle, bottom-left dot)
+        function createPanicButton() {
+          if (panicBtnEl) panicBtnEl.remove();
+          if (!cloakSettings.panicKey) return; // only show when panic is enabled
+          panicBtnEl = document.createElement('button');
+          panicBtnEl.id = 'cloakPanicBtn';
+          panicBtnEl.title = 'Panic';
+          panicBtnEl.textContent = '·';
+          panicBtnEl.style.cssText = 'position:fixed;bottom:8px;left:8px;width:20px;height:20px;border-radius:50%;border:none;background:rgba(100,116,139,0.25);color:rgba(100,116,139,0.4);font-size:18px;line-height:18px;text-align:center;cursor:pointer;z-index:9999;padding:0;opacity:0.3;transition:opacity 0.2s;';
+          panicBtnEl.addEventListener('mouseenter', function() { panicBtnEl.style.opacity = '0.7'; });
+          panicBtnEl.addEventListener('mouseleave', function() { panicBtnEl.style.opacity = '0.3'; });
+          panicBtnEl.addEventListener('click', function() { triggerPanic(); });
+          document.body.appendChild(panicBtnEl);
+        }
+
+        function removePanicButton() {
+          if (panicBtnEl) { panicBtnEl.remove(); panicBtnEl = null; }
+        }
+
+        // Wire up settings UI
+        function wireCloakSettings() {
+          const tabToggle = document.getElementById('cloakTabToggle');
+          const blackoutToggle = document.getElementById('cloakBlackoutToggle');
+          const tabTitle = document.getElementById('cloakTabTitle');
+          const tabIcon = document.getElementById('cloakTabIcon');
+          const tabOpts = document.getElementById('cloakTabOptions');
+          const panicKey = document.getElementById('cloakPanicKey');
+          const aboutBlankBtn = document.getElementById('cloakAboutBlankBtn');
+
+          if (tabToggle) tabToggle.addEventListener('change', function() {
+            cloakSettings.tabDisguise = tabToggle.checked;
+            if (tabOpts) tabOpts.classList.toggle('hidden', !tabToggle.checked);
+            saveCloakSettings();
+          });
+          if (blackoutToggle) blackoutToggle.addEventListener('change', function() {
+            cloakSettings.blackout = blackoutToggle.checked;
+            saveCloakSettings();
+          });
+          if (tabTitle) tabTitle.addEventListener('input', function() {
+            cloakSettings.tabTitle = tabTitle.value;
+            saveCloakSettings();
+          });
+          if (tabIcon) tabIcon.addEventListener('input', function() {
+            cloakSettings.tabIcon = tabIcon.value;
+            saveCloakSettings();
+          });
+          if (panicKey) panicKey.addEventListener('change', function() {
+            cloakSettings.panicKey = panicKey.value;
+            saveCloakSettings();
+            if (cloakSettings.panicKey) createPanicButton(); else removePanicButton();
+          });
+
+          // Auto-rotate wiring
+          var autoRotateToggle = document.getElementById('cloakAutoRotate');
+          var autoRotateInt = document.getElementById('cloakRotateInterval');
+          var autoRotateOpts = document.getElementById('cloakAutoRotateOpts');
+          var blackoutDelayEl = document.getElementById('cloakBlackoutDelay');
+
+          if (autoRotateToggle) autoRotateToggle.addEventListener('change', function() {
+            cloakSettings.autoRotate = autoRotateToggle.checked;
+            if (autoRotateOpts) autoRotateOpts.classList.toggle('hidden', !autoRotateToggle.checked);
+            saveCloakSettings();
+          });
+          if (autoRotateInt) autoRotateInt.addEventListener('change', function() {
+            cloakSettings.autoRotateInterval = parseInt(autoRotateInt.value) || 30;
+            saveCloakSettings();
+          });
+          if (blackoutDelayEl) blackoutDelayEl.addEventListener('change', function() {
+            cloakSettings.blackoutDelay = parseInt(blackoutDelayEl.value) || 0;
+            saveCloakSettings();
+          });
+
+          // Preset buttons
+          document.querySelectorAll('.cloak-preset-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+              const key = btn.getAttribute('data-cloak-preset');
+              const preset = CLOAK_PRESETS[key];
+              if (preset) {
+                if (tabTitle) tabTitle.value = preset.title;
+                if (tabIcon) tabIcon.value = preset.icon;
+                cloakSettings.tabTitle = preset.title;
+                cloakSettings.tabIcon = preset.icon;
+                saveCloakSettings();
+              }
+            });
+          });
+
+          // About:blank launcher
+          if (aboutBlankBtn) aboutBlankBtn.addEventListener('click', function() {
+            const w = window.open('about:blank', '_blank');
+            if (w) {
+              w.document.write('<!DOCTYPE html><html><head><title>' +
+                (cloakSettings.tabTitle || 'Google Drive').replace(/</g, '&lt;') +
+                '</title></head><body style="margin:0;overflow:hidden;"><iframe src="' +
+                window.location.href.replace(/"/g, '&quot;') +
+                '" style="width:100%;height:100%;border:none;"></iframe></body></html>');
+              w.document.close();
+            }
+          });
+        }
+
+        loadCloakSettings();
+        syncCloakUI();
+        wireCloakSettings();
+        if (cloakSettings.panicKey) createPanicButton();
+      })();
 
       
       function updateRatingStars() {

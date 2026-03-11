@@ -30,17 +30,77 @@
   let devicePickerOpen = false;
   let playRetryTimers = {}; // uid -> timer
 
+  // ── Quality Presets & Adaptive State ────────────────────
+  const QUALITY_PRESETS = {
+    '1080p': { width: 1920, height: 1080, maxBitrate: 6000 },
+    '720p':  { width: 1280, height: 720,  maxBitrate: 2500 },
+    '480p':  { width: 854,  height: 480,  maxBitrate: 1200 },
+    '360p':  { width: 640,  height: 360,  maxBitrate: 600  }
+  };
+
+  let currentAdaptiveQuality = null;
+  let currentAdaptiveFps = null;
+  let statsTimer = null;
+  let prevStats = null;
+  let networkQuality = 'good';
+  let consecutivePoor = 0;
+  let consecutiveGood = 0;
+
+  function getQualitySettings() {
+    try {
+      const saved = localStorage.getItem('chatra_call_quality');
+      if (saved) return Object.assign({ quality: 'auto', fps: 'auto', autoAdjust: true, showNetworkIndicator: true }, JSON.parse(saved));
+    } catch (e) {}
+    return { quality: 'auto', fps: 'auto', autoAdjust: true, showNetworkIndicator: true };
+  }
+
+  function getTargetQuality() {
+    const qs = getQualitySettings();
+    const q = currentAdaptiveQuality || qs.quality;
+    if (q === 'auto' || !QUALITY_PRESETS[q]) return QUALITY_PRESETS['720p'];
+    return QUALITY_PRESETS[q];
+  }
+
+  function getTargetFps() {
+    const qs = getQualitySettings();
+    if (qs.fps === 'auto') return currentAdaptiveFps || 30;
+    return parseInt(qs.fps) || 30;
+  }
+
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
   const isEdge = /Edg\//i.test(navigator.userAgent);
 
+  // STUN + TURN servers for NAT traversal
   const ICE_SERVERS = [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' },
     { urls: 'stun:stun3.l.google.com:19302' },
-    { urls: 'stun:stun4.l.google.com:19302' }
+    { urls: 'stun:stun4.l.google.com:19302' },
+    // Free TURN relay servers (Open Relay Project by Metered)
+    { urls: 'stun:stun.relay.metered.ca:80' },
+    {
+      urls: 'turn:global.relay.metered.ca:80',
+      username: 'e8dd65b92f6bceea5c748e51',
+      credential: 'kfm2QQqcGy/mj0jv'
+    },
+    {
+      urls: 'turn:global.relay.metered.ca:80?transport=tcp',
+      username: 'e8dd65b92f6bceea5c748e51',
+      credential: 'kfm2QQqcGy/mj0jv'
+    },
+    {
+      urls: 'turn:global.relay.metered.ca:443',
+      username: 'e8dd65b92f6bceea5c748e51',
+      credential: 'kfm2QQqcGy/mj0jv'
+    },
+    {
+      urls: 'turns:global.relay.metered.ca:443?transport=tcp',
+      username: 'e8dd65b92f6bceea5c748e51',
+      credential: 'kfm2QQqcGy/mj0jv'
+    }
   ];
 
   const MAX_PARTICIPANTS = 8;
@@ -55,15 +115,17 @@
     return div.innerHTML;
   }
 
-  // Preferred video constraints — 1080p 60fps, graceful fallback
+  // Video constraints based on quality settings
   function getVideoConstraints() {
+    const target = getTargetQuality();
+    const fps = getTargetFps();
     if (isEdge) {
-      return { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 60 } };
+      return { width: { ideal: target.width }, height: { ideal: target.height }, frameRate: { ideal: fps } };
     }
     if (isIOS || isSafari) {
-      return { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 60 }, facingMode: usingFrontCam ? 'user' : 'environment' };
+      return { width: { ideal: target.width }, height: { ideal: target.height }, frameRate: { ideal: fps }, facingMode: usingFrontCam ? 'user' : 'environment' };
     }
-    return { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 60, min: 30 }, facingMode: usingFrontCam ? 'user' : 'environment' };
+    return { width: { ideal: target.width }, height: { ideal: target.height }, frameRate: { ideal: fps, min: Math.min(15, fps) }, facingMode: usingFrontCam ? 'user' : 'environment' };
   }
 
   // ── Device Enumeration ─────────────────────────────────
@@ -94,8 +156,10 @@
 
   // ── Media ──────────────────────────────────────────────
   async function acquireMedia() {
+    const target = getTargetQuality();
+    const fps = getTargetFps();
     const videoConstraint = selectedVideoDeviceId
-      ? { deviceId: { exact: selectedVideoDeviceId }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 60 } }
+      ? { deviceId: { exact: selectedVideoDeviceId }, width: { ideal: target.width }, height: { ideal: target.height }, frameRate: { ideal: fps } }
       : getVideoConstraints();
     const audioConstraint = selectedAudioDeviceId
       ? { deviceId: { exact: selectedAudioDeviceId }, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
@@ -129,9 +193,11 @@
     }
   }
 
-  // Set SDP to prefer high bitrate
+  // Set SDP to prefer appropriate bitrate based on quality settings
   function setHighBitrate(sdp) {
     if (isSafari || isIOS) return sdp;
+    const target = getTargetQuality();
+    const maxBitrate = target.maxBitrate || 2500;
     const lines = sdp.split('\r\n');
     const result = [];
     let isVideo = false;
@@ -140,7 +206,7 @@
       if (lines[i].startsWith('m=video')) { isVideo = true; } else if (lines[i].startsWith('m=')) { isVideo = false; }
       if (isVideo && lines[i].startsWith('c=')) {
         if (i + 1 < lines.length && lines[i + 1].startsWith('b=')) { i++; }
-        result.push('b=AS:6000');
+        result.push('b=AS:' + maxBitrate);
       }
     }
     return result.join('\r\n');
@@ -468,6 +534,10 @@
     // Start periodic video health check — catches any stuck/black videos
     startVideoHealthCheck();
 
+    // Start adaptive quality monitor
+    startStatsMonitor();
+    setTimeout(function () { applyAdaptiveParamsAllPeers(getTargetQuality().maxBitrate > 2500 ? '720p' : (currentAdaptiveQuality || '720p'), getTargetFps()); }, 2000);
+
     // If group call, notify members
     if (type === 'group') {
       roomRef.child('meta').update({
@@ -479,12 +549,255 @@
     }
   }
 
+  // ── Adaptive Bitrate & Network Quality Monitor ─────────
+  function startStatsMonitor() {
+    stopStatsMonitor();
+    prevStats = null;
+    consecutivePoor = 0;
+    consecutiveGood = 0;
+    networkQuality = 'good';
+    currentAdaptiveQuality = null;
+    currentAdaptiveFps = null;
+
+    statsTimer = setInterval(function () {
+      if (Object.keys(participants).length === 0) return;
+      collectStats();
+    }, 2000);
+  }
+
+  function stopStatsMonitor() {
+    if (statsTimer) {
+      clearInterval(statsTimer);
+      statsTimer = null;
+    }
+    prevStats = null;
+    var ind = document.getElementById('gcNetworkIndicator');
+    if (ind) ind.remove();
+  }
+
+  async function collectStats() {
+    // Collect stats from all peer connections and average them
+    var totalRtt = 0, rttCount = 0;
+    var totalLoss = 0, lossCount = 0;
+    var totalBytesSent = 0, totalBytesRecv = 0;
+    var totalFramesSent = 0, totalFramesRecv = 0;
+    var totalJitter = 0, jitterCount = 0;
+    var timestamp = 0;
+
+    var peerUids = Object.keys(participants);
+    for (var i = 0; i < peerUids.length; i++) {
+      var p = participants[peerUids[i]];
+      if (!p || !p.pc) continue;
+      try {
+        var stats = await p.pc.getStats();
+        stats.forEach(function (report) {
+          if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+            if (report.currentRoundTripTime != null) { totalRtt += report.currentRoundTripTime * 1000; rttCount++; }
+          }
+          if (report.type === 'outbound-rtp' && report.kind === 'video') {
+            totalBytesSent += (report.bytesSent || 0);
+            totalFramesSent += (report.framesEncoded || 0);
+            if (report.timestamp) timestamp = Math.max(timestamp, report.timestamp);
+          }
+          if (report.type === 'inbound-rtp' && report.kind === 'video') {
+            totalBytesRecv += (report.bytesReceived || 0);
+            totalFramesRecv += (report.framesDecoded || 0);
+            if (report.packetsLost != null && report.packetsReceived != null) {
+              var total = report.packetsReceived + report.packetsLost;
+              if (total > 0) { totalLoss += (report.packetsLost / total) * 100; lossCount++; }
+            }
+            if (report.jitter != null) { totalJitter += report.jitter * 1000; jitterCount++; }
+          }
+        });
+      } catch (e) {}
+    }
+
+    var rtt = rttCount > 0 ? totalRtt / rttCount : null;
+    var packetLoss = lossCount > 0 ? totalLoss / lossCount : 0;
+    var jitter = jitterCount > 0 ? totalJitter / jitterCount : 0;
+
+    var current = { bytesSent: totalBytesSent, bytesReceived: totalBytesRecv, framesSent: totalFramesSent, framesReceived: totalFramesRecv, timestamp: timestamp };
+
+    if (prevStats && timestamp > prevStats.timestamp) {
+      var dt = (timestamp - prevStats.timestamp) / 1000;
+      var sendBitrate = ((totalBytesSent - prevStats.bytesSent) * 8) / (dt * 1000);
+      var recvBitrate = ((totalBytesRecv - prevStats.bytesReceived) * 8) / (dt * 1000);
+      var sendFps = (totalFramesSent - prevStats.framesSent) / dt;
+      var recvFps = (totalFramesRecv - prevStats.framesReceived) / dt;
+
+      var quality = evaluateNetworkQuality(rtt, packetLoss, sendBitrate, recvBitrate, jitter);
+      networkQuality = quality;
+
+      updateGcNetworkIndicator(quality, rtt, sendBitrate, recvBitrate, sendFps, recvFps, packetLoss);
+
+      var qs = getQualitySettings();
+      if (qs.autoAdjust && qs.quality === 'auto') {
+        adaptQuality(quality, sendBitrate, rtt, packetLoss);
+      }
+
+      console.log('[GroupCall] Stats: rtt=' + (rtt ? rtt.toFixed(0) + 'ms' : '?') +
+        ' loss=' + packetLoss.toFixed(1) + '% send=' + sendBitrate.toFixed(0) + 'kbps' +
+        ' recv=' + recvBitrate.toFixed(0) + 'kbps fps=' + sendFps.toFixed(0) +
+        '/' + recvFps.toFixed(0) + ' quality=' + quality);
+    }
+
+    prevStats = current;
+  }
+
+  function evaluateNetworkQuality(rtt, packetLoss, sendBitrate, recvBitrate, jitter) {
+    var score = 100;
+    if (rtt != null) {
+      if (rtt > 500) score -= 40;
+      else if (rtt > 300) score -= 25;
+      else if (rtt > 150) score -= 10;
+    }
+    if (packetLoss > 10) score -= 35;
+    else if (packetLoss > 5) score -= 20;
+    else if (packetLoss > 2) score -= 10;
+    if (jitter > 100) score -= 15;
+    else if (jitter > 50) score -= 8;
+    var target = getTargetQuality();
+    if (sendBitrate > 0 && sendBitrate < target.maxBitrate * 0.2) score -= 20;
+    else if (sendBitrate > 0 && sendBitrate < target.maxBitrate * 0.5) score -= 10;
+    if (score >= 80) return 'excellent';
+    if (score >= 55) return 'good';
+    if (score >= 30) return 'fair';
+    return 'poor';
+  }
+
+  function adaptQuality(quality, sendBitrate, rtt, packetLoss) {
+    if (Object.keys(participants).length === 0) return;
+    var QUALITY_LADDER = ['360p', '480p', '720p', '1080p'];
+    var FPS_LADDER = [15, 24, 30, 60];
+
+    var curQ = currentAdaptiveQuality || '720p';
+    var curQIdx = QUALITY_LADDER.indexOf(curQ);
+    var curFps = currentAdaptiveFps || 30;
+    var curFIdx = FPS_LADDER.indexOf(curFps);
+
+    if (quality === 'poor' || quality === 'fair') {
+      consecutivePoor++;
+      consecutiveGood = 0;
+    } else {
+      consecutiveGood++;
+      consecutivePoor = 0;
+    }
+
+    var newQIdx = curQIdx;
+    var newFIdx = curFIdx >= 0 ? curFIdx : 2;
+
+    if (consecutivePoor >= 2) {
+      if (newFIdx > 0) { newFIdx--; }
+      else if (newQIdx > 0) { newQIdx--; newFIdx = Math.min(2, FPS_LADDER.length - 1); }
+      consecutivePoor = 0;
+    }
+
+    if (consecutiveGood >= 5) {
+      if (newFIdx < FPS_LADDER.length - 1) { newFIdx++; }
+      else if (newQIdx < QUALITY_LADDER.length - 1) { newQIdx++; newFIdx = 2; }
+      consecutiveGood = 0;
+    }
+
+    var newQ = QUALITY_LADDER[newQIdx];
+    var newFps = FPS_LADDER[newFIdx];
+
+    if (newQ !== curQ || newFps !== curFps) {
+      console.log('[GroupCall] Adaptive: changing', curQ, curFps + 'fps ->', newQ, newFps + 'fps');
+      currentAdaptiveQuality = newQ;
+      currentAdaptiveFps = newFps;
+      applyAdaptiveParamsAllPeers(newQ, newFps);
+    }
+  }
+
+  async function applyAdaptiveParamsAllPeers(qualityKey, fps) {
+    var preset = QUALITY_PRESETS[qualityKey];
+    if (!preset) return;
+
+    var peerUids = Object.keys(participants);
+    for (var i = 0; i < peerUids.length; i++) {
+      var p = participants[peerUids[i]];
+      if (!p || !p.pc) continue;
+      var sender = p.pc.getSenders().find(function (s) { return s.track && s.track.kind === 'video'; });
+      if (!sender) continue;
+      try {
+        var params = sender.getParameters();
+        if (!params.encodings || params.encodings.length === 0) params.encodings = [{}];
+        params.encodings[0].maxBitrate = preset.maxBitrate * 1000;
+        params.encodings[0].maxFramerate = fps;
+        if (localStream) {
+          var vt = localStream.getVideoTracks()[0];
+          var settings = vt ? vt.getSettings() : null;
+          if (settings && settings.width && settings.height) {
+            var scaleFactor = Math.max(1, settings.width / preset.width);
+            params.encodings[0].scaleResolutionDownBy = Math.round(scaleFactor * 10) / 10;
+          }
+        }
+        await sender.setParameters(params);
+      } catch (e) {
+        console.warn('[GroupCall] setParameters failed for peer', peerUids[i], e.message);
+      }
+    }
+  }
+
+  function updateGcNetworkIndicator(quality, rtt, sendBitrate, recvBitrate, sendFps, recvFps, packetLoss) {
+    var qs = getQualitySettings();
+    if (!qs.showNetworkIndicator) return;
+    var overlay = document.getElementById('gcOverlay');
+    if (!overlay) return;
+
+    var ind = document.getElementById('gcNetworkIndicator');
+    if (!ind) {
+      ind = document.createElement('div');
+      ind.id = 'gcNetworkIndicator';
+      ind.className = 'vc-network-indicator';
+      overlay.appendChild(ind);
+    }
+
+    var colors = { excellent: '#22c55e', good: '#22c55e', fair: '#eab308', poor: '#ef4444' };
+    var labels = { excellent: 'Excellent', good: 'Good', fair: 'Unstable', poor: 'Poor' };
+    var bars = quality === 'excellent' ? 4 : quality === 'good' ? 3 : quality === 'fair' ? 2 : 1;
+    var color = colors[quality];
+
+    var barsHtml = '';
+    for (var i = 0; i < 4; i++) {
+      var h = 4 + i * 4;
+      var active = i < bars;
+      barsHtml += '<div style="width:3px;height:' + h + 'px;border-radius:1px;background:' + (active ? color : 'rgba(255,255,255,0.2)') + ';"></div>';
+    }
+
+    var rttStr = rtt != null ? Math.round(rtt) + 'ms' : '--';
+    var bitrateStr = sendBitrate > 1000 ? (sendBitrate / 1000).toFixed(1) + 'Mbps' : Math.round(sendBitrate) + 'kbps';
+
+    ind.innerHTML = '<div class="vc-net-bars">' + barsHtml + '</div>' +
+      '<span class="vc-net-label" style="color:' + color + '">' + labels[quality] + '</span>' +
+      '<span class="vc-net-detail">' + rttStr + ' \u00B7 ' + bitrateStr + '</span>';
+  }
+
   function leaveRoom() {
     if (!roomRef) return;
+
+    // Log call to history before clearing state
+    const uid = myUid();
+    if (uid && callStartTime > 0) {
+      const duration = Math.floor((Date.now() - callStartTime) / 1000);
+      const peerNames = Object.values(participants).map(p => p.username || 'User').join(', ') || 'Group Call';
+      if (window.ChatraVideoCall && window.ChatraVideoCall.logCallHistory) {
+        window.ChatraVideoCall.logCallHistory(uid, {
+          peerUid: roomId || '',
+          peerName: peerNames,
+          type: 'outgoing',
+          callType: roomType || 'group',
+          startedAt: callStartTime,
+          endedAt: Date.now(),
+          duration: duration
+        });
+      }
+    }
 
     stopTimer();
     stopGroupCallChat();
     stopVideoHealthCheck();
+    stopStatsMonitor();
 
     // Remove ourselves
     if (myParticipantRef) {
@@ -931,8 +1244,34 @@
       if (!isMine && !chatOpen) {
         unreadChatCount++;
         updateGroupChatBadge();
+        showFloatingChatMsg(msg.name || 'User', msg.text);
       }
     });
+  }
+
+  // Show a floating chat message toast at the bottom of the call screen
+  function showFloatingChatMsg(name, text) {
+    const overlay = document.getElementById('gcOverlay');
+    if (!overlay) return;
+
+    const toast = document.createElement('div');
+    toast.className = 'vc-floating-msg';
+    toast.innerHTML = '<strong>' + escapeHtml(name) + '</strong> ' + escapeHtml(text.length > 80 ? text.slice(0, 80) + '...' : text);
+    toast.addEventListener('click', () => {
+      toast.remove();
+      chatOpen = true;
+      document.getElementById('gcChatPanel').classList.remove('hidden');
+      unreadChatCount = 0;
+      updateGroupChatBadge();
+      const msgs = document.getElementById('gcChatMessages');
+      if (msgs) msgs.scrollTop = msgs.scrollHeight;
+    });
+    overlay.appendChild(toast);
+
+    setTimeout(() => {
+      toast.classList.add('vc-floating-msg-out');
+      setTimeout(() => toast.remove(), 300);
+    }, 2500);
   }
 
   function stopGroupCallChat() {

@@ -375,6 +375,17 @@
       }
     },
 
+    "callHistory": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid",
+        ".indexOn": ["timestamp"],
+        "$entryId": {
+          ".validate": "newData.hasChildren(['peerName', 'type', 'timestamp'])"
+        }
+      }
+    },
+
     "groupCalls": {
       ".read": "auth != null",
       "$roomId": {
