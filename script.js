@@ -4766,6 +4766,7 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
             const img = document.createElement('img');
             img.src = mediaUrl;
             img.className = 'w-full rounded-lg mb-2 cursor-pointer chat-media';
+            img.crossOrigin = 'anonymous';
             img.onclick = () => openImageViewer(mediaUrl);
             
             if (isGif) {
@@ -4779,8 +4780,12 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
               wrapper.appendChild(replayBtn);
               bubble.appendChild(wrapper);
             } else {
-              bubble.appendChild(img);
+              const imgWrap = document.createElement('div');
+              imgWrap.className = 'relative';
+              imgWrap.appendChild(img);
+              bubble.appendChild(imgWrap);
             }
+            scanDisplayedImage(img);
           }
           // Add placeholder shown when images are disabled
           const mediaPlaceholder = document.createElement('div');
@@ -8452,6 +8457,7 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
 
             imgContainer.appendChild(img);
             bubble.appendChild(imgContainer);
+            scanDisplayedImage(img);
           }
           // Placeholder shown when images are disabled
           const mediaPlaceholder = document.createElement('div');
@@ -12033,6 +12039,76 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           URL.revokeObjectURL(imgUrl);
         }
       }
+
+      // Display-time NSFW scan — blur images until verified, hide if flagged
+      const scannedImageUrls = new Map(); // url → 'safe' | 'blocked'
+
+      function scanDisplayedImage(imgEl) {
+        if (!imgEl || !imgEl.src) return;
+        var url = imgEl.src;
+
+        // Already scanned
+        if (scannedImageUrls.has(url)) {
+          if (scannedImageUrls.get(url) === 'blocked') applyNsfwBlock(imgEl);
+          return;
+        }
+
+        // Apply initial blur while scanning
+        imgEl.classList.add('nsfw-blur');
+
+        function doScan() {
+          loadNsfwModel().then(function(model) {
+            return model.classify(imgEl);
+          }).then(function(predictions) {
+            var pornScore = 0, hentaiScore = 0, sexyScore = 0;
+            predictions.forEach(function(p) {
+              if (p.className === 'Porn') pornScore = p.probability;
+              if (p.className === 'Hentai') hentaiScore = p.probability;
+              if (p.className === 'Sexy') sexyScore = p.probability;
+            });
+            var combined = pornScore + hentaiScore + sexyScore;
+            var blocked = pornScore > 0.3 || hentaiScore > 0.3 || combined > 0.6;
+
+            if (blocked) {
+              scannedImageUrls.set(url, 'blocked');
+              applyNsfwBlock(imgEl);
+              console.warn('[nsfw-scan] blocked displayed image:', url, { pornScore: pornScore, hentaiScore: hentaiScore, sexyScore: sexyScore });
+            } else {
+              scannedImageUrls.set(url, 'safe');
+              imgEl.classList.remove('nsfw-blur');
+            }
+          }).catch(function() {
+            // Model failed — remove blur (fail-open for display to not break UX)
+            imgEl.classList.remove('nsfw-blur');
+          });
+        }
+
+        if (imgEl.complete && imgEl.naturalWidth > 0) {
+          doScan();
+        } else {
+          imgEl.addEventListener('load', doScan, { once: true });
+          imgEl.addEventListener('error', function() { imgEl.classList.remove('nsfw-blur'); }, { once: true });
+        }
+      }
+
+      function applyNsfwBlock(imgEl) {
+        imgEl.classList.add('nsfw-blur');
+        var parent = imgEl.parentElement;
+        if (!parent) return;
+        if (parent.style.position !== 'relative' && parent.style.position !== 'absolute') {
+          parent.style.position = 'relative';
+        }
+        // Don't add overlay twice
+        if (parent.querySelector('.nsfw-overlay')) return;
+        var overlay = document.createElement('div');
+        overlay.className = 'nsfw-overlay';
+        overlay.textContent = '⚠️ Content hidden — click to reveal';
+        overlay.addEventListener('click', function() {
+          imgEl.classList.remove('nsfw-blur');
+          overlay.remove();
+        });
+        parent.appendChild(overlay);
+      }
       
       async function uploadToImageKit(file) {
         
@@ -12068,8 +12144,9 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             if (nsfwErr.message.includes("Image rejected")) {
               throw nsfwErr; // Re-throw block messages
             }
-            // If the NSFW check itself errors, log it but allow upload (fail-open so uploads don't break)
-            console.warn("[upload] NSFW check error (allowing upload):", nsfwErr.message);
+            // If the NSFW check itself errors, block the upload (fail-closed)
+            console.warn("[upload] NSFW check error (blocking upload):", nsfwErr.message);
+            throw new Error("Image rejected: Unable to verify image safety. Please try again.");
           }
         }
 
@@ -14269,13 +14346,26 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
 
           // About:blank launcher
           if (aboutBlankBtn) aboutBlankBtn.addEventListener('click', function() {
-            const w = window.open('about:blank', '_blank');
+            var disguiseTitle = (cloakSettings.tabTitle || 'Google Drive').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            // Find favicon URL: custom > preset match > default
+            var disguiseIcon = cloakSettings.tabIcon || '';
+            if (!disguiseIcon) {
+              var presetKeys = Object.keys(CLOAK_PRESETS);
+              for (var i = 0; i < presetKeys.length; i++) {
+                if (CLOAK_PRESETS[presetKeys[i]].title === cloakSettings.tabTitle) {
+                  disguiseIcon = CLOAK_PRESETS[presetKeys[i]].icon;
+                  break;
+                }
+              }
+            }
+            var faviconTag = disguiseIcon ? '<link rel=\"icon\" href=\"' + disguiseIcon.replace(/"/g, '&quot;') + '\">' : '';
+            var w = window.open('about:blank', '_blank');
             if (w) {
-              w.document.write('<!DOCTYPE html><html><head><title>' +
-                (cloakSettings.tabTitle || 'Google Drive').replace(/</g, '&lt;') +
-                '</title></head><body style="margin:0;overflow:hidden;"><iframe src="' +
+              w.document.write('<!DOCTYPE html><html><head><title>' + disguiseTitle +
+                '</title>' + faviconTag +
+                '</head><body style=\"margin:0;overflow:hidden;\"><iframe src=\"' +
                 window.location.href.replace(/"/g, '&quot;') +
-                '" style="width:100%;height:100%;border:none;"></iframe></body></html>');
+                '\" style=\"width:100%;height:100%;border:none;\"></iframe></body></html>');
               w.document.close();
             }
           });

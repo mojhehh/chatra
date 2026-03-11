@@ -454,3 +454,47 @@ body.sunset-mode .modal-overlay > div {
 body.sunset-mode .bg-orb-blue { background: radial-gradient(circle, rgba(251,146,60,0.4), transparent 70%); }
 body.sunset-mode .bg-orb-purple { background: radial-gradient(circle, rgba(249,115,22,0.35), transparent 70%); }
 body.sunset-mode .bg-orb-pink { background: radial-gradient(circle, rgba(234,88,12,0.3), transparent 70%); }
+
+/* ===== TOGGLE FIX — checked state must override theme's .bg-slate-700 !important ===== */
+.peer:checked ~ .peer-checked\:bg-sky-600 {
+  background-color: rgb(2, 132, 199) !important;
+}
+body.light-mode .peer:checked ~ .peer-checked\:bg-sky-600 {
+  background-color: #0284c7 !important;
+}
+body.midnight-mode .peer:checked ~ .peer-checked\:bg-sky-600 {
+  background-color: #6366f1 !important;
+}
+body.ocean-mode .peer:checked ~ .peer-checked\:bg-sky-600 {
+  background-color: #0ea5e9 !important;
+}
+body.forest-mode .peer:checked ~ .peer-checked\:bg-sky-600 {
+  background-color: #22c55e !important;
+}
+body.sunset-mode .peer:checked ~ .peer-checked\:bg-sky-600 {
+  background-color: #f97316 !important;
+}
+
+/* NSFW blur overlay */
+.nsfw-blur {
+  filter: blur(25px) !important;
+  pointer-events: none;
+  transition: filter 0.3s;
+}
+.nsfw-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.7);
+  color: #f87171;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  z-index: 2;
+  border-radius: 0.5rem;
+}
+.nsfw-overlay:hover {
+  background: rgba(0,0,0,0.85);
+}
