@@ -13940,7 +13940,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           gmail: { title: 'Inbox - Gmail', icon: 'https://ssl.gstatic.com/ui/v1/icons/mail/rfr/gmail.ico' }
         };
 
-        let cloakSettings = { tabDisguise: false, blackout: false, tabTitle: 'Google Drive', tabIcon: '', panicKey: '', autoRotate: false, autoRotateInterval: 30, blackoutDelay: 0, blackoutDismiss: 'auto', blackoutClicks: 3, panicRedirectUrl: 'https://classroom.google.com' };
+        let cloakSettings = { tabDisguise: false, blackout: false, tabTitle: 'Google Drive', tabIcon: '', panicKey: '', autoRotate: false, autoRotateInterval: 30, blackoutDelay: 0, blackoutDismiss: 'auto', blackoutClicks: 3, panicRedirectUrl: 'https://classroom.google.com', redirectOnLeave: false, leaveRedirectUrl: 'https://classroom.google.com' };
         let originalTitle = document.title;
         let originalFavicon = '';
         let blackoutEl = null;
@@ -13992,6 +13992,13 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           if (blackoutClicks) blackoutClicks.value = cloakSettings.blackoutClicks || 3;
           if (blackoutClicksOpts) blackoutClicksOpts.classList.toggle('hidden', cloakSettings.blackoutDismiss !== 'clicks');
           if (panicRedirectUrl) panicRedirectUrl.value = cloakSettings.panicRedirectUrl || 'https://classroom.google.com';
+
+          var redirectOnLeaveToggle = document.getElementById('cloakRedirectOnLeave');
+          var leaveRedirectUrl = document.getElementById('cloakLeaveRedirectUrl');
+          var leaveOpts = document.getElementById('cloakRedirectOnLeaveOpts');
+          if (redirectOnLeaveToggle) redirectOnLeaveToggle.checked = cloakSettings.redirectOnLeave;
+          if (leaveRedirectUrl) leaveRedirectUrl.value = cloakSettings.leaveRedirectUrl || 'https://classroom.google.com';
+          if (leaveOpts) leaveOpts.classList.toggle('hidden', !cloakSettings.redirectOnLeave);
         }
 
         // Save original favicon
@@ -14069,6 +14076,11 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         // Visibility change handler
         document.addEventListener('visibilitychange', function() {
           if (document.hidden) {
+            if (cloakSettings.redirectOnLeave) {
+              var leaveUrl = cloakSettings.leaveRedirectUrl || 'https://classroom.google.com';
+              window.location.replace(leaveUrl);
+              return;
+            }
             if (cloakSettings.tabDisguise) {
               applyDisguise();
               startAutoRotate();
@@ -14223,6 +14235,21 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             cloakSettings.panicRedirectUrl = panicRedirectUrlEl.value;
             saveCloakSettings();
             if (cloakSettings.panicRedirectUrl) createRedirectButton(); else removeRedirectButton();
+          });
+
+          // Redirect on leave wiring
+          var redirectOnLeaveEl = document.getElementById('cloakRedirectOnLeave');
+          var leaveRedirectUrlEl = document.getElementById('cloakLeaveRedirectUrl');
+          var leaveOptsEl = document.getElementById('cloakRedirectOnLeaveOpts');
+
+          if (redirectOnLeaveEl) redirectOnLeaveEl.addEventListener('change', function() {
+            cloakSettings.redirectOnLeave = redirectOnLeaveEl.checked;
+            if (leaveOptsEl) leaveOptsEl.classList.toggle('hidden', !redirectOnLeaveEl.checked);
+            saveCloakSettings();
+          });
+          if (leaveRedirectUrlEl) leaveRedirectUrlEl.addEventListener('input', function() {
+            cloakSettings.leaveRedirectUrl = leaveRedirectUrlEl.value;
+            saveCloakSettings();
           });
 
           // Preset buttons

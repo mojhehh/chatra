@@ -1473,9 +1473,9 @@
                   <p class="text-sm text-slate-200">Tab Disguise</p>
                   <p class="text-[11px] text-slate-400">Changes tab title &amp; icon when you switch tabs</p>
                 </div>
-                <label class="relative inline-flex items-center cursor-pointer">
+                <label for="cloakTabToggle" class="relative inline-flex items-center cursor-pointer">
                   <input type="checkbox" id="cloakTabToggle" class="sr-only peer">
-                  <span class="w-10 h-5 bg-slate-600 rounded-full peer peer-checked:bg-sky-500 transition-colors"></span>
+                  <div class="w-11 h-6 bg-slate-700 rounded-full peer peer-checked:bg-sky-600 transition-colors"></div>
                   <span class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></span>
                 </label>
               </div>
@@ -1505,10 +1505,10 @@
                     <p class="text-[11px] text-slate-300">Auto-Rotate Names</p>
                     <p class="text-[10px] text-slate-500">Cycles through presets while tab is hidden</p>
                   </div>
-                  <label class="relative inline-flex items-center cursor-pointer">
+                  <label for="cloakAutoRotate" class="relative inline-flex items-center cursor-pointer">
                     <input type="checkbox" id="cloakAutoRotate" class="sr-only peer">
-                    <span class="w-9 h-4 bg-slate-600 rounded-full peer peer-checked:bg-sky-500 transition-colors"></span>
-                    <span class="absolute left-0.5 top-0.5 w-3 h-3 bg-white rounded-full transition-transform peer-checked:translate-x-5"></span>
+                    <div class="w-11 h-6 bg-slate-700 rounded-full peer peer-checked:bg-sky-600 transition-colors"></div>
+                    <span class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></span>
                   </label>
                 </div>
                 <div id="cloakAutoRotateOpts" class="hidden mt-1 ml-2">
@@ -1528,9 +1528,9 @@
                   <p class="text-sm text-slate-200">Screen Blackout</p>
                   <p class="text-[11px] text-slate-400">Blacks out page when you switch tabs</p>
                 </div>
-                <label class="relative inline-flex items-center cursor-pointer">
+                <label for="cloakBlackoutToggle" class="relative inline-flex items-center cursor-pointer">
                   <input type="checkbox" id="cloakBlackoutToggle" class="sr-only peer">
-                  <span class="w-10 h-5 bg-slate-600 rounded-full peer peer-checked:bg-sky-500 transition-colors"></span>
+                  <div class="w-11 h-6 bg-slate-700 rounded-full peer peer-checked:bg-sky-600 transition-colors"></div>
                   <span class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></span>
                 </label>
               </div>
@@ -1599,6 +1599,23 @@
                   </div>
                 </div>
                 <input id="cloakPanicRedirectUrl" type="text" maxlength="200" placeholder="https://classroom.google.com" value="https://classroom.google.com"
+                  class="w-full mt-1 px-2 py-1.5 rounded-lg bg-slate-800 border border-slate-600 text-sm text-slate-100 focus:outline-none focus:border-sky-500" />
+              </div>
+
+              <div class="flex items-center justify-between mb-3">
+                <div>
+                  <p class="text-sm text-slate-200">Redirect on Leave</p>
+                  <p class="text-[11px] text-slate-400">Redirects page when you switch tabs</p>
+                </div>
+                <label for="cloakRedirectOnLeave" class="relative inline-flex items-center cursor-pointer">
+                  <input type="checkbox" id="cloakRedirectOnLeave" class="sr-only peer">
+                  <div class="w-11 h-6 bg-slate-700 rounded-full peer peer-checked:bg-sky-600 transition-colors"></div>
+                  <span class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></span>
+                </label>
+              </div>
+              <div id="cloakRedirectOnLeaveOpts" class="hidden ml-2 mb-3">
+                <label class="text-[11px] text-slate-400">Redirect to</label>
+                <input id="cloakLeaveRedirectUrl" type="text" maxlength="200" placeholder="https://classroom.google.com" value="https://classroom.google.com"
                   class="w-full mt-1 px-2 py-1.5 rounded-lg bg-slate-800 border border-slate-600 text-sm text-slate-100 focus:outline-none focus:border-sky-500" />
               </div>
             </div>
