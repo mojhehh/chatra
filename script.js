@@ -13940,13 +13940,15 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           gmail: { title: 'Inbox - Gmail', icon: 'https://ssl.gstatic.com/ui/v1/icons/mail/rfr/gmail.ico' }
         };
 
-        let cloakSettings = { tabDisguise: false, blackout: false, tabTitle: 'Google Drive', tabIcon: '', panicKey: '', autoRotate: false, autoRotateInterval: 30, blackoutDelay: 0 };
+        let cloakSettings = { tabDisguise: false, blackout: false, tabTitle: 'Google Drive', tabIcon: '', panicKey: '', autoRotate: false, autoRotateInterval: 30, blackoutDelay: 0, blackoutDismiss: 'auto', blackoutClicks: 3, panicRedirectUrl: 'https://classroom.google.com' };
         let originalTitle = document.title;
         let originalFavicon = '';
         let blackoutEl = null;
+        let blackoutClickCount = 0;
         let rotateTimer = null;
         let rotateIndex = 0;
         let panicBtnEl = null;
+        let redirectBtnEl = null;
 
         function loadCloakSettings() {
           try {
@@ -13978,10 +13980,18 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           const autoRotateInt = document.getElementById('cloakRotateInterval');
           const autoRotateOpts = document.getElementById('cloakAutoRotateOpts');
           const blackoutDelay = document.getElementById('cloakBlackoutDelay');
+          const blackoutDismiss = document.getElementById('cloakBlackoutDismiss');
+          const blackoutClicks = document.getElementById('cloakBlackoutClicks');
+          const blackoutClicksOpts = document.getElementById('cloakBlackoutClicksOpts');
+          const panicRedirectUrl = document.getElementById('cloakPanicRedirectUrl');
           if (autoRotateToggle) autoRotateToggle.checked = cloakSettings.autoRotate;
           if (autoRotateInt) autoRotateInt.value = cloakSettings.autoRotateInterval || 30;
           if (autoRotateOpts) autoRotateOpts.classList.toggle('hidden', !cloakSettings.autoRotate);
           if (blackoutDelay) blackoutDelay.value = cloakSettings.blackoutDelay || 0;
+          if (blackoutDismiss) blackoutDismiss.value = cloakSettings.blackoutDismiss || 'auto';
+          if (blackoutClicks) blackoutClicks.value = cloakSettings.blackoutClicks || 3;
+          if (blackoutClicksOpts) blackoutClicksOpts.classList.toggle('hidden', cloakSettings.blackoutDismiss !== 'clicks');
+          if (panicRedirectUrl) panicRedirectUrl.value = cloakSettings.panicRedirectUrl || 'https://classroom.google.com';
         }
 
         // Save original favicon
@@ -14031,11 +14041,22 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         }
 
         function showBlackout() {
+          blackoutClickCount = 0;
           if (!blackoutEl) {
             blackoutEl = document.createElement('div');
             blackoutEl.id = 'cloakBlackout';
             blackoutEl.style.cssText = 'position:fixed;inset:0;background:#000;z-index:99999;cursor:pointer;';
-            blackoutEl.addEventListener('click', function() { blackoutEl.style.display = 'none'; });
+            blackoutEl.addEventListener('click', function() {
+              var mode = cloakSettings.blackoutDismiss || 'auto';
+              if (mode === 'click') {
+                hideBlackout();
+              } else if (mode === 'clicks') {
+                blackoutClickCount++;
+                var needed = parseInt(cloakSettings.blackoutClicks) || 3;
+                if (blackoutClickCount >= needed) hideBlackout();
+              }
+              // 'auto' mode — clicks don't dismiss, timer does
+            });
             document.body.appendChild(blackoutEl);
           }
           blackoutEl.style.display = 'block';
@@ -14056,24 +14077,34 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           } else {
             stopAutoRotate();
             if (cloakSettings.tabDisguise) removeDisguise();
-            // Auto-unblack after delay
+            // Auto-unblack after delay (only in auto mode)
             if (cloakSettings.blackout && blackoutEl && blackoutEl.style.display !== 'none') {
-              var delay = parseInt(cloakSettings.blackoutDelay) || 0;
-              if (delay <= 0) {
-                hideBlackout();
-              } else {
-                setTimeout(function() { hideBlackout(); }, delay * 1000);
+              var mode = cloakSettings.blackoutDismiss || 'auto';
+              if (mode === 'auto') {
+                var delay = parseInt(cloakSettings.blackoutDelay) || 0;
+                if (delay <= 0) {
+                  hideBlackout();
+                } else {
+                  setTimeout(function() { hideBlackout(); }, delay * 1000);
+                }
               }
+              // 'click' and 'clicks' modes wait for user interaction
             }
           }
         });
 
-        // Panic key handler
+        // Panic key handler (close tab)
         function triggerPanic() {
           window.close();
           // Fallback: replace page
           document.documentElement.innerHTML = '';
           window.location.replace('https://classroom.google.com');
+        }
+
+        // Redirect panic (instantly navigates to chosen URL)
+        function triggerRedirectPanic() {
+          var url = cloakSettings.panicRedirectUrl || 'https://classroom.google.com';
+          window.location.replace(url);
         }
 
         document.addEventListener('keydown', function(e) {
@@ -14099,6 +14130,26 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
 
         function removePanicButton() {
           if (panicBtnEl) { panicBtnEl.remove(); panicBtnEl = null; }
+        }
+
+        // On-screen redirect button (subtle, bottom-left, next to panic dot)
+        function createRedirectButton() {
+          if (redirectBtnEl) redirectBtnEl.remove();
+          if (!cloakSettings.panicRedirectUrl) return;
+          redirectBtnEl = document.createElement('button');
+          redirectBtnEl.id = 'cloakRedirectBtn';
+          redirectBtnEl.title = 'Quick redirect';
+          redirectBtnEl.textContent = '\u2192';
+          var leftPos = cloakSettings.panicKey ? '34px' : '8px';
+          redirectBtnEl.style.cssText = 'position:fixed;bottom:8px;left:' + leftPos + ';width:20px;height:20px;border-radius:50%;border:none;background:rgba(100,116,139,0.25);color:rgba(100,116,139,0.4);font-size:12px;line-height:20px;text-align:center;cursor:pointer;z-index:9999;padding:0;opacity:0.3;transition:opacity 0.2s;';
+          redirectBtnEl.addEventListener('mouseenter', function() { redirectBtnEl.style.opacity = '0.7'; });
+          redirectBtnEl.addEventListener('mouseleave', function() { redirectBtnEl.style.opacity = '0.3'; });
+          redirectBtnEl.addEventListener('click', function() { triggerRedirectPanic(); });
+          document.body.appendChild(redirectBtnEl);
+        }
+
+        function removeRedirectButton() {
+          if (redirectBtnEl) { redirectBtnEl.remove(); redirectBtnEl = null; }
         }
 
         // Wire up settings UI
@@ -14154,6 +14205,26 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             saveCloakSettings();
           });
 
+          var blackoutDismissEl = document.getElementById('cloakBlackoutDismiss');
+          var blackoutClicksEl = document.getElementById('cloakBlackoutClicks');
+          var blackoutClicksOptsEl = document.getElementById('cloakBlackoutClicksOpts');
+          var panicRedirectUrlEl = document.getElementById('cloakPanicRedirectUrl');
+
+          if (blackoutDismissEl) blackoutDismissEl.addEventListener('change', function() {
+            cloakSettings.blackoutDismiss = blackoutDismissEl.value;
+            if (blackoutClicksOptsEl) blackoutClicksOptsEl.classList.toggle('hidden', blackoutDismissEl.value !== 'clicks');
+            saveCloakSettings();
+          });
+          if (blackoutClicksEl) blackoutClicksEl.addEventListener('change', function() {
+            cloakSettings.blackoutClicks = parseInt(blackoutClicksEl.value) || 3;
+            saveCloakSettings();
+          });
+          if (panicRedirectUrlEl) panicRedirectUrlEl.addEventListener('input', function() {
+            cloakSettings.panicRedirectUrl = panicRedirectUrlEl.value;
+            saveCloakSettings();
+            if (cloakSettings.panicRedirectUrl) createRedirectButton(); else removeRedirectButton();
+          });
+
           // Preset buttons
           document.querySelectorAll('.cloak-preset-btn').forEach(function(btn) {
             btn.addEventListener('click', function() {
@@ -14187,6 +14258,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         syncCloakUI();
         wireCloakSettings();
         if (cloakSettings.panicKey) createPanicButton();
+        if (cloakSettings.panicRedirectUrl) createRedirectButton();
       })();
 
       

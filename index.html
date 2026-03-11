@@ -1535,16 +1535,35 @@
                 </label>
               </div>
 
-              <div class="ml-2 mb-3">
-                <label class="text-[11px] text-slate-400">Unblack after returning</label>
-                <select id="cloakBlackoutDelay" class="ml-1 px-1.5 py-0.5 rounded bg-slate-800 border border-slate-600 text-[11px] text-slate-200">
-                  <option value="0">Instantly</option>
-                  <option value="1">1 second</option>
-                  <option value="2">2 seconds</option>
-                  <option value="3">3 seconds</option>
-                  <option value="5">5 seconds</option>
-                  <option value="10">10 seconds</option>
-                </select>
+              <div class="ml-2 mb-3 space-y-2">
+                <div class="flex items-center gap-2">
+                  <label class="text-[11px] text-slate-400">Dismiss mode</label>
+                  <select id="cloakBlackoutDismiss" class="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-600 text-[11px] text-slate-200">
+                    <option value="auto">Auto (timer)</option>
+                    <option value="click">Require click</option>
+                    <option value="clicks">Require multiple clicks</option>
+                  </select>
+                </div>
+                <div class="flex items-center gap-2">
+                  <label class="text-[11px] text-slate-400">Unblack after returning</label>
+                  <select id="cloakBlackoutDelay" class="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-600 text-[11px] text-slate-200">
+                    <option value="0">Instantly</option>
+                    <option value="1">1 second</option>
+                    <option value="2">2 seconds</option>
+                    <option value="3">3 seconds</option>
+                    <option value="5">5 seconds</option>
+                    <option value="10">10 seconds</option>
+                  </select>
+                </div>
+                <div id="cloakBlackoutClicksOpts" class="hidden flex items-center gap-2">
+                  <label class="text-[11px] text-slate-400">Clicks needed</label>
+                  <select id="cloakBlackoutClicks" class="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-600 text-[11px] text-slate-200">
+                    <option value="2">2</option>
+                    <option value="3" selected>3</option>
+                    <option value="5">5</option>
+                    <option value="10">10</option>
+                  </select>
+                </div>
               </div>
 
               <div class="flex items-center justify-between mb-3">
@@ -1558,7 +1577,7 @@
                 </button>
               </div>
 
-              <div class="flex items-center justify-between">
+              <div class="flex items-center justify-between mb-3">
                 <div>
                   <p class="text-sm text-slate-200">Panic Key</p>
                   <p class="text-[11px] text-slate-400">Press key to instantly close tab</p>
@@ -1570,6 +1589,17 @@
                   <option value="Escape">Escape</option>
                   <option value="~">~ (tilde)</option>
                 </select>
+              </div>
+
+              <div class="mb-3">
+                <div class="flex items-center justify-between mb-1">
+                  <div>
+                    <p class="text-sm text-slate-200">Quick Redirect</p>
+                    <p class="text-[11px] text-slate-400">Button that instantly redirects to a site</p>
+                  </div>
+                </div>
+                <input id="cloakPanicRedirectUrl" type="text" maxlength="200" placeholder="https://classroom.google.com" value="https://classroom.google.com"
+                  class="w-full mt-1 px-2 py-1.5 rounded-lg bg-slate-800 border border-slate-600 text-sm text-slate-100 focus:outline-none focus:border-sky-500" />
               </div>
             </div>
 
