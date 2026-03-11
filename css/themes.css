@@ -41,7 +41,8 @@ body.light-mode .text-slate-300 {
   color: #1e293b !important;
 }
 
-body.light-mode .text-slate-400 {
+body.light-mode .text-slate-400,
+body.light-mode .text-slate-500 {
   color: #64748b !important;
 }
 
@@ -65,9 +66,10 @@ body.light-mode .bg-slate-700\/50 {
 
 body.light-mode .hover\:bg-slate-700:hover,
 body.light-mode .hover\:bg-slate-600:hover {
-  background-color: #cbd5e1 !important;
+  background-color: #b0bec5 !important;
 }
 
+body.light-mode .border-slate-600,
 body.light-mode .border-slate-600\/60,
 body.light-mode .border-slate-700,
 body.light-mode .border-slate-800\/50 {
@@ -75,7 +77,8 @@ body.light-mode .border-slate-800\/50 {
 }
 
 body.light-mode input,
-body.light-mode textarea {
+body.light-mode textarea,
+body.light-mode select {
   background-color: #f1f5f9 !important;
   color: #1e293b !important;
   border-color: #cbd5e1 !important;
@@ -87,7 +90,8 @@ body.light-mode textarea::placeholder {
 }
 
 body.light-mode input:focus,
-body.light-mode textarea:focus {
+body.light-mode textarea:focus,
+body.light-mode select:focus {
   border-color: #0ea5e9 !important;
 }
 
@@ -96,10 +100,18 @@ body.light-mode .shadow-inner {
 }
 
 body.light-mode #settingsMenu,
+body.light-mode #settingsModal .glass-card,
+body.light-mode #profileModal .glass-card,
 body.light-mode #settingsModal,
 body.light-mode #profileModal {
-  background: rgba(248, 250, 252, 0.95);
-  border-color: rgba(30, 41, 59, 0.2);
+  background: rgba(248, 250, 252, 0.95) !important;
+  border-color: rgba(30, 41, 59, 0.2) !important;
+}
+
+body.light-mode .modal-overlay > div,
+body.light-mode [class*="bg-slate-900"][class*="border"][class*="rounded"] {
+  background-color: #f1f5f9 !important;
+  border-color: #cbd5e1 !important;
 }
 
 body.light-mode .input-shell {
@@ -140,7 +152,8 @@ body.midnight-mode .bg-slate-900 {
   background-color: #0f0f1a !important;
 }
 
-body.midnight-mode .bg-slate-800 {
+body.midnight-mode .bg-slate-800,
+body.midnight-mode .bg-slate-800\/80 {
   background-color: #1a1a2e !important;
 }
 
@@ -148,9 +161,45 @@ body.midnight-mode .bg-slate-700 {
   background-color: #252540 !important;
 }
 
+body.midnight-mode .bg-slate-700\/50 {
+  background-color: rgba(37, 37, 64, 0.5) !important;
+}
+
+body.midnight-mode .hover\:bg-slate-700:hover,
+body.midnight-mode .hover\:bg-slate-600:hover {
+  background-color: #303055 !important;
+}
+
+body.midnight-mode .border-slate-600,
+body.midnight-mode .border-slate-600\/60,
 body.midnight-mode .border-slate-700,
-body.midnight-mode .border-slate-600\/60 {
+body.midnight-mode .border-slate-800\/50 {
   border-color: rgba(100, 100, 200, 0.3) !important;
+}
+
+body.midnight-mode input,
+body.midnight-mode textarea,
+body.midnight-mode select {
+  background-color: #1a1a2e !important;
+  color: #e0e0ff !important;
+  border-color: rgba(100, 100, 200, 0.3) !important;
+}
+
+body.midnight-mode input::placeholder,
+body.midnight-mode textarea::placeholder {
+  color: rgba(160, 160, 220, 0.5) !important;
+}
+
+body.midnight-mode .input-shell {
+  background-color: #1a1a2e !important;
+  border-color: rgba(100, 100, 200, 0.3) !important;
+}
+
+body.midnight-mode #settingsModal .glass-card,
+body.midnight-mode #profileModal .glass-card,
+body.midnight-mode .modal-overlay > div {
+  background: rgba(20, 20, 40, 0.95) !important;
+  border-color: rgba(100, 100, 200, 0.2) !important;
 }
 
 body.midnight-mode .bg-orb-blue { background: radial-gradient(circle, rgba(99,102,241,0.4), transparent 70%); }
@@ -186,7 +235,8 @@ body.ocean-mode .bg-slate-900 {
   background-color: #0a1628 !important;
 }
 
-body.ocean-mode .bg-slate-800 {
+body.ocean-mode .bg-slate-800,
+body.ocean-mode .bg-slate-800\/80 {
   background-color: #0f2540 !important;
 }
 
@@ -194,9 +244,45 @@ body.ocean-mode .bg-slate-700 {
   background-color: #153050 !important;
 }
 
+body.ocean-mode .bg-slate-700\/50 {
+  background-color: rgba(21, 48, 80, 0.5) !important;
+}
+
+body.ocean-mode .hover\:bg-slate-700:hover,
+body.ocean-mode .hover\:bg-slate-600:hover {
+  background-color: #1a3a60 !important;
+}
+
+body.ocean-mode .border-slate-600,
+body.ocean-mode .border-slate-600\/60,
 body.ocean-mode .border-slate-700,
-body.ocean-mode .border-slate-600\/60 {
+body.ocean-mode .border-slate-800\/50 {
   border-color: rgba(56, 189, 248, 0.3) !important;
+}
+
+body.ocean-mode input,
+body.ocean-mode textarea,
+body.ocean-mode select {
+  background-color: #0f2540 !important;
+  color: #e0f2fe !important;
+  border-color: rgba(56, 189, 248, 0.3) !important;
+}
+
+body.ocean-mode input::placeholder,
+body.ocean-mode textarea::placeholder {
+  color: rgba(125, 200, 240, 0.4) !important;
+}
+
+body.ocean-mode .input-shell {
+  background-color: #0f2540 !important;
+  border-color: rgba(56, 189, 248, 0.3) !important;
+}
+
+body.ocean-mode #settingsModal .glass-card,
+body.ocean-mode #profileModal .glass-card,
+body.ocean-mode .modal-overlay > div {
+  background: rgba(15, 30, 55, 0.95) !important;
+  border-color: rgba(56, 189, 248, 0.2) !important;
 }
 
 body.ocean-mode .bg-orb-blue { background: radial-gradient(circle, rgba(14,165,233,0.4), transparent 70%); }
@@ -232,7 +318,8 @@ body.forest-mode .bg-slate-900 {
   background-color: #0a1a0f !important;
 }
 
-body.forest-mode .bg-slate-800 {
+body.forest-mode .bg-slate-800,
+body.forest-mode .bg-slate-800\/80 {
   background-color: #0f2515 !important;
 }
 
@@ -240,9 +327,45 @@ body.forest-mode .bg-slate-700 {
   background-color: #153520 !important;
 }
 
+body.forest-mode .bg-slate-700\/50 {
+  background-color: rgba(21, 53, 32, 0.5) !important;
+}
+
+body.forest-mode .hover\:bg-slate-700:hover,
+body.forest-mode .hover\:bg-slate-600:hover {
+  background-color: #1a4028 !important;
+}
+
+body.forest-mode .border-slate-600,
+body.forest-mode .border-slate-600\/60,
 body.forest-mode .border-slate-700,
-body.forest-mode .border-slate-600\/60 {
+body.forest-mode .border-slate-800\/50 {
   border-color: rgba(34, 197, 94, 0.3) !important;
+}
+
+body.forest-mode input,
+body.forest-mode textarea,
+body.forest-mode select {
+  background-color: #0f2515 !important;
+  color: #d1fae5 !important;
+  border-color: rgba(34, 197, 94, 0.3) !important;
+}
+
+body.forest-mode input::placeholder,
+body.forest-mode textarea::placeholder {
+  color: rgba(100, 200, 130, 0.4) !important;
+}
+
+body.forest-mode .input-shell {
+  background-color: #0f2515 !important;
+  border-color: rgba(34, 197, 94, 0.3) !important;
+}
+
+body.forest-mode #settingsModal .glass-card,
+body.forest-mode #profileModal .glass-card,
+body.forest-mode .modal-overlay > div {
+  background: rgba(15, 35, 20, 0.95) !important;
+  border-color: rgba(34, 197, 94, 0.2) !important;
 }
 
 body.forest-mode .bg-orb-blue { background: radial-gradient(circle, rgba(34,197,94,0.4), transparent 70%); }
@@ -278,7 +401,8 @@ body.sunset-mode .bg-slate-900 {
   background-color: #1a0f0a !important;
 }
 
-body.sunset-mode .bg-slate-800 {
+body.sunset-mode .bg-slate-800,
+body.sunset-mode .bg-slate-800\/80 {
   background-color: #25150f !important;
 }
 
@@ -286,9 +410,45 @@ body.sunset-mode .bg-slate-700 {
   background-color: #352015 !important;
 }
 
+body.sunset-mode .bg-slate-700\/50 {
+  background-color: rgba(53, 32, 21, 0.5) !important;
+}
+
+body.sunset-mode .hover\:bg-slate-700:hover,
+body.sunset-mode .hover\:bg-slate-600:hover {
+  background-color: #40281a !important;
+}
+
+body.sunset-mode .border-slate-600,
+body.sunset-mode .border-slate-600\/60,
 body.sunset-mode .border-slate-700,
-body.sunset-mode .border-slate-600\/60 {
+body.sunset-mode .border-slate-800\/50 {
   border-color: rgba(251, 146, 60, 0.3) !important;
+}
+
+body.sunset-mode input,
+body.sunset-mode textarea,
+body.sunset-mode select {
+  background-color: #25150f !important;
+  color: #fef3c7 !important;
+  border-color: rgba(251, 146, 60, 0.3) !important;
+}
+
+body.sunset-mode input::placeholder,
+body.sunset-mode textarea::placeholder {
+  color: rgba(220, 160, 90, 0.4) !important;
+}
+
+body.sunset-mode .input-shell {
+  background-color: #25150f !important;
+  border-color: rgba(251, 146, 60, 0.3) !important;
+}
+
+body.sunset-mode #settingsModal .glass-card,
+body.sunset-mode #profileModal .glass-card,
+body.sunset-mode .modal-overlay > div {
+  background: rgba(35, 20, 15, 0.95) !important;
+  border-color: rgba(251, 146, 60, 0.2) !important;
 }
 
 body.sunset-mode .bg-orb-blue { background: radial-gradient(circle, rgba(251,146,60,0.4), transparent 70%); }
