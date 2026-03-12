@@ -360,6 +360,11 @@
 
   // ── Media ──────────────────────────────────────────────
   async function acquireMedia() {
+    // Apply saved camera side preference
+    const camSide = localStorage.getItem('chatra_pref_callDefaultCamSide');
+    if (camSide === 'back') usingFrontCam = false;
+    else if (camSide === 'front') usingFrontCam = true;
+
     // Apply saved device preferences from settings
     if (!selectedVideoDeviceId) {
       const savedCam = localStorage.getItem('chatra_pref_camera');

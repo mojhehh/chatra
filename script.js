@@ -12005,6 +12005,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
       }
       
       async function checkImageNSFW(file) {
+        if (localStorage.getItem('chatra_pref_nsfwFilterToggle') === 'false') return { blocked: false, scores: {}, predictions: [] };
         const model = await loadNsfwModel();
         
         // Create an image element from the file
@@ -12045,6 +12046,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
 
       function scanDisplayedImage(imgEl) {
         if (!imgEl || !imgEl.src) return;
+        if (localStorage.getItem('chatra_pref_nsfwFilterToggle') === 'false') return;
         var url = imgEl.src;
 
         // Already scanned

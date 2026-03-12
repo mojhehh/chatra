@@ -156,14 +156,37 @@
 
   // ── Media ──────────────────────────────────────────────
   async function acquireMedia() {
+    // Apply saved camera side preference
+    const camSide = localStorage.getItem('chatra_pref_callDefaultCamSide');
+    if (camSide === 'back') usingFrontCam = false;
+    else if (camSide === 'front') usingFrontCam = true;
+
+    // Apply saved device/audio prefs
+    if (!selectedVideoDeviceId) {
+      const savedCam = localStorage.getItem('chatra_pref_camera');
+      if (savedCam) selectedVideoDeviceId = savedCam;
+    }
+    if (!selectedAudioDeviceId) {
+      const savedMic = localStorage.getItem('chatra_pref_mic');
+      if (savedMic) selectedAudioDeviceId = savedMic;
+    }
+    if (!selectedOutputDeviceId) {
+      const savedSpk = localStorage.getItem('chatra_pref_speaker');
+      if (savedSpk) selectedOutputDeviceId = savedSpk;
+    }
+
+    const echoCancel = localStorage.getItem('chatra_pref_callEchoCancelToggle') !== 'false';
+    const noiseSup = localStorage.getItem('chatra_pref_callNoiseSuppressionToggle') !== 'false';
+    const autoGain = localStorage.getItem('chatra_pref_callAutoGainToggle') !== 'false';
+
     const target = getTargetQuality();
     const fps = getTargetFps();
     const videoConstraint = selectedVideoDeviceId
       ? { deviceId: { exact: selectedVideoDeviceId }, width: { ideal: target.width }, height: { ideal: target.height }, frameRate: { ideal: fps } }
       : getVideoConstraints();
     const audioConstraint = selectedAudioDeviceId
-      ? { deviceId: { exact: selectedAudioDeviceId }, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
-      : { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+      ? { deviceId: { exact: selectedAudioDeviceId }, echoCancellation: echoCancel, noiseSuppression: noiseSup, autoGainControl: autoGain }
+      : { echoCancellation: echoCancel, noiseSuppression: noiseSup, autoGainControl: autoGain };
 
     const constraints = { video: videoConstraint, audio: audioConstraint };
     const fbAudio = selectedAudioDeviceId ? { deviceId: { exact: selectedAudioDeviceId } } : true;
