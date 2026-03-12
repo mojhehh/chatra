@@ -12076,6 +12076,9 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           return null;
         }
       }
+
+      // Expose for video call modules
+      window.chatraNsfwLoadModel = loadNsfwModel;
       
       async function checkImageNSFW(file) {
         // Upload filtering ALWAYS runs regardless of toggle (toggle only controls display blur)
