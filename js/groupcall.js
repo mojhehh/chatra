@@ -27,56 +27,7 @@
   let selectedVideoDeviceId = null;
   let selectedAudioDeviceId = null;
   let selectedOutputDeviceId = null;
-  let nsfwScanInterval = null; // NSFW live video frame scanner
 
-  // ── NSFW Video Frame Scanner ───────────────────────────
-  function startNsfwVideoScan() {
-    if (nsfwScanInterval) return;
-    if (localStorage.getItem('chatra_pref_nsfwFilterToggle') === 'false') return;
-    nsfwScanInterval = setInterval(async () => {
-      if (typeof window.chatraNsfwLoadModel !== 'function') return;
-      const model = await window.chatraNsfwLoadModel();
-      if (!model) return;
-      // Scan local video
-      const localVid = document.getElementById('gcLocalVideo');
-      const targets = [];
-      if (localVid && !localVid.paused && localVid.videoWidth > 0) {
-        targets.push({ el: localVid, label: 'local' });
-      }
-      // Scan all peer videos
-      for (const [uid, p] of Object.entries(participants)) {
-        if (p.videoEl && !p.videoEl.paused && p.videoEl.videoWidth > 0) {
-          targets.push({ el: p.videoEl, label: 'peer-' + uid });
-        }
-      }
-      for (const t of targets) {
-        try {
-          const preds = await model.classify(t.el);
-          let porn = 0, hentai = 0, sexy = 0;
-          preds.forEach(p => {
-            if (p.className === 'Porn') porn = p.probability;
-            if (p.className === 'Hentai') hentai = p.probability;
-            if (p.className === 'Sexy') sexy = p.probability;
-          });
-          const flagged = porn > 0.15 || hentai > 0.15 || (porn + hentai + sexy) > 0.4;
-          t.el.style.filter = flagged ? 'blur(30px)' : '';
-          if (flagged) console.warn('[nsfw-video] flagged ' + t.label + ':', { porn, hentai, sexy });
-        } catch (_) {}
-      }
-    }, 2000);
-  }
-
-  function stopNsfwVideoScan() {
-    if (nsfwScanInterval) {
-      clearInterval(nsfwScanInterval);
-      nsfwScanInterval = null;
-    }
-    const localVid = document.getElementById('gcLocalVideo');
-    if (localVid) localVid.style.filter = '';
-    for (const [uid, p] of Object.entries(participants)) {
-      if (p.videoEl) p.videoEl.style.filter = '';
-    }
-  }
   let devicePickerOpen = false;
   let playRetryTimers = {}; // uid -> timer
 
@@ -579,8 +530,6 @@
       localVid.srcObject = localStream;
       localVid.play().catch(() => {});
     }
-    startNsfwVideoScan();
-
     // Connect to existing participants
     const existingParts = partSnap.val() || {};
     for (const [uid, data] of Object.entries(existingParts)) {
@@ -872,7 +821,6 @@
     stopGroupCallChat();
     stopVideoHealthCheck();
     stopStatsMonitor();
-    stopNsfwVideoScan();
 
     // Remove ourselves
     if (myParticipantRef) {

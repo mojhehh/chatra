@@ -28,48 +28,7 @@
   let disconnectTimer = null; // timer for ICE disconnected recovery
   let pendingCandidates = []; // queue ICE candidates until remote description is set
   let remoteStream = null;    // single persistent remote MediaStream
-  let nsfwScanInterval = null; // NSFW live video frame scanner
 
-  // ── NSFW Video Frame Scanner ───────────────────────────
-  function startNsfwVideoScan() {
-    if (nsfwScanInterval) return;
-    if (localStorage.getItem('chatra_pref_nsfwFilterToggle') === 'false') return;
-    nsfwScanInterval = setInterval(async () => {
-      if (typeof window.chatraNsfwLoadModel !== 'function') return;
-      const model = await window.chatraNsfwLoadModel();
-      if (!model) return;
-      const targets = [
-        { el: document.getElementById('vcRemoteVideo'), label: 'remote' },
-        { el: document.getElementById('vcLocalVideo'), label: 'local' }
-      ];
-      for (const t of targets) {
-        if (!t.el || t.el.paused || t.el.videoWidth === 0) continue;
-        try {
-          const preds = await model.classify(t.el);
-          let porn = 0, hentai = 0, sexy = 0;
-          preds.forEach(p => {
-            if (p.className === 'Porn') porn = p.probability;
-            if (p.className === 'Hentai') hentai = p.probability;
-            if (p.className === 'Sexy') sexy = p.probability;
-          });
-          const flagged = porn > 0.15 || hentai > 0.15 || (porn + hentai + sexy) > 0.4;
-          t.el.style.filter = flagged ? 'blur(30px)' : '';
-          if (flagged) console.warn('[nsfw-video] flagged ' + t.label + ':', { porn, hentai, sexy });
-        } catch (_) {}
-      }
-    }, 2000);
-  }
-
-  function stopNsfwVideoScan() {
-    if (nsfwScanInterval) {
-      clearInterval(nsfwScanInterval);
-      nsfwScanInterval = null;
-    }
-    const rv = document.getElementById('vcRemoteVideo');
-    const lv = document.getElementById('vcLocalVideo');
-    if (rv) rv.style.filter = '';
-    if (lv) lv.style.filter = '';
-  }
   let playRetryTimer = null;  // retry .play() for Safari
 
   // Speaking indicator state
@@ -1315,7 +1274,6 @@
     stopVideoHealthCheck();
     stopStatsMonitor();
     stopSpeakingDetection();
-    stopNsfwVideoScan();
 
     if (disconnectTimer) {
       clearTimeout(disconnectTimer);
@@ -1610,7 +1568,6 @@
       localVideo.srcObject = localStream;
       localVideo.play().catch(() => {});
     }
-    startNsfwVideoScan();
   }
 
   function applyStartPrefs() {
