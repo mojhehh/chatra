@@ -12065,8 +12065,8 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           if (typeof nsfwjs === 'undefined') {
             throw new Error('nsfwjs library not loaded');
           }
-          // Use default nsfwjs CDN model (MobileNetV2)
-          nsfwModel = await nsfwjs.load();
+          // MobileNetV2 mid — 93% accurate, 4.2MB
+          nsfwModel = await nsfwjs.load('MobileNetV2Mid');
           console.log('[nsfw] model loaded successfully');
           return nsfwModel;
         } catch (e) {
