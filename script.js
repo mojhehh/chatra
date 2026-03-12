@@ -1529,6 +1529,8 @@
         
         link.appendChild(img);
         imageContainer.appendChild(link);
+        // Scan search result images for NSFW
+        if (typeof scanDisplayedImage === 'function') scanDisplayedImage(img);
         
         // Add source label
         if (imageData.source) {
@@ -3647,6 +3649,20 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
         if (!canEdit) {
           showToast('Only the group owner or admins can change the photo', 'error');
           return;
+        }
+
+        // NSFW check on group photo
+        try {
+          const nsfwResult = await checkImageNSFW(file);
+          if (nsfwResult.blocked) {
+            showToast('This image appears to contain inappropriate content', 'error');
+            return;
+          }
+        } catch (nsfwErr) {
+          if (!nsfwErr.message.includes('nsfwjs')) {
+            showToast('Unable to verify image safety. Please try again.', 'error');
+            return;
+          }
         }
         
         
@@ -10170,6 +10186,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             };
             
             img.onclick = () => openImageViewer(mediaUrl);
+            if (typeof scanDisplayedImage === 'function') scanDisplayedImage(img);
             gifContainer.appendChild(img);
             bubble.appendChild(gifContainer);
           } else {
@@ -10195,6 +10212,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             };
             
             img.onclick = () => openImageViewer(mediaUrl);
+            if (typeof scanDisplayedImage === 'function') scanDisplayedImage(img);
             
             imgContainer.appendChild(img);
             bubble.appendChild(imgContainer);
@@ -11993,8 +12011,8 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           if (typeof nsfwjs === 'undefined') {
             throw new Error('nsfwjs library not loaded');
           }
-          // Use MobileNetV2 model from nsfwjs CDN
-          nsfwModel = await nsfwjs.load('https://nsfwjs.com/quant_nsfw_mobilenet/');
+          // Use full InceptionV3 model for better accuracy
+          nsfwModel = await nsfwjs.load('https://nsfwjs.com/model/');
           console.log('[nsfw] model loaded successfully');
           return nsfwModel;
         } catch (e) {
@@ -12005,7 +12023,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
       }
       
       async function checkImageNSFW(file) {
-        if (localStorage.getItem('chatra_pref_nsfwFilterToggle') === 'false') return { blocked: false, scores: {}, predictions: [] };
+        // Upload filtering ALWAYS runs regardless of toggle (toggle only controls display blur)
         const model = await loadNsfwModel();
         
         // Create an image element from the file
@@ -12080,8 +12098,8 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
               imgEl.classList.remove('nsfw-blur');
             }
           }).catch(function() {
-            // Model failed — remove blur (fail-open for display to not break UX)
-            imgEl.classList.remove('nsfw-blur');
+            // Model failed — keep blur (fail-closed)
+            console.warn('[nsfw-scan] model error, keeping blur on:', url);
           });
         }
 
@@ -12111,6 +12129,43 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         });
         parent.appendChild(overlay);
       }
+
+      // Global MutationObserver — scan ALL new images added anywhere in the DOM
+      (function initNsfwObserver() {
+        var IMG_URL_PATTERN = /\.(jpe?g|png|gif|webp|bmp|svg)/i;
+        var ignoredParents = ['vcOverlay', 'vcIncoming']; // skip video call UI
+        var observer = new MutationObserver(function(mutations) {
+          if (localStorage.getItem('chatra_pref_nsfwFilterToggle') === 'false') return;
+          mutations.forEach(function(m) {
+            m.addedNodes.forEach(function(node) {
+              if (node.nodeType !== 1) return;
+              // Check if added node is an img
+              if (node.tagName === 'IMG' && node.src && IMG_URL_PATTERN.test(node.src)) {
+                // Skip tiny images (icons, avatars under 40px)
+                var skip = false;
+                for (var i = 0; i < ignoredParents.length; i++) {
+                  if (node.closest('#' + ignoredParents[i])) { skip = true; break; }
+                }
+                if (!skip) scanDisplayedImage(node);
+              }
+              // Check children of added container nodes
+              if (node.querySelectorAll) {
+                var imgs = node.querySelectorAll('img');
+                imgs.forEach(function(img) {
+                  if (img.src && IMG_URL_PATTERN.test(img.src)) {
+                    var skip = false;
+                    for (var i = 0; i < ignoredParents.length; i++) {
+                      if (img.closest('#' + ignoredParents[i])) { skip = true; break; }
+                    }
+                    if (!skip) scanDisplayedImage(img);
+                  }
+                });
+              }
+            });
+          });
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
+      })();
       
       async function uploadToImageKit(file) {
         
@@ -12146,8 +12201,9 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             if (nsfwErr.message.includes("Image rejected")) {
               throw nsfwErr; // Re-throw block messages
             }
-            // If the NSFW check itself errors (e.g. model can't load), allow upload
-            console.warn("[upload] NSFW check error (allowing upload):", nsfwErr.message);
+            // If the NSFW check itself errors, block the upload (fail-closed)
+            console.error("[upload] NSFW check error (blocking upload):", nsfwErr.message);
+            throw new Error("Image upload failed: Unable to verify image safety. Please try again.");
           }
         }
 
@@ -17591,6 +17647,8 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         imageViewerImg.src = imageUrl;
         imageViewerModal.style.display = "flex";
         document.body.style.overflow = "hidden";
+        // Scan image in viewer for NSFW
+        if (typeof scanDisplayedImage === 'function') scanDisplayedImage(imageViewerImg);
       }
 
       function closeImageViewerFunc() {
