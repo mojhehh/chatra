@@ -14646,6 +14646,11 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
               w.document.close();
             }
           });
+
+          var closeTabBtn = document.getElementById('cloakCloseTabBtn');
+          if (closeTabBtn) closeTabBtn.addEventListener('click', function() {
+            triggerPanic();
+          });
         }
 
         loadCloakSettings();
