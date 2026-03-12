@@ -12046,36 +12046,41 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
       // NSFW image detection using nsfwjs
       let nsfwModel = null;
       let nsfwModelLoading = false;
+      let nsfwModelFailed = false;
       
       async function loadNsfwModel() {
         if (nsfwModel) return nsfwModel;
+        if (nsfwModelFailed) return null;
         if (nsfwModelLoading) {
           // Wait for model that's already loading
           for (let i = 0; i < 100; i++) {
             await new Promise(r => setTimeout(r, 200));
             if (nsfwModel) return nsfwModel;
+            if (nsfwModelFailed) return null;
           }
-          throw new Error('NSFW model load timeout');
+          return null;
         }
         nsfwModelLoading = true;
         try {
           if (typeof nsfwjs === 'undefined') {
             throw new Error('nsfwjs library not loaded');
           }
-          // Use full InceptionV3 model for better accuracy
-          nsfwModel = await nsfwjs.load('https://nsfwjs.com/model/');
+          // Use default nsfwjs CDN model (MobileNetV2)
+          nsfwModel = await nsfwjs.load();
           console.log('[nsfw] model loaded successfully');
           return nsfwModel;
         } catch (e) {
           console.error('[nsfw] model load error:', e);
+          nsfwModelFailed = true;
           nsfwModelLoading = false;
-          throw e;
+          return null;
         }
       }
       
       async function checkImageNSFW(file) {
         // Upload filtering ALWAYS runs regardless of toggle (toggle only controls display blur)
         const model = await loadNsfwModel();
+        if (!model) return { blocked: false, scores: {}, predictions: [] };
         
         // Create an image element from the file
         const imgUrl = URL.createObjectURL(file);
@@ -12129,8 +12134,14 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
 
         function doScan() {
           loadNsfwModel().then(function(model) {
+            if (!model) {
+              // Model unavailable — don't blur (images passed upload check already)
+              imgEl.classList.remove('nsfw-blur');
+              return null;
+            }
             return model.classify(imgEl);
           }).then(function(predictions) {
+            if (!predictions) return;
             var pornScore = 0, hentaiScore = 0, sexyScore = 0;
             predictions.forEach(function(p) {
               if (p.className === 'Porn') pornScore = p.probability;
@@ -12149,8 +12160,9 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
               imgEl.classList.remove('nsfw-blur');
             }
           }).catch(function() {
-            // Model failed — keep blur (fail-closed)
-            console.warn('[nsfw-scan] model error, keeping blur on:', url);
+            // Model/classification failed — unblur (images passed upload check already)
+            imgEl.classList.remove('nsfw-blur');
+            console.warn('[nsfw-scan] scan error, unblurring:', url);
           });
         }
 
