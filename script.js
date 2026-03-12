@@ -575,8 +575,9 @@
       }
       
       async function banFingerprint(reason = 'Ban evasion') {
-        if (!isAdmin) {
-          console.error('[fingerprint] only admins can ban fingerprints');
+        const perms = getCurrentUserPermissions();
+        if (!perms.canHardwareBan) {
+          console.error('[fingerprint] insufficient permissions to ban fingerprints');
           return false;
         }
         if (!FINGERPRINT_ENABLED) {
@@ -611,8 +612,9 @@
       }
       
       async function banTargetFingerprint(targetFp, reason = 'Admin ban') {
-        if (!isAdmin) {
-          console.error('[fingerprint] only admins can ban fingerprints');
+        const perms = getCurrentUserPermissions();
+        if (!perms.canHardwareBan) {
+          console.error('[fingerprint] insufficient permissions to ban fingerprints');
           return false;
         }
         if (!FINGERPRINT_ENABLED) {
@@ -646,8 +648,9 @@
       }
       
       async function unbanFingerprint(fpHash) {
-        if (!isAdmin) {
-          console.error('[fingerprint] only admins can unban fingerprints');
+        const perms = getCurrentUserPermissions();
+        if (!perms.canHardwareBan) {
+          console.error('[fingerprint] insufficient permissions to unban fingerprints');
           return false;
         }
         try {
@@ -6648,7 +6651,8 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
       }
 
       async function unbanUser(uid) {
-        if (!isAdmin || !uid) return;
+        const perms = getCurrentUserPermissions();
+        if (!perms.canBan || !uid) return;
         console.log("[ban] unbanning user", uid);
         try {
           const updates = { ["bannedUsers/" + uid]: null };
@@ -7374,7 +7378,7 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
       
       
       window.modPanelUnban = async (uid) => {
-        if (!isAdmin) return;
+        if (!getCurrentUserPermissions().canBan) return;
         if (!confirm("Unban this user?")) return;
         const content = document.getElementById('modPanelContent');
         const cards = content ? content.querySelectorAll('.bg-slate-800\\/80') : [];
@@ -7391,7 +7395,7 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
       };
       
       window.modPanelExtendBan = async (uid) => {
-        if (!isAdmin) return;
+        if (!getCurrentUserPermissions().canBan) return;
         const mins = prompt("Extend ban by how many minutes? (or 'permanent')");
         if (!mins) return;
         
@@ -7415,7 +7419,7 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
       };
       
       window.modPanelHardwareBan = async (fp, uid) => {
-        if (!isAdmin) return;
+        if (!getCurrentUserPermissions().canHardwareBan) return;
         if (!confirm("Hardware ban this user's device?")) return;
         const reason = prompt("Reason for hardware ban:", "Ban evasion prevention") || "Ban evasion prevention";
         await banTargetFingerprint(fp, reason + ' (UID: ' + uid.slice(0,8) + ')');
@@ -7424,7 +7428,7 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
       };
       
       window.modPanelUnHardwareBan = async (fp) => {
-        if (!isAdmin) return;
+        if (!getCurrentUserPermissions().canHardwareBan) return;
         if (!confirm("Remove hardware ban?")) return;
         await unbanFingerprint(fp);
         showToast("Hardware ban removed", "success");
@@ -7432,7 +7436,7 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
       };
       
       window.modPanelUnmute = async (uid) => {
-        if (!isAdmin) return;
+        if (!getCurrentUserPermissions().canMute) return;
         if (!confirm("Unmute this user?")) return;
         const content = document.getElementById('modPanelContent');
         const cards = content ? content.querySelectorAll('.bg-slate-800\\/80') : [];
@@ -7449,7 +7453,7 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
       };
       
       window.modPanelExtendMute = async (uid) => {
-        if (!isAdmin) return;
+        if (!getCurrentUserPermissions().canMute) return;
         const mins = prompt("Extend mute by how many minutes?");
         if (!mins) return;
         
@@ -7713,7 +7717,8 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
       }
 
       function warnUser(uid, reason) {
-        if (!isAdmin || !uid) return;
+        const perms = getCurrentUserPermissions();
+        if (!perms.canWarn || !uid) return;
         firebase.database().ref("warnings/" + uid).set({
           active: true,
           reason: reason || "Rule break",
@@ -12049,21 +12054,24 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
       // NSFW image detection using nsfwjs
       let nsfwModel = null;
       let nsfwModelLoading = false;
-      let nsfwModelFailed = false;
+      let nsfwModelFailedAt = 0; // timestamp of last failure (0 = never failed)
+      const NSFW_RETRY_COOLDOWN = 60000; // retry model load after 60 seconds
       
       async function loadNsfwModel() {
         if (nsfwModel) return nsfwModel;
-        if (nsfwModelFailed) return null;
+        // If failed recently, wait for cooldown before retrying
+        if (nsfwModelFailedAt && (Date.now() - nsfwModelFailedAt < NSFW_RETRY_COOLDOWN)) return null;
         if (nsfwModelLoading) {
           // Wait for model that's already loading
           for (let i = 0; i < 100; i++) {
             await new Promise(r => setTimeout(r, 200));
             if (nsfwModel) return nsfwModel;
-            if (nsfwModelFailed) return null;
+            if (nsfwModelFailedAt) return null;
           }
           return null;
         }
         nsfwModelLoading = true;
+        nsfwModelFailedAt = 0;
         try {
           if (typeof nsfwjs === 'undefined') {
             throw new Error('nsfwjs library not loaded');
@@ -12074,7 +12082,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           return nsfwModel;
         } catch (e) {
           console.error('[nsfw] model load error:', e);
-          nsfwModelFailed = true;
+          nsfwModelFailedAt = Date.now();
           nsfwModelLoading = false;
           return null;
         }
@@ -14638,15 +14646,25 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
                 }
               }
             }
-            var faviconTag = disguiseIcon ? '<link rel=\"icon\" href=\"' + disguiseIcon.replace(/"/g, '&quot;') + '\">' : '';
+            var currentUrl = window.location.href;
             var w = window.open('about:blank', '_blank');
             if (w) {
-              w.document.write('<!DOCTYPE html><html style=\"height:100%;margin:0;\"><head><title>' + disguiseTitle +
-                '</title>' + faviconTag +
-                '</head><body style=\"margin:0;padding:0;height:100%;overflow:hidden;\"><iframe src=\"' +
-                window.location.href.replace(/"/g, '&quot;') +
-                '\" style=\"width:100%;height:100%;border:none;display:block;\"></iframe></body></html>');
-              w.document.close();
+              // Use DOM APIs instead of document.write for better cross-browser compatibility
+              var d = w.document;
+              d.title = cloakSettings.tabTitle || 'Google Drive';
+              d.documentElement.style.cssText = 'height:100%;margin:0;';
+              if (disguiseIcon) {
+                var link = d.createElement('link');
+                link.rel = 'icon';
+                link.href = disguiseIcon;
+                d.head.appendChild(link);
+              }
+              d.body.style.cssText = 'margin:0;padding:0;height:100%;overflow:hidden;';
+              var iframe = d.createElement('iframe');
+              iframe.src = currentUrl;
+              iframe.style.cssText = 'width:100%;height:100%;border:none;display:block;';
+              iframe.setAttribute('allow', 'camera;microphone;clipboard-write;clipboard-read');
+              d.body.appendChild(iframe);
             }
           });
 

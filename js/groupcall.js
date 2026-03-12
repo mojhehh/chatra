@@ -346,6 +346,13 @@
     pendingCandidates[peerUid] = [];
     participants[peerUid] = { pc, remoteStream, videoEl, username: peerName };
 
+    // Pre-connect video element to the empty stream BEFORE tracks arrive.
+    // This lets the browser detect track additions via MediaStream 'addtrack'
+    // events — matching the working pattern in videocall.js.
+    if (videoEl) {
+      videoEl.srcObject = remoteStream;
+    }
+
     // If tracks already arrived before participants was set, connect now
     if (remoteStream.getTracks().length > 0) {
       connectVideoToEl(peerUid, remoteStream);
@@ -438,9 +445,9 @@
     const p = participants[peerUid];
     if (!p || !p.videoEl) return;
 
-    if (p.videoEl.srcObject !== remoteStream) {
-      p.videoEl.srcObject = remoteStream;
-    }
+    // Always re-assign srcObject (even if same stream) to force the browser
+    // to re-evaluate the rendering pipeline when tracks unmute or ICE connects.
+    p.videoEl.srcObject = remoteStream;
 
     // Set output device if selected
     if (selectedOutputDeviceId && typeof p.videoEl.setSinkId === 'function') {
