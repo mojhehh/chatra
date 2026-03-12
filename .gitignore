@@ -51,3 +51,16 @@ coverage/
 
 # Backup files
 *.bak
+
+# Unneeded project files
+.firebase/
+style.css
+chatra.html
+package-lock.json
+check_*.py
+fix-*.py
+remove-comments.js
+strip-all-comments.js
+remove_except.ps1
+test-*.js
+cloudflare-worker/recovery-modmojheh
