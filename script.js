@@ -6472,9 +6472,20 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
 
         
         const until = durationMinutes ? Date.now() + durationMinutes * 60 * 1000 : Date.now() + 3600000;
+        const durationLabel = durationMinutes ? (durationMinutes >= 1440 ? Math.round(durationMinutes / 1440) + ' day(s)' : durationMinutes + ' min') : '1 hour';
         firebase.database().ref("bannedUsers/" + uid).set({
           until: until,
           reason: reason,
+        }).then(() => {
+          db.ref('auditLog/bans').push({
+            action: 'ban',
+            adminUid: currentUserId,
+            adminUsername: currentUsername,
+            targetUid: uid,
+            reason: reason,
+            duration: durationLabel,
+            timestamp: Date.now()
+          });
         }).catch((err) => {
           console.error("[ban] failed to ban user", err);
         });
@@ -6655,6 +6666,9 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
         if (!perms.canBan || !uid) return;
         console.log("[ban] unbanning user", uid);
         try {
+          // Get username before removing
+          const userSnap = await db.ref('users/' + uid).once('value');
+          const targetUsername = (userSnap.val() && userSnap.val().username) || uid.slice(0, 8);
           const updates = { ["bannedUsers/" + uid]: null };
 
           
@@ -6678,6 +6692,14 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
 
           await db.ref().update(updates);
           console.log("[ban] user unbanned");
+          db.ref('auditLog/bans').push({
+            action: 'unban',
+            adminUid: currentUserId,
+            adminUsername: currentUsername,
+            targetUid: uid,
+            targetUsername: targetUsername,
+            timestamp: Date.now()
+          });
         } catch (err) {
           console.error("[ban] failed to unban user", err);
         }
@@ -6698,6 +6720,7 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
         const modPanelTabHardware = document.getElementById("modPanelTabHardware");
         const modPanelTabStaff = document.getElementById("modPanelTabStaff");
         const modPanelTabSettings = document.getElementById("modPanelTabSettings");
+        const modPanelTabAudit = document.getElementById("modPanelTabAudit");
         const modPanelContent = document.getElementById("modPanelContent");
         
         if (!modPanelBtn || !modPanelModal) return;
@@ -6754,6 +6777,15 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
             }
           }
           
+          // Show audit log tab only for Owner and Co-Owner
+          if (modPanelTabAudit) {
+            if (perms.isOwner || perms.isCoOwner) {
+              modPanelTabAudit.classList.remove("hidden");
+            } else {
+              modPanelTabAudit.classList.add("hidden");
+            }
+          }
+          
           // Start with muted tab if can't see banned
           if (perms.canBan) {
             loadModPanelTab('banned');
@@ -6805,9 +6837,9 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
         
         const setTab = (tab) => {
           modPanelCurrentTab = tab;
-          const allTabs = [modPanelTabBanned, modPanelTabMuted, modPanelTabHardware, modPanelTabStaff, modPanelTabSettings].filter(t => t);
+          const allTabs = [modPanelTabBanned, modPanelTabMuted, modPanelTabHardware, modPanelTabStaff, modPanelTabSettings, modPanelTabAudit].filter(t => t);
           allTabs.forEach(btn => {
-            btn.classList.remove('bg-red-600', 'bg-yellow-600', 'bg-purple-600', 'bg-rose-600', 'bg-sky-600', 'text-white');
+            btn.classList.remove('bg-red-600', 'bg-yellow-600', 'bg-purple-600', 'bg-rose-600', 'bg-sky-600', 'bg-amber-600', 'text-white');
             btn.classList.add('bg-slate-700', 'text-slate-300');
           });
           if (tab === 'banned' && modPanelTabBanned) {
@@ -6825,6 +6857,9 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
           } else if (tab === 'settings' && modPanelTabSettings) {
             modPanelTabSettings.classList.remove('bg-slate-700', 'text-slate-300');
             modPanelTabSettings.classList.add('bg-sky-600', 'text-white');
+          } else if (tab === 'audit' && modPanelTabAudit) {
+            modPanelTabAudit.classList.remove('bg-slate-700', 'text-slate-300');
+            modPanelTabAudit.classList.add('bg-amber-600', 'text-white');
           }
           loadModPanelTab(tab);
         };
@@ -6834,6 +6869,7 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
         if (modPanelTabHardware) modPanelTabHardware.onclick = () => setTab('hardware');
         if (modPanelTabStaff) modPanelTabStaff.onclick = () => setTab('staff');
         if (modPanelTabSettings) modPanelTabSettings.onclick = () => setTab('settings');
+        if (modPanelTabAudit) modPanelTabAudit.onclick = () => setTab('audit');
       }
       
       async function loadModPanelTab(tab) {
@@ -6851,11 +6887,133 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
             await loadStaffManagement();
           } else if (tab === 'settings') {
             await loadModPanelSettings();
+          } else if (tab === 'audit') {
+            await loadAuditLog();
           }
         } catch (e) {
           modPanelContent.innerHTML = '<div class="text-center py-8 text-red-400">Error loading data</div>';
           console.error("[modPanel] load error:", e);
         }
+      }
+      
+      // Audit Log tab — Owner and Co-Owner only
+      async function loadAuditLog() {
+        const modPanelContent = document.getElementById("modPanelContent");
+        const perms = getCurrentUserPermissions();
+        
+        if (!perms.isOwner && !perms.isCoOwner) {
+          modPanelContent.innerHTML = '<div class="text-center py-8 text-red-400">Only Owner and Co-Owner can view the audit log</div>';
+          return;
+        }
+        
+        // Fetch all audit log categories in parallel
+        const [fpSnap, settingsSnap, bansSnap, mutesSnap, warnsSnap] = await Promise.all([
+          db.ref('auditLog/fingerprintBans').limitToLast(100).once('value'),
+          db.ref('auditLog/settings').limitToLast(100).once('value'),
+          db.ref('auditLog/bans').limitToLast(100).once('value'),
+          db.ref('auditLog/mutes').limitToLast(100).once('value'),
+          db.ref('auditLog/warns').limitToLast(100).once('value')
+        ]);
+        
+        // Merge all entries into a single array
+        const entries = [];
+        const addEntries = (snap, category) => {
+          if (!snap.exists()) return;
+          snap.forEach(child => {
+            const val = child.val();
+            entries.push({ ...val, _category: category, _key: child.key });
+          });
+        };
+        addEntries(fpSnap, 'fingerprint');
+        addEntries(settingsSnap, 'settings');
+        addEntries(bansSnap, 'ban');
+        addEntries(mutesSnap, 'mute');
+        addEntries(warnsSnap, 'warn');
+        
+        // Sort by timestamp descending
+        entries.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+        
+        if (entries.length === 0) {
+          modPanelContent.innerHTML = '<div class="flex flex-col items-center justify-center py-16 text-slate-400"><div class="w-20 h-20 rounded-full bg-slate-700/50 flex items-center justify-center mb-4"><span class="text-4xl">📋</span></div><p class="text-xl font-medium">No Audit Entries</p><p class="text-sm text-slate-500 mt-1">Actions will appear here once staff perform moderation actions.</p></div>';
+          return;
+        }
+        
+        // Lookup usernames
+        const usersSnap = await db.ref('users').once('value');
+        const usersData = usersSnap.val() || {};
+        const getUsername = (uid) => {
+          if (!uid) return 'Unknown';
+          if (usersData[uid]) return usersData[uid].username || uid.slice(0, 8);
+          return uid.slice(0, 8) + '...';
+        };
+        
+        const formatTime = (ts) => {
+          if (!ts) return 'Unknown time';
+          const d = new Date(ts);
+          return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        };
+        
+        const actionIcons = {
+          ban: '🚫', unban: '✅', mute: '🔇', unmute: '🔊', warn: '⚠️',
+          images_enabled: '🖼️', images_disabled: '🖼️',
+          fingerprint_ban: '🖥️', fingerprint_unban: '🖥️'
+        };
+        
+        const actionColors = {
+          ban: 'text-red-400', unban: 'text-green-400', mute: 'text-yellow-400', unmute: 'text-green-400', warn: 'text-amber-400',
+          images_enabled: 'text-emerald-400', images_disabled: 'text-red-400',
+          fingerprint_ban: 'text-purple-400', fingerprint_unban: 'text-green-400'
+        };
+        
+        let html = '<div class="space-y-2">';
+        html += '<div class="flex items-center justify-between mb-3"><h3 class="text-sm font-semibold text-slate-300">📋 Audit Log (' + entries.length + ' entries)</h3></div>';
+        
+        entries.forEach(entry => {
+          let actionKey = entry.action || entry._category;
+          if (entry._category === 'fingerprint') actionKey = entry.action === 'unban' ? 'fingerprint_unban' : 'fingerprint_ban';
+          const icon = actionIcons[actionKey] || '📝';
+          const color = actionColors[actionKey] || 'text-slate-300';
+          const adminName = entry.adminUsername || getUsername(entry.adminUid);
+          const targetName = entry.targetUsername || getUsername(entry.targetUid);
+          
+          let description = '';
+          if (entry._category === 'ban') {
+            description = entry.action === 'unban'
+              ? '<span class="text-green-400">unbanned</span> ' + escapeHtml(targetName)
+              : '<span class="text-red-400">banned</span> ' + escapeHtml(targetName);
+            if (entry.duration) description += ' <span class="text-slate-500">(' + entry.duration + ')</span>';
+          } else if (entry._category === 'mute') {
+            description = entry.action === 'unmute'
+              ? '<span class="text-green-400">unmuted</span> ' + escapeHtml(targetName)
+              : '<span class="text-yellow-400">muted</span> ' + escapeHtml(targetName);
+            if (entry.duration) description += ' <span class="text-slate-500">(' + entry.duration + ')</span>';
+          } else if (entry._category === 'warn') {
+            description = '<span class="text-amber-400">warned</span> ' + escapeHtml(targetName);
+          } else if (entry._category === 'fingerprint') {
+            description = entry.action === 'unban'
+              ? '<span class="text-green-400">removed hardware ban</span> ' + (entry.fpHash || '')
+              : '<span class="text-purple-400">hardware banned</span> ' + (entry.fpHash || '');
+          } else if (entry._category === 'settings') {
+            description = entry.action === 'images_enabled'
+              ? '<span class="text-emerald-400">enabled</span> chat images'
+              : '<span class="text-red-400">disabled</span> chat images';
+          }
+          
+          if (entry.reason) description += ' — <span class="text-slate-500 italic">"' + escapeHtml(entry.reason) + '"</span>';
+          
+          html += '<div class="bg-slate-800/80 rounded-lg p-3 border border-slate-700/60">';
+          html += '<div class="flex items-start gap-3">';
+          html += '<span class="text-lg mt-0.5">' + icon + '</span>';
+          html += '<div class="flex-1 min-w-0">';
+          html += '<div class="text-sm text-slate-200">' + '<span class="font-medium ' + color + '">' + escapeHtml(adminName) + '</span> ' + description + '</div>';
+          html += '<div class="text-xs text-slate-500 mt-1">' + formatTime(entry.timestamp) + '</div>';
+          html += '</div>';
+          html += '</div>';
+          html += '</div>';
+        });
+        
+        html += '</div>';
+        modPanelContent.innerHTML = html;
       }
       
       // Load staff management tab
@@ -7446,6 +7604,13 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
         await db.ref("mutedUsers/" + uid).remove();
         if (card) card.remove();
         showToast("User unmuted", "success");
+        db.ref('auditLog/mutes').push({
+          action: 'unmute',
+          adminUid: currentUserId,
+          adminUsername: currentUsername,
+          targetUid: uid,
+          timestamp: Date.now()
+        });
         
         if (content && !content.querySelector('.bg-slate-800\\/80')) {
           content.innerHTML = '<div class="flex flex-col items-center justify-center py-16 text-slate-400"><div class="w-20 h-20 rounded-full bg-green-600/20 flex items-center justify-center mb-4"><span class="text-4xl">✓</span></div><p class="text-xl font-medium">No Muted Users</p><p class="text-sm text-slate-500 mt-1">All clear!</p></div>';
@@ -7597,9 +7762,19 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
         }
         
         const until = Date.now() + minutes * 60 * 1000;
+        const durationLabel = minutes >= 1440 ? Math.round(minutes / 1440) + ' day(s)' : minutes + ' min';
         firebase.database().ref("mutedUsers/" + uid).set({
           until: until,
           reason: reason,
+        });
+        db.ref('auditLog/mutes').push({
+          action: 'mute',
+          adminUid: currentUserId,
+          adminUsername: currentUsername,
+          targetUid: uid,
+          reason: reason,
+          duration: durationLabel,
+          timestamp: Date.now()
         });
       }
 
@@ -7722,6 +7897,14 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
         firebase.database().ref("warnings/" + uid).set({
           active: true,
           reason: reason || "Rule break",
+        });
+        db.ref('auditLog/warns').push({
+          action: 'warn',
+          adminUid: currentUserId,
+          adminUsername: currentUsername,
+          targetUid: uid,
+          reason: reason || 'Rule break',
+          timestamp: Date.now()
         });
       }
 
