@@ -360,12 +360,31 @@
 
   // ── Media ──────────────────────────────────────────────
   async function acquireMedia() {
+    // Apply saved device preferences from settings
+    if (!selectedVideoDeviceId) {
+      const savedCam = localStorage.getItem('chatra_pref_camera');
+      if (savedCam) selectedVideoDeviceId = savedCam;
+    }
+    if (!selectedAudioDeviceId) {
+      const savedMic = localStorage.getItem('chatra_pref_mic');
+      if (savedMic) selectedAudioDeviceId = savedMic;
+    }
+    if (!selectedOutputDeviceId) {
+      const savedSpk = localStorage.getItem('chatra_pref_speaker');
+      if (savedSpk) selectedOutputDeviceId = savedSpk;
+    }
+
+    // Audio processing prefs
+    const echoCancel = localStorage.getItem('chatra_pref_callEchoCancelToggle') !== 'false';
+    const noiseSup = localStorage.getItem('chatra_pref_callNoiseSuppressionToggle') !== 'false';
+    const autoGain = localStorage.getItem('chatra_pref_callAutoGainToggle') !== 'false';
+
     const videoConstraint = selectedVideoDeviceId
       ? { deviceId: { exact: selectedVideoDeviceId }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 60 } }
       : getVideoConstraints();
     const audioConstraint = selectedAudioDeviceId
-      ? { deviceId: { exact: selectedAudioDeviceId }, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
-      : { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+      ? { deviceId: { exact: selectedAudioDeviceId }, echoCancellation: echoCancel, noiseSuppression: noiseSup, autoGainControl: autoGain }
+      : { echoCancellation: echoCancel, noiseSuppression: noiseSup, autoGainControl: autoGain };
 
     const constraints = { video: videoConstraint, audio: audioConstraint };
     const fbAudio = selectedAudioDeviceId
@@ -918,6 +937,40 @@
       '<span class="vc-net-detail">' + rttStr + ' · ' + bitrateStr + '</span>';
   }
 
+  // ── In-Call Performance Mode ─────────────────────────
+  // When in a call, reduce page overhead so WebRTC gets max resources
+  let preCallPageSize = null;
+  let preCallFastMode = false;
+
+  function enterCallPerformanceMode() {
+    try {
+      // Save current state
+      if (typeof PAGE_SIZE !== 'undefined') preCallPageSize = PAGE_SIZE;
+      if (typeof FAST_MODE_ENABLED !== 'undefined') preCallFastMode = FAST_MODE_ENABLED;
+      // Reduce page size to minimum
+      if (typeof PAGE_SIZE !== 'undefined') PAGE_SIZE = 15;
+      // Add perf classes to reduce animations / repaints
+      document.body.classList.add('perf-lite', 'reduce-motion', 'in-call-mode');
+      console.log('[VideoCall] Performance mode ON');
+    } catch (e) {}
+  }
+
+  function exitCallPerformanceMode() {
+    try {
+      // Restore original state
+      if (preCallPageSize !== null && typeof PAGE_SIZE !== 'undefined') {
+        PAGE_SIZE = preCallPageSize;
+      }
+      if (!preCallFastMode) {
+        document.body.classList.remove('perf-lite', 'reduce-motion');
+      }
+      document.body.classList.remove('in-call-mode');
+      preCallPageSize = null;
+      preCallFastMode = false;
+      console.log('[VideoCall] Performance mode OFF');
+    } catch (e) {}
+  }
+
   // ── Calling Flow ───────────────────────────────────────
 
   // Start an outgoing call
@@ -933,6 +986,7 @@
     currentPeerName = peerUsername;
     isCaller = true;
 
+    enterCallPerformanceMode();
     showCallUI(peerUsername, true);
 
     // Prime the remote video element for Safari — touch play() in user gesture chain
@@ -943,6 +997,7 @@
     try {
       await acquireMedia();
       showLocalVideo();
+      applyStartPrefs();
 
       // If we only got audio (camera failed), show notice
       if (localStream && localStream.getVideoTracks().length === 0) {
@@ -1092,6 +1147,7 @@
     isCaller = false;
 
     hideIncomingUI();
+    enterCallPerformanceMode();
     showCallUI(callerName, false);
 
     // Prime the remote video element for Safari — touch play() in user gesture chain
@@ -1101,6 +1157,7 @@
     try {
       await acquireMedia();
       showLocalVideo();
+      applyStartPrefs();
 
       callRef = getDb().ref('calls/' + callId);
       const pc = createPeerConnection(callId);
@@ -1281,6 +1338,7 @@
 
     hideCallUI();
     hideIncomingUI();
+    exitCallPerformanceMode();
     endCall._running = false;
   }
 
@@ -1477,7 +1535,18 @@
 
   function hideCallUI() {
     const overlay = document.getElementById('vcOverlay');
-    if (overlay) overlay.remove();
+    if (overlay) {
+      // Stop any lingering video elements to prevent blank frame artifacts
+      overlay.querySelectorAll('video').forEach(v => {
+        v.pause();
+        v.srcObject = null;
+      });
+      overlay.remove();
+    }
+    // Force a repaint so the underlying chat is visible immediately
+    document.body.style.display = 'none';
+    document.body.offsetHeight; // trigger reflow
+    document.body.style.display = '';
   }
 
   function updateRemoteCamOff(isOff) {
@@ -1491,8 +1560,26 @@
     const localVideo = document.getElementById('vcLocalVideo');
     if (localVideo && localStream) {
       localVideo.srcObject = localStream;
-      // Safari needs this explicit play
       localVideo.play().catch(() => {});
+    }
+  }
+
+  function applyStartPrefs() {
+    if (localStorage.getItem('chatra_pref_callStartCameraToggle') === 'false' && localStream) {
+      localStream.getVideoTracks().forEach(t => { t.enabled = false; });
+      camMuted = true;
+      const camBtn = document.getElementById('vcToggleCam');
+      if (camBtn) camBtn.classList.add('off');
+      const localVideo = document.getElementById('vcLocalVideo');
+      if (localVideo) localVideo.classList.add('hidden-video');
+      const lco = document.getElementById('vcLocalCamOff');
+      if (lco) lco.classList.remove('hidden');
+    }
+    if (localStorage.getItem('chatra_pref_callStartMicToggle') === 'false' && localStream) {
+      localStream.getAudioTracks().forEach(t => { t.enabled = false; });
+      micMuted = true;
+      const micBtn = document.getElementById('vcToggleMic');
+      if (micBtn) micBtn.classList.add('off');
     }
   }
 

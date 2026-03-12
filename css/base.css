@@ -106,6 +106,13 @@ select {
 .modal-closed {
   display: none !important;
 }
+
+/* Settings sidebar active tab */
+.settings-tab-btn.active {
+  background: rgba(30, 41, 59, 0.8);
+  color: #f1f5f9;
+}
+
 .menu-open {
   display: block !important;
 }

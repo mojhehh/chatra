@@ -12026,9 +12026,9 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           const hentaiScore = predictions.find(p => p.className === 'Hentai')?.probability || 0;
           const sexyScore = predictions.find(p => p.className === 'Sexy')?.probability || 0;
           
-          // Block if porn/hentai is >30% or combined sexy+porn+hentai >60%
+          // Block if porn/hentai is >15% or combined sexy+porn+hentai >40%
           const combined = pornScore + hentaiScore + sexyScore;
-          const blocked = pornScore > 0.3 || hentaiScore > 0.3 || combined > 0.6;
+          const blocked = pornScore > 0.15 || hentaiScore > 0.15 || combined > 0.4;
           
           return {
             blocked,
@@ -12067,7 +12067,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
               if (p.className === 'Sexy') sexyScore = p.probability;
             });
             var combined = pornScore + hentaiScore + sexyScore;
-            var blocked = pornScore > 0.3 || hentaiScore > 0.3 || combined > 0.6;
+            var blocked = pornScore > 0.15 || hentaiScore > 0.15 || combined > 0.4;
 
             if (blocked) {
               scannedImageUrls.set(url, 'blocked');
@@ -13416,6 +13416,155 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         settingsModal.classList.remove("modal-open");
         settingsModal.classList.add("modal-closed");
       });
+      const settingsCloseBtnMobile = document.getElementById('settingsCloseBtnMobile');
+      if (settingsCloseBtnMobile) {
+        settingsCloseBtnMobile.addEventListener('click', () => {
+          settingsModal.classList.remove("modal-open");
+          settingsModal.classList.add("modal-closed");
+        });
+      }
+
+      /* ── Settings tab switching ── */
+      (function initSettingsTabs() {
+        const panels = settingsModal.querySelectorAll('.settings-panel');
+        const desktopBtns = settingsModal.querySelectorAll('.settings-tab-btn');
+        const mobileBtns = settingsModal.querySelectorAll('.settings-tab-btn-mobile');
+
+        function switchTab(tabName) {
+          panels.forEach(p => {
+            p.classList.toggle('hidden', p.id !== 'settingsPanel-' + tabName);
+          });
+          desktopBtns.forEach(b => {
+            b.classList.toggle('active', b.dataset.settingsTab === tabName);
+            if (b.dataset.settingsTab === tabName) {
+              b.classList.add('bg-slate-800', 'text-slate-100');
+            } else {
+              b.classList.remove('bg-slate-800', 'text-slate-100');
+            }
+          });
+          mobileBtns.forEach(b => {
+            if (b.dataset.settingsTab === tabName) {
+              b.classList.remove('bg-slate-700', 'text-slate-300');
+              b.classList.add('bg-sky-600', 'text-white');
+            } else {
+              b.classList.remove('bg-sky-600', 'text-white');
+              b.classList.add('bg-slate-700', 'text-slate-300');
+            }
+          });
+          // Scroll content to top
+          const content = document.getElementById('settingsContent');
+          if (content) content.scrollTop = 0;
+        }
+
+        desktopBtns.forEach(b => b.addEventListener('click', () => switchTab(b.dataset.settingsTab)));
+        mobileBtns.forEach(b => b.addEventListener('click', () => switchTab(b.dataset.settingsTab)));
+      })();
+
+      /* ── Settings responsive: show mobile nav on small screens ── */
+      (function settingsResponsive() {
+        const sidebar = document.getElementById('settingsSidebar');
+        const mobileNav = document.getElementById('settingsMobileNav');
+        const content = document.getElementById('settingsContent');
+        if (!sidebar || !mobileNav) return;
+        const mql = window.matchMedia('(max-width: 640px)');
+        function apply(e) {
+          if (e.matches) {
+            sidebar.classList.add('hidden');
+            mobileNav.classList.remove('hidden');
+            mobileNav.classList.add('flex', 'flex-col');
+            if (content) content.style.paddingTop = '5.5rem';
+          } else {
+            sidebar.classList.remove('hidden');
+            mobileNav.classList.add('hidden');
+            mobileNav.classList.remove('flex', 'flex-col');
+            if (content) content.style.paddingTop = '';
+          }
+        }
+        apply(mql);
+        mql.addEventListener('change', apply);
+      })();
+
+      /* ── Populate device selectors in Call settings ── */
+      (function initDeviceSelectors() {
+        const camSel = document.getElementById('settingsCamera');
+        const micSel = document.getElementById('settingsMic');
+        const spkSel = document.getElementById('settingsSpeaker');
+        if (!camSel && !micSel && !spkSel) return;
+
+        async function populateDevices() {
+          try {
+            // Request permission so labels are available
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true }).catch(() => null);
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            if (stream) stream.getTracks().forEach(t => t.stop());
+
+            if (camSel) {
+              camSel.innerHTML = '<option value="">Default camera</option>';
+              devices.filter(d => d.kind === 'videoinput').forEach(d => {
+                const opt = document.createElement('option');
+                opt.value = d.deviceId;
+                opt.textContent = d.label || 'Camera ' + (camSel.options.length);
+                camSel.appendChild(opt);
+              });
+              camSel.value = localStorage.getItem('chatra_pref_camera') || '';
+            }
+            if (micSel) {
+              micSel.innerHTML = '<option value="">Default microphone</option>';
+              devices.filter(d => d.kind === 'audioinput').forEach(d => {
+                const opt = document.createElement('option');
+                opt.value = d.deviceId;
+                opt.textContent = d.label || 'Mic ' + (micSel.options.length);
+                micSel.appendChild(opt);
+              });
+              micSel.value = localStorage.getItem('chatra_pref_mic') || '';
+            }
+            if (spkSel) {
+              spkSel.innerHTML = '<option value="">Default speaker</option>';
+              devices.filter(d => d.kind === 'audiooutput').forEach(d => {
+                const opt = document.createElement('option');
+                opt.value = d.deviceId;
+                opt.textContent = d.label || 'Speaker ' + (spkSel.options.length);
+                spkSel.appendChild(opt);
+              });
+              spkSel.value = localStorage.getItem('chatra_pref_speaker') || '';
+            }
+          } catch (err) {
+            console.warn('[settings] device enumeration failed', err);
+          }
+        }
+
+        // Save device choices
+        if (camSel) camSel.addEventListener('change', () => localStorage.setItem('chatra_pref_camera', camSel.value));
+        if (micSel) micSel.addEventListener('change', () => localStorage.setItem('chatra_pref_mic', micSel.value));
+        if (spkSel) spkSel.addEventListener('change', () => localStorage.setItem('chatra_pref_speaker', spkSel.value));
+
+        // Populate on first settings open
+        const observer = new MutationObserver(() => {
+          if (settingsModal.classList.contains('modal-open')) {
+            populateDevices();
+            observer.disconnect();
+          }
+        });
+        observer.observe(settingsModal, { attributes: true, attributeFilter: ['class'] });
+      })();
+
+      /* ── Save/load new call behaviour settings ── */
+      (function initCallBehaviourSettings() {
+        const ids = ['callStartCameraToggle', 'callStartMicToggle', 'callEchoCancelToggle', 'callNoiseSuppressionToggle', 'callAutoGainToggle', 'callDefaultCamSide', 'nsfwFilterToggle'];
+        ids.forEach(id => {
+          const el = document.getElementById(id);
+          if (!el) return;
+          const key = 'chatra_pref_' + id;
+          const saved = localStorage.getItem(key);
+          if (el.type === 'checkbox') {
+            if (saved !== null) el.checked = saved === 'true';
+            el.addEventListener('change', () => localStorage.setItem(key, el.checked));
+          } else {
+            if (saved) el.value = saved;
+            el.addEventListener('change', () => localStorage.setItem(key, el.value));
+          }
+        });
+      })();
 
       async function loadSettingsModal() {
         
@@ -14082,13 +14231,18 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         if (existingIcon) originalFavicon = existingIcon.href;
 
         function setFavicon(url) {
-          let link = document.querySelector('link[rel*="icon"]');
-          if (!link) {
-            link = document.createElement('link');
-            link.rel = 'icon';
-            document.head.appendChild(link);
-          }
+          // Remove all existing favicons first to force browser to re-fetch
+          document.querySelectorAll('link[rel*=\"icon\"]').forEach(function(el) { el.remove(); });
+          var link = document.createElement('link');
+          link.rel = 'icon';
+          link.type = 'image/x-icon';
           link.href = url;
+          document.head.appendChild(link);
+          // Also add apple-touch-icon for iPad
+          var apple = document.createElement('link');
+          apple.rel = 'apple-touch-icon';
+          apple.href = url;
+          document.head.appendChild(apple);
         }
 
         function applyDisguise() {
@@ -14360,11 +14514,11 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             var faviconTag = disguiseIcon ? '<link rel=\"icon\" href=\"' + disguiseIcon.replace(/"/g, '&quot;') + '\">' : '';
             var w = window.open('about:blank', '_blank');
             if (w) {
-              w.document.write('<!DOCTYPE html><html><head><title>' + disguiseTitle +
+              w.document.write('<!DOCTYPE html><html style=\"height:100%;margin:0;\"><head><title>' + disguiseTitle +
                 '</title>' + faviconTag +
-                '</head><body style=\"margin:0;overflow:hidden;\"><iframe src=\"' +
+                '</head><body style=\"margin:0;padding:0;height:100%;overflow:hidden;\"><iframe src=\"' +
                 window.location.href.replace(/"/g, '&quot;') +
-                '\" style=\"width:100%;height:100%;border:none;\"></iframe></body></html>');
+                '\" style=\"width:100%;height:100%;border:none;display:block;\"></iframe></body></html>');
               w.document.close();
             }
           });

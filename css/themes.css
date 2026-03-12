@@ -107,6 +107,21 @@ body.light-mode #profileModal {
   background: rgba(248, 250, 252, 0.95) !important;
   border-color: rgba(30, 41, 59, 0.2) !important;
 }
+body.light-mode #settingsModal { background: #f8fafc !important; }
+body.light-mode #settingsSidebar { background: #f1f5f9 !important; border-color: #e2e8f0 !important; }
+body.light-mode #settingsMobileNav { background: #f1f5f9 !important; border-color: #e2e8f0 !important; }
+body.light-mode .settings-panel h3 { color: #1e293b !important; }
+body.light-mode .settings-panel .text-slate-100,
+body.light-mode .settings-panel .text-slate-200,
+body.light-mode .settings-panel .text-slate-300 { color: #334155 !important; }
+body.light-mode .settings-panel .text-slate-400,
+body.light-mode .settings-panel .text-slate-500 { color: #64748b !important; }
+body.light-mode .settings-panel select,
+body.light-mode .settings-panel input[type="text"],
+body.light-mode .settings-panel input[type="email"] { background: #e2e8f0 !important; border-color: #cbd5e1 !important; color: #1e293b !important; }
+body.light-mode .settings-tab-btn { color: #475569 !important; }
+body.light-mode .settings-tab-btn.active,
+body.light-mode .settings-tab-btn:hover { background: #e2e8f0 !important; color: #0f172a !important; }
 
 body.light-mode .modal-overlay > div,
 body.light-mode [class*="bg-slate-900"][class*="border"][class*="rounded"] {
@@ -201,6 +216,9 @@ body.midnight-mode .modal-overlay > div {
   background: rgba(20, 20, 40, 0.95) !important;
   border-color: rgba(100, 100, 200, 0.2) !important;
 }
+body.midnight-mode #settingsModal { background: #0f0f1e !important; }
+body.midnight-mode #settingsSidebar { background: #141428 !important; border-color: rgba(100,100,200,0.15) !important; }
+body.midnight-mode #settingsMobileNav { background: #141428 !important; }
 
 body.midnight-mode .bg-orb-blue { background: radial-gradient(circle, rgba(99,102,241,0.4), transparent 70%); }
 body.midnight-mode .bg-orb-purple { background: radial-gradient(circle, rgba(139,92,246,0.4), transparent 70%); }
@@ -284,6 +302,9 @@ body.ocean-mode .modal-overlay > div {
   background: rgba(15, 30, 55, 0.95) !important;
   border-color: rgba(56, 189, 248, 0.2) !important;
 }
+body.ocean-mode #settingsModal { background: #0a1628 !important; }
+body.ocean-mode #settingsSidebar { background: #0c1e38 !important; border-color: rgba(56,189,248,0.15) !important; }
+body.ocean-mode #settingsMobileNav { background: #0c1e38 !important; }
 
 body.ocean-mode .bg-orb-blue { background: radial-gradient(circle, rgba(14,165,233,0.4), transparent 70%); }
 body.ocean-mode .bg-orb-purple { background: radial-gradient(circle, rgba(6,182,212,0.3), transparent 70%); }
@@ -367,6 +388,9 @@ body.forest-mode .modal-overlay > div {
   background: rgba(15, 35, 20, 0.95) !important;
   border-color: rgba(34, 197, 94, 0.2) !important;
 }
+body.forest-mode #settingsModal { background: #0a1a0f !important; }
+body.forest-mode #settingsSidebar { background: #0f2515 !important; border-color: rgba(34,197,94,0.15) !important; }
+body.forest-mode #settingsMobileNav { background: #0f2515 !important; }
 
 body.forest-mode .bg-orb-blue { background: radial-gradient(circle, rgba(34,197,94,0.4), transparent 70%); }
 body.forest-mode .bg-orb-purple { background: radial-gradient(circle, rgba(74,222,128,0.3), transparent 70%); }
@@ -450,6 +474,9 @@ body.sunset-mode .modal-overlay > div {
   background: rgba(35, 20, 15, 0.95) !important;
   border-color: rgba(251, 146, 60, 0.2) !important;
 }
+body.sunset-mode #settingsModal { background: #1a0f0a !important; }
+body.sunset-mode #settingsSidebar { background: #25150f !important; border-color: rgba(251,146,60,0.15) !important; }
+body.sunset-mode #settingsMobileNav { background: #25150f !important; }
 
 body.sunset-mode .bg-orb-blue { background: radial-gradient(circle, rgba(251,146,60,0.4), transparent 70%); }
 body.sunset-mode .bg-orb-purple { background: radial-gradient(circle, rgba(249,115,22,0.35), transparent 70%); }

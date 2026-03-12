@@ -1317,311 +1317,453 @@
         
         <div
           id="settingsModal"
-          class="modal-overlay fixed inset-0 z-50 modal-closed items-center justify-center px-4"
+          class="fixed inset-0 z-50 modal-closed"
+          style="background:#0f172a;"
         >
-          <div class="glass-card max-w-md w-full rounded-2xl p-6 max-h-[90vh] overflow-y-auto">
-            <div class="flex justify-between items-center mb-4">
-              <h3 class="text-lg font-semibold text-slate-100">Settings</h3>
-              <button
-                id="settingsCloseBtn"
-                class="p-1 hover:bg-slate-700 rounded-lg transition-colors"
-              >
-                ✕
-              </button>
-            </div>
-
-            
-            <div class="mb-5 pb-5 border-b border-slate-700">
-              <label class="text-sm font-medium text-slate-200 block mb-2">Message Size</label>
-              <div class="flex gap-2">
-                <button
-                  data-size="small"
-                  class="size-btn flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-colors bg-slate-700 hover:bg-slate-600 text-slate-200"
-                >
-                  Small
-                </button>
-                <button
-                  data-size="medium"
-                  class="size-btn flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-colors bg-sky-600 hover:bg-sky-700 text-white active"
-                >
-                  Medium
-                </button>
-                <button
-                  data-size="large"
-                  class="size-btn flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-colors bg-slate-700 hover:bg-slate-600 text-slate-200"
-                >
-                  Large
+          <div class="flex h-full">
+            <!-- Sidebar (categories) -->
+            <div id="settingsSidebar" class="w-56 shrink-0 bg-slate-900 border-r border-slate-700/60 flex flex-col overflow-y-auto">
+              <div class="p-4 flex items-center justify-between border-b border-slate-700/40">
+                <h2 class="text-base font-bold text-slate-100">Settings</h2>
+                <button id="settingsCloseBtn" class="p-1.5 hover:bg-slate-700 rounded-lg transition-colors text-slate-400 hover:text-slate-100">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </button>
               </div>
-            </div>
-
-            
-            <div class="mb-5 pb-5 border-b border-slate-700">
-              <label class="text-sm font-medium text-slate-200 block mb-2">Recovery Email</label>
-              <p class="text-xs text-slate-400 mb-2">Set or update your recovery email (used for account verification/reset).</p>
-              <input id="settingsRecoveryEmail" type="email" placeholder="you@example.com" class="w-full mb-3 p-3 rounded-xl bg-slate-800/80 border border-slate-600/60 text-slate-100" />
-              <div class="flex gap-2">
-                <button id="saveRecoveryBtn" class="flex-1 bg-sky-600 hover:bg-sky-700 px-4 py-2 rounded-md text-white font-semibold">Save</button>
-                <button id="clearRecoveryBtn" class="flex-1 bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded-md text-slate-200">Clear</button>
-              </div>
-              <p id="settingsRecoveryMsg" class="text-xs mt-2 min-h-[1rem]"></p>
-            </div>
-
-            
-            <div class="mb-5 pb-2">
-              <label class="text-sm font-medium text-slate-200 block mb-2">Delete account</label>
-              <p class="text-xs text-slate-400 mb-2">Permanently delete your account. Optionally remove your messages.</p>
-              <label class="flex items-center gap-2 mb-3">
-                <input id="deleteMessagesToggle" type="checkbox" class="h-4 w-4 rounded border-slate-500 bg-slate-800/90" />
-                <span class="text-sm text-slate-300">Also delete all my messages</span>
-              </label>
-              <div class="flex gap-2">
-                <button id="deleteAccountBtn" class="flex-1 bg-red-600 hover:bg-red-700 px-4 py-2 rounded-md text-white font-semibold">Delete account</button>
-                <button id="deleteAccountCancel" class="flex-1 bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded-md text-slate-200">Cancel</button>
-              </div>
-              <p id="deleteAccountMsg" class="text-xs mt-2 min-h-[1rem]"></p>
-            </div>
-
-            
-            <div class="mb-5 pb-5 border-b border-slate-700">
-              <label class="text-sm font-medium text-slate-200 block mb-2">Theme</label>
-              <select id="themeSelect" class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-600 text-slate-100 text-sm focus:border-sky-500 focus:outline-none cursor-pointer">
-                <option value="dark">🌙 Dark</option>
-                <option value="light">☀️ Light</option>
-                <option value="midnight">🌌 Midnight</option>
-                <option value="ocean">🌊 Ocean</option>
-                <option value="forest">🌲 Forest</option>
-                <option value="sunset">🌅 Sunset</option>
-              </select>
-            </div>
-
-            
-            <div class="mb-5 pb-5 border-b border-slate-700 flex items-center justify-between">
-              <div>
-                <label id="fastModeLabel" class="text-sm font-medium text-slate-200 block mb-1">Fast Mode</label>
-                <p class="text-xs text-slate-400">Limits message load to 50 and reduces effects.</p>
-              </div>
-              <label for="fastModeToggle" class="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox" id="fastModeToggle" aria-label="Fast mode toggle" class="sr-only peer">
-                <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:bg-sky-600 transition-colors"></div>
-                <span class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></span>
-              </label>
-            </div>
-
-            <!-- Call Quality Settings -->
-            <div class="mb-5 pb-5 border-b border-slate-700">
-              <label class="text-sm font-medium text-slate-200 block mb-3">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="inline mr-1 -mt-0.5"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
-                Call Quality
-              </label>
-
-              <div class="space-y-3">
-                <div>
-                  <label class="text-xs text-slate-400 block mb-1">Video Quality</label>
-                  <select id="callQualitySelect" class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-600 text-slate-100 text-sm focus:border-sky-500 focus:outline-none cursor-pointer">
-                    <option value="auto">Auto (adapts to network)</option>
-                    <option value="1080p">1080p — Best quality</option>
-                    <option value="720p">720p — Balanced</option>
-                    <option value="480p">480p — Save data</option>
-                    <option value="360p">360p — Low bandwidth</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label class="text-xs text-slate-400 block mb-1">Frame Rate</label>
-                  <select id="callFpsSelect" class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-600 text-slate-100 text-sm focus:border-sky-500 focus:outline-none cursor-pointer">
-                    <option value="auto">Auto</option>
-                    <option value="60">60 FPS — Smoothest</option>
-                    <option value="30">30 FPS — Standard</option>
-                    <option value="24">24 FPS — Cinematic</option>
-                    <option value="15">15 FPS — Low bandwidth</option>
-                  </select>
-                </div>
-
-                <div class="flex items-center justify-between pt-1">
-                  <div>
-                    <p class="text-sm text-slate-200">Auto-Adjust</p>
-                    <p class="text-xs text-slate-400">Adapt quality in real-time based on your connection</p>
-                  </div>
-                  <label for="callAutoAdjustToggle" class="relative inline-flex items-center cursor-pointer">
-                    <input type="checkbox" id="callAutoAdjustToggle" aria-label="Auto-adjust call quality" class="sr-only peer" checked>
-                    <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:bg-sky-600 transition-colors"></div>
-                    <span class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></span>
-                  </label>
-                </div>
-
-                <div class="flex items-center justify-between">
-                  <div>
-                    <p class="text-sm text-slate-200">Show Network Indicator</p>
-                    <p class="text-xs text-slate-400">Show connection quality during calls</p>
-                  </div>
-                  <label for="callNetworkIndicatorToggle" class="relative inline-flex items-center cursor-pointer">
-                    <input type="checkbox" id="callNetworkIndicatorToggle" aria-label="Show network indicator" class="sr-only peer" checked>
-                    <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:bg-sky-600 transition-colors"></div>
-                    <span class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></span>
-                  </label>
-                </div>
+              <nav class="flex-1 py-2">
+                <button data-settings-tab="general" class="settings-tab-btn w-full text-left px-4 py-2.5 text-sm text-slate-300 hover:bg-slate-800 hover:text-slate-100 transition-colors flex items-center gap-2.5 active">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                  General
+                </button>
+                <button data-settings-tab="calls" class="settings-tab-btn w-full text-left px-4 py-2.5 text-sm text-slate-300 hover:bg-slate-800 hover:text-slate-100 transition-colors flex items-center gap-2.5">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+                  Calls &amp; Audio
+                </button>
+                <button data-settings-tab="stealth" class="settings-tab-btn w-full text-left px-4 py-2.5 text-sm text-slate-300 hover:bg-slate-800 hover:text-slate-100 transition-colors flex items-center gap-2.5">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                  Stealth
+                </button>
+                <button data-settings-tab="account" class="settings-tab-btn w-full text-left px-4 py-2.5 text-sm text-slate-300 hover:bg-slate-800 hover:text-slate-100 transition-colors flex items-center gap-2.5">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                  Account
+                </button>
+              </nav>
+              <div class="p-4 border-t border-slate-700/40 text-xs text-slate-500 text-center">
+                Chatra v7.0
               </div>
             </div>
 
-            <!-- Cloak / Stealth Settings -->
-            <div class="mb-4 pb-4 border-b border-slate-700">
-              <p class="text-sm font-medium text-slate-300 mb-3">🕶️ Stealth Mode</p>
-              
-              <div class="flex items-center justify-between mb-3">
-                <div>
-                  <p class="text-sm text-slate-200">Tab Disguise</p>
-                  <p class="text-[11px] text-slate-400">Changes tab title &amp; icon when you switch tabs</p>
-                </div>
-                <label for="cloakTabToggle" class="relative inline-flex items-center cursor-pointer">
-                  <input type="checkbox" id="cloakTabToggle" class="sr-only peer">
-                  <div class="w-11 h-6 bg-slate-700 rounded-full peer peer-checked:bg-sky-600 transition-colors"></div>
-                  <span class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></span>
-                </label>
-              </div>
-
-              <div id="cloakTabOptions" class="hidden ml-2 mb-3 space-y-2">
-                <div>
-                  <label class="text-[11px] text-slate-400">Disguise Title</label>
-                  <input id="cloakTabTitle" type="text" maxlength="60" placeholder="Google Drive" value="Google Drive"
-                    class="w-full mt-1 px-2 py-1.5 rounded-lg bg-slate-800 border border-slate-600 text-sm text-slate-100 focus:outline-none focus:border-sky-500" />
-                </div>
-                <div>
-                  <label class="text-[11px] text-slate-400">Disguise Favicon URL (optional)</label>
-                  <input id="cloakTabIcon" type="text" maxlength="300" placeholder="https://ssl.gstatic.com/docs/doclist/images/drive_2022q3_32dp.png"
-                    class="w-full mt-1 px-2 py-1.5 rounded-lg bg-slate-800 border border-slate-600 text-sm text-slate-100 focus:outline-none focus:border-sky-500" />
-                </div>
-                <div class="flex flex-wrap gap-2 mt-1">
-                  <button data-cloak-preset="drive" class="cloak-preset-btn px-2 py-1 rounded bg-slate-700 text-[11px] text-slate-300 hover:bg-slate-600">📁 Google Drive</button>
-                  <button data-cloak-preset="docs" class="cloak-preset-btn px-2 py-1 rounded bg-slate-700 text-[11px] text-slate-300 hover:bg-slate-600">📝 Google Docs</button>
-                  <button data-cloak-preset="classroom" class="cloak-preset-btn px-2 py-1 rounded bg-slate-700 text-[11px] text-slate-300 hover:bg-slate-600">📚 Classroom</button>
-                  <button data-cloak-preset="canvas" class="cloak-preset-btn px-2 py-1 rounded bg-slate-700 text-[11px] text-slate-300 hover:bg-slate-600">🎨 Canvas</button>
-                  <button data-cloak-preset="khan" class="cloak-preset-btn px-2 py-1 rounded bg-slate-700 text-[11px] text-slate-300 hover:bg-slate-600">🧮 Khan Academy</button>
-                  <button data-cloak-preset="gmail" class="cloak-preset-btn px-2 py-1 rounded bg-slate-700 text-[11px] text-slate-300 hover:bg-slate-600">✉️ Gmail</button>
-                </div>
-
-                <div class="mt-3 flex items-center justify-between">
-                  <div>
-                    <p class="text-[11px] text-slate-300">Auto-Rotate Names</p>
-                    <p class="text-[10px] text-slate-500">Cycles through presets while tab is hidden</p>
-                  </div>
-                  <label for="cloakAutoRotate" class="relative inline-flex items-center cursor-pointer">
-                    <input type="checkbox" id="cloakAutoRotate" class="sr-only peer">
-                    <div class="w-11 h-6 bg-slate-700 rounded-full peer peer-checked:bg-sky-600 transition-colors"></div>
-                    <span class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></span>
-                  </label>
-                </div>
-                <div id="cloakAutoRotateOpts" class="hidden mt-1 ml-2">
-                  <label class="text-[10px] text-slate-500">Rotate every</label>
-                  <select id="cloakRotateInterval" class="ml-1 px-1.5 py-0.5 rounded bg-slate-800 border border-slate-600 text-[11px] text-slate-200">
-                    <option value="10">10s</option>
-                    <option value="20">20s</option>
-                    <option value="30" selected>30s</option>
-                    <option value="60">1 min</option>
-                    <option value="120">2 min</option>
-                  </select>
-                </div>
-              </div>
-
-              <div class="flex items-center justify-between mb-3">
-                <div>
-                  <p class="text-sm text-slate-200">Screen Blackout</p>
-                  <p class="text-[11px] text-slate-400">Blacks out page when you switch tabs</p>
-                </div>
-                <label for="cloakBlackoutToggle" class="relative inline-flex items-center cursor-pointer">
-                  <input type="checkbox" id="cloakBlackoutToggle" class="sr-only peer">
-                  <div class="w-11 h-6 bg-slate-700 rounded-full peer peer-checked:bg-sky-600 transition-colors"></div>
-                  <span class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></span>
-                </label>
-              </div>
-
-              <div class="ml-2 mb-3 space-y-2">
-                <div class="flex items-center gap-2">
-                  <label class="text-[11px] text-slate-400">Dismiss mode</label>
-                  <select id="cloakBlackoutDismiss" class="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-600 text-[11px] text-slate-200">
-                    <option value="auto">Auto (timer)</option>
-                    <option value="click">Require click</option>
-                    <option value="clicks">Require multiple clicks</option>
-                  </select>
-                </div>
-                <div class="flex items-center gap-2">
-                  <label class="text-[11px] text-slate-400">Unblack after returning</label>
-                  <select id="cloakBlackoutDelay" class="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-600 text-[11px] text-slate-200">
-                    <option value="0">Instantly</option>
-                    <option value="1">1 second</option>
-                    <option value="2">2 seconds</option>
-                    <option value="3">3 seconds</option>
-                    <option value="5">5 seconds</option>
-                    <option value="10">10 seconds</option>
-                  </select>
-                </div>
-                <div id="cloakBlackoutClicksOpts" class="hidden flex items-center gap-2">
-                  <label class="text-[11px] text-slate-400">Clicks needed</label>
-                  <select id="cloakBlackoutClicks" class="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-600 text-[11px] text-slate-200">
-                    <option value="2">2</option>
-                    <option value="3" selected>3</option>
-                    <option value="5">5</option>
-                    <option value="10">10</option>
-                  </select>
-                </div>
-              </div>
-
-              <div class="flex items-center justify-between mb-3">
-                <div>
-                  <p class="text-sm text-slate-200">Open in about:blank</p>
-                  <p class="text-[11px] text-slate-400">Opens Chatra in a blank tab (hides URL)</p>
-                </div>
-                <button id="cloakAboutBlankBtn"
-                  class="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm text-slate-200 transition-colors">
-                  Launch
+            <!-- Mobile category bar (shown on small screens, hidden on desktop) -->
+            <div id="settingsMobileNav" class="hidden fixed top-0 left-0 right-0 z-10 bg-slate-900 border-b border-slate-700/60">
+              <div class="flex items-center justify-between px-3 py-2">
+                <h2 class="text-sm font-bold text-slate-100">Settings</h2>
+                <button id="settingsCloseBtnMobile" class="p-1.5 hover:bg-slate-700 rounded-lg transition-colors text-slate-400">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </button>
               </div>
-
-              <div class="flex items-center justify-between mb-3">
-                <div>
-                  <p class="text-sm text-slate-200">Panic Key</p>
-                  <p class="text-[11px] text-slate-400">Press key to instantly close tab</p>
-                </div>
-                <select id="cloakPanicKey"
-                  class="px-2 py-1 rounded-lg bg-slate-700 border border-slate-600 text-sm text-slate-200">
-                  <option value="">Off</option>
-                  <option value="`">` (backtick)</option>
-                  <option value="Escape">Escape</option>
-                  <option value="~">~ (tilde)</option>
-                </select>
-              </div>
-
-              <div class="mb-3">
-                <div class="flex items-center justify-between mb-1">
-                  <div>
-                    <p class="text-sm text-slate-200">Quick Redirect</p>
-                    <p class="text-[11px] text-slate-400">Button that instantly redirects to a site</p>
-                  </div>
-                </div>
-                <input id="cloakPanicRedirectUrl" type="text" maxlength="200" placeholder="https://classroom.google.com" value="https://classroom.google.com"
-                  class="w-full mt-1 px-2 py-1.5 rounded-lg bg-slate-800 border border-slate-600 text-sm text-slate-100 focus:outline-none focus:border-sky-500" />
-              </div>
-
-              <div class="flex items-center justify-between mb-3">
-                <div>
-                  <p class="text-sm text-slate-200">Redirect on Leave</p>
-                  <p class="text-[11px] text-slate-400">Redirects page when you switch tabs</p>
-                </div>
-                <label for="cloakRedirectOnLeave" class="relative inline-flex items-center cursor-pointer">
-                  <input type="checkbox" id="cloakRedirectOnLeave" class="sr-only peer">
-                  <div class="w-11 h-6 bg-slate-700 rounded-full peer peer-checked:bg-sky-600 transition-colors"></div>
-                  <span class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></span>
-                </label>
-              </div>
-              <div id="cloakRedirectOnLeaveOpts" class="hidden ml-2 mb-3">
-                <label class="text-[11px] text-slate-400">Redirect to</label>
-                <input id="cloakLeaveRedirectUrl" type="text" maxlength="200" placeholder="https://classroom.google.com" value="https://classroom.google.com"
-                  class="w-full mt-1 px-2 py-1.5 rounded-lg bg-slate-800 border border-slate-600 text-sm text-slate-100 focus:outline-none focus:border-sky-500" />
+              <div class="flex overflow-x-auto gap-1 px-2 pb-2">
+                <button data-settings-tab="general" class="settings-tab-btn-mobile whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-medium bg-sky-600 text-white">General</button>
+                <button data-settings-tab="calls" class="settings-tab-btn-mobile whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-medium bg-slate-700 text-slate-300">Calls</button>
+                <button data-settings-tab="stealth" class="settings-tab-btn-mobile whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-medium bg-slate-700 text-slate-300">Stealth</button>
+                <button data-settings-tab="account" class="settings-tab-btn-mobile whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-medium bg-slate-700 text-slate-300">Account</button>
               </div>
             </div>
 
-            <div class="text-xs text-slate-400 text-center">
-              <p>Chatra v7.0</p>
+            <!-- Content area -->
+            <div class="flex-1 overflow-y-auto" id="settingsContent">
+              <div class="max-w-2xl mx-auto p-6 pb-20">
+
+                <!-- ═══ GENERAL ═══ -->
+                <div id="settingsPanel-general" class="settings-panel">
+                  <h3 class="text-lg font-semibold text-slate-100 mb-6">General</h3>
+
+                  <div class="mb-6 pb-6 border-b border-slate-700/50">
+                    <label class="text-sm font-medium text-slate-200 block mb-2">Message Size</label>
+                    <div class="flex gap-2">
+                      <button data-size="small" class="size-btn flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-colors bg-slate-700 hover:bg-slate-600 text-slate-200">Small</button>
+                      <button data-size="medium" class="size-btn flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-colors bg-sky-600 hover:bg-sky-700 text-white active">Medium</button>
+                      <button data-size="large" class="size-btn flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-colors bg-slate-700 hover:bg-slate-600 text-slate-200">Large</button>
+                    </div>
+                  </div>
+
+                  <div class="mb-6 pb-6 border-b border-slate-700/50">
+                    <label class="text-sm font-medium text-slate-200 block mb-2">Theme</label>
+                    <select id="themeSelect" class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-600 text-slate-100 text-sm focus:border-sky-500 focus:outline-none cursor-pointer">
+                      <option value="dark">🌙 Dark</option>
+                      <option value="light">☀️ Light</option>
+                      <option value="midnight">🌌 Midnight</option>
+                      <option value="ocean">🌊 Ocean</option>
+                      <option value="forest">🌲 Forest</option>
+                      <option value="sunset">🌅 Sunset</option>
+                    </select>
+                  </div>
+
+                  <div class="mb-6 pb-6 border-b border-slate-700/50 flex items-center justify-between">
+                    <div>
+                      <label id="fastModeLabel" class="text-sm font-medium text-slate-200 block mb-1">Fast Mode</label>
+                      <p class="text-xs text-slate-400">Limits message load to 20 and reduces effects for better performance.</p>
+                    </div>
+                    <label for="fastModeToggle" class="relative inline-flex items-center cursor-pointer">
+                      <input type="checkbox" id="fastModeToggle" aria-label="Fast mode toggle" class="sr-only peer">
+                      <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:bg-sky-600 transition-colors"></div>
+                      <span class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></span>
+                    </label>
+                  </div>
+
+                  <div class="flex items-center justify-between">
+                    <div>
+                      <p class="text-sm font-medium text-slate-200 mb-1">NSFW Image Filter</p>
+                      <p class="text-xs text-slate-400">Scans images for explicit content and blurs them automatically.</p>
+                    </div>
+                    <label for="nsfwFilterToggle" class="relative inline-flex items-center cursor-pointer">
+                      <input type="checkbox" id="nsfwFilterToggle" aria-label="NSFW filter toggle" class="sr-only peer" checked>
+                      <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:bg-sky-600 transition-colors"></div>
+                      <span class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></span>
+                    </label>
+                  </div>
+                </div>
+
+                <!-- ═══ CALLS & AUDIO ═══ -->
+                <div id="settingsPanel-calls" class="settings-panel hidden">
+                  <h3 class="text-lg font-semibold text-slate-100 mb-6">Calls &amp; Audio</h3>
+
+                  <div class="mb-6 pb-6 border-b border-slate-700/50">
+                    <p class="text-sm font-medium text-slate-200 mb-3">Video Quality</p>
+                    <div class="space-y-3">
+                      <div>
+                        <label class="text-xs text-slate-400 block mb-1">Resolution</label>
+                        <select id="callQualitySelect" class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-600 text-slate-100 text-sm focus:border-sky-500 focus:outline-none cursor-pointer">
+                          <option value="auto">Auto (adapts to network)</option>
+                          <option value="1080p">1080p — Best quality</option>
+                          <option value="720p">720p — Balanced</option>
+                          <option value="480p">480p — Save data</option>
+                          <option value="360p">360p — Low bandwidth</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label class="text-xs text-slate-400 block mb-1">Frame Rate</label>
+                        <select id="callFpsSelect" class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-600 text-slate-100 text-sm focus:border-sky-500 focus:outline-none cursor-pointer">
+                          <option value="auto">Auto</option>
+                          <option value="60">60 FPS — Smoothest</option>
+                          <option value="30">30 FPS — Standard</option>
+                          <option value="24">24 FPS — Cinematic</option>
+                          <option value="15">15 FPS — Low bandwidth</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="mb-6 pb-6 border-b border-slate-700/50 space-y-4">
+                    <p class="text-sm font-medium text-slate-200">Devices</p>
+                    <div>
+                      <label class="text-xs text-slate-400 block mb-1">Camera</label>
+                      <select id="settingsCamera" class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-600 text-slate-100 text-sm focus:border-sky-500 focus:outline-none cursor-pointer">
+                        <option value="">Default camera</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label class="text-xs text-slate-400 block mb-1">Microphone</label>
+                      <select id="settingsMic" class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-600 text-slate-100 text-sm focus:border-sky-500 focus:outline-none cursor-pointer">
+                        <option value="">Default microphone</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label class="text-xs text-slate-400 block mb-1">Speaker</label>
+                      <select id="settingsSpeaker" class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-600 text-slate-100 text-sm focus:border-sky-500 focus:outline-none cursor-pointer">
+                        <option value="">Default speaker</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div class="mb-6 pb-6 border-b border-slate-700/50 space-y-4">
+                    <p class="text-sm font-medium text-slate-200">Call Behavior</p>
+
+                    <div class="flex items-center justify-between">
+                      <div>
+                        <p class="text-sm text-slate-200">Auto-Adjust Quality</p>
+                        <p class="text-xs text-slate-400">Adapt quality in real-time based on your connection</p>
+                      </div>
+                      <label for="callAutoAdjustToggle" class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="callAutoAdjustToggle" aria-label="Auto-adjust call quality" class="sr-only peer" checked>
+                        <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:bg-sky-600 transition-colors"></div>
+                        <span class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></span>
+                      </label>
+                    </div>
+
+                    <div class="flex items-center justify-between">
+                      <div>
+                        <p class="text-sm text-slate-200">Show Network Indicator</p>
+                        <p class="text-xs text-slate-400">Show connection quality during calls</p>
+                      </div>
+                      <label for="callNetworkIndicatorToggle" class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="callNetworkIndicatorToggle" aria-label="Show network indicator" class="sr-only peer" checked>
+                        <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:bg-sky-600 transition-colors"></div>
+                        <span class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></span>
+                      </label>
+                    </div>
+
+                    <div class="flex items-center justify-between">
+                      <div>
+                        <p class="text-sm text-slate-200">Start with Camera On</p>
+                        <p class="text-xs text-slate-400">Automatically enable camera when joining a call</p>
+                      </div>
+                      <label for="callStartCameraToggle" class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="callStartCameraToggle" aria-label="Start with camera on" class="sr-only peer" checked>
+                        <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:bg-sky-600 transition-colors"></div>
+                        <span class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></span>
+                      </label>
+                    </div>
+
+                    <div class="flex items-center justify-between">
+                      <div>
+                        <p class="text-sm text-slate-200">Start with Mic On</p>
+                        <p class="text-xs text-slate-400">Automatically enable microphone when joining a call</p>
+                      </div>
+                      <label for="callStartMicToggle" class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="callStartMicToggle" aria-label="Start with mic on" class="sr-only peer" checked>
+                        <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:bg-sky-600 transition-colors"></div>
+                        <span class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></span>
+                      </label>
+                    </div>
+
+                    <div>
+                      <label class="text-xs text-slate-400 block mb-1">Default Camera Side</label>
+                      <select id="callDefaultCamSide" class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-600 text-slate-100 text-sm focus:border-sky-500 focus:outline-none cursor-pointer">
+                        <option value="front">Front camera</option>
+                        <option value="back">Back camera</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div class="space-y-4">
+                    <p class="text-sm font-medium text-slate-200">Audio Processing</p>
+
+                    <div class="flex items-center justify-between">
+                      <div>
+                        <p class="text-sm text-slate-200">Echo Cancellation</p>
+                        <p class="text-xs text-slate-400">Prevents your audio from echoing back</p>
+                      </div>
+                      <label for="callEchoCancelToggle" class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="callEchoCancelToggle" aria-label="Echo cancellation" class="sr-only peer" checked>
+                        <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:bg-sky-600 transition-colors"></div>
+                        <span class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></span>
+                      </label>
+                    </div>
+
+                    <div class="flex items-center justify-between">
+                      <div>
+                        <p class="text-sm text-slate-200">Noise Suppression</p>
+                        <p class="text-xs text-slate-400">Reduces background noise during calls</p>
+                      </div>
+                      <label for="callNoiseSuppressionToggle" class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="callNoiseSuppressionToggle" aria-label="Noise suppression" class="sr-only peer" checked>
+                        <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:bg-sky-600 transition-colors"></div>
+                        <span class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></span>
+                      </label>
+                    </div>
+
+                    <div class="flex items-center justify-between">
+                      <div>
+                        <p class="text-sm text-slate-200">Auto Gain Control</p>
+                        <p class="text-xs text-slate-400">Automatically adjusts microphone volume</p>
+                      </div>
+                      <label for="callAutoGainToggle" class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="callAutoGainToggle" aria-label="Auto gain control" class="sr-only peer" checked>
+                        <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:bg-sky-600 transition-colors"></div>
+                        <span class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- ═══ STEALTH ═══ -->
+                <div id="settingsPanel-stealth" class="settings-panel hidden">
+                  <h3 class="text-lg font-semibold text-slate-100 mb-6">Stealth Mode</h3>
+
+                  <div class="mb-6 pb-6 border-b border-slate-700/50">
+                    <div class="flex items-center justify-between mb-3">
+                      <div>
+                        <p class="text-sm text-slate-200">Tab Disguise</p>
+                        <p class="text-xs text-slate-400">Changes tab title &amp; icon when you switch tabs</p>
+                      </div>
+                      <label for="cloakTabToggle" class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="cloakTabToggle" class="sr-only peer">
+                        <div class="w-11 h-6 bg-slate-700 rounded-full peer peer-checked:bg-sky-600 transition-colors"></div>
+                        <span class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></span>
+                      </label>
+                    </div>
+
+                    <div id="cloakTabOptions" class="hidden ml-2 space-y-3">
+                      <div>
+                        <label class="text-xs text-slate-400">Disguise Title</label>
+                        <input id="cloakTabTitle" type="text" maxlength="60" placeholder="Google Drive" value="Google Drive"
+                          class="w-full mt-1 px-3 py-2 rounded-lg bg-slate-800 border border-slate-600 text-sm text-slate-100 focus:outline-none focus:border-sky-500" />
+                      </div>
+                      <div>
+                        <label class="text-xs text-slate-400">Disguise Favicon URL (optional)</label>
+                        <input id="cloakTabIcon" type="text" maxlength="300" placeholder="https://ssl.gstatic.com/docs/doclist/images/drive_2022q3_32dp.png"
+                          class="w-full mt-1 px-3 py-2 rounded-lg bg-slate-800 border border-slate-600 text-sm text-slate-100 focus:outline-none focus:border-sky-500" />
+                      </div>
+                      <div class="flex flex-wrap gap-2">
+                        <button data-cloak-preset="drive" class="cloak-preset-btn px-2.5 py-1.5 rounded-lg bg-slate-700 text-xs text-slate-300 hover:bg-slate-600 transition-colors">📁 Google Drive</button>
+                        <button data-cloak-preset="docs" class="cloak-preset-btn px-2.5 py-1.5 rounded-lg bg-slate-700 text-xs text-slate-300 hover:bg-slate-600 transition-colors">📝 Google Docs</button>
+                        <button data-cloak-preset="classroom" class="cloak-preset-btn px-2.5 py-1.5 rounded-lg bg-slate-700 text-xs text-slate-300 hover:bg-slate-600 transition-colors">📚 Classroom</button>
+                        <button data-cloak-preset="canvas" class="cloak-preset-btn px-2.5 py-1.5 rounded-lg bg-slate-700 text-xs text-slate-300 hover:bg-slate-600 transition-colors">🎨 Canvas</button>
+                        <button data-cloak-preset="khan" class="cloak-preset-btn px-2.5 py-1.5 rounded-lg bg-slate-700 text-xs text-slate-300 hover:bg-slate-600 transition-colors">🧮 Khan Academy</button>
+                        <button data-cloak-preset="gmail" class="cloak-preset-btn px-2.5 py-1.5 rounded-lg bg-slate-700 text-xs text-slate-300 hover:bg-slate-600 transition-colors">✉️ Gmail</button>
+                      </div>
+
+                      <div class="flex items-center justify-between pt-2">
+                        <div>
+                          <p class="text-sm text-slate-300">Auto-Rotate Names</p>
+                          <p class="text-xs text-slate-500">Cycles through presets while tab is hidden</p>
+                        </div>
+                        <label for="cloakAutoRotate" class="relative inline-flex items-center cursor-pointer">
+                          <input type="checkbox" id="cloakAutoRotate" class="sr-only peer">
+                          <div class="w-11 h-6 bg-slate-700 rounded-full peer peer-checked:bg-sky-600 transition-colors"></div>
+                          <span class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></span>
+                        </label>
+                      </div>
+                      <div id="cloakAutoRotateOpts" class="hidden ml-2">
+                        <label class="text-xs text-slate-500">Rotate every</label>
+                        <select id="cloakRotateInterval" class="ml-1 px-2 py-1 rounded bg-slate-800 border border-slate-600 text-xs text-slate-200">
+                          <option value="10">10s</option>
+                          <option value="20">20s</option>
+                          <option value="30" selected>30s</option>
+                          <option value="60">1 min</option>
+                          <option value="120">2 min</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="mb-6 pb-6 border-b border-slate-700/50">
+                    <div class="flex items-center justify-between mb-3">
+                      <div>
+                        <p class="text-sm text-slate-200">Screen Blackout</p>
+                        <p class="text-xs text-slate-400">Blacks out page when you switch tabs</p>
+                      </div>
+                      <label for="cloakBlackoutToggle" class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="cloakBlackoutToggle" class="sr-only peer">
+                        <div class="w-11 h-6 bg-slate-700 rounded-full peer peer-checked:bg-sky-600 transition-colors"></div>
+                        <span class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></span>
+                      </label>
+                    </div>
+
+                    <div class="ml-2 space-y-3">
+                      <div class="flex items-center gap-3">
+                        <label class="text-xs text-slate-400 w-32 shrink-0">Dismiss mode</label>
+                        <select id="cloakBlackoutDismiss" class="flex-1 px-2 py-1.5 rounded-lg bg-slate-800 border border-slate-600 text-xs text-slate-200">
+                          <option value="auto">Auto (timer)</option>
+                          <option value="click">Require click</option>
+                          <option value="clicks">Require multiple clicks</option>
+                        </select>
+                      </div>
+                      <div class="flex items-center gap-3">
+                        <label class="text-xs text-slate-400 w-32 shrink-0">Unblack delay</label>
+                        <select id="cloakBlackoutDelay" class="flex-1 px-2 py-1.5 rounded-lg bg-slate-800 border border-slate-600 text-xs text-slate-200">
+                          <option value="0">Instantly</option>
+                          <option value="1">1 second</option>
+                          <option value="2">2 seconds</option>
+                          <option value="3">3 seconds</option>
+                          <option value="5">5 seconds</option>
+                          <option value="10">10 seconds</option>
+                        </select>
+                      </div>
+                      <div id="cloakBlackoutClicksOpts" class="hidden flex items-center gap-3">
+                        <label class="text-xs text-slate-400 w-32 shrink-0">Clicks needed</label>
+                        <select id="cloakBlackoutClicks" class="flex-1 px-2 py-1.5 rounded-lg bg-slate-800 border border-slate-600 text-xs text-slate-200">
+                          <option value="2">2</option>
+                          <option value="3" selected>3</option>
+                          <option value="5">5</option>
+                          <option value="10">10</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="mb-6 pb-6 border-b border-slate-700/50">
+                    <div class="flex items-center justify-between mb-2">
+                      <div>
+                        <p class="text-sm text-slate-200">Open in about:blank</p>
+                        <p class="text-xs text-slate-400">Opens Chatra in a blank tab (hides URL)</p>
+                      </div>
+                      <button id="cloakAboutBlankBtn" class="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm text-slate-200 transition-colors">Launch</button>
+                    </div>
+                  </div>
+
+                  <div class="mb-6 pb-6 border-b border-slate-700/50">
+                    <div class="flex items-center justify-between mb-2">
+                      <div>
+                        <p class="text-sm text-slate-200">Panic Key</p>
+                        <p class="text-xs text-slate-400">Press key to instantly close tab</p>
+                      </div>
+                      <select id="cloakPanicKey" class="px-2 py-1.5 rounded-lg bg-slate-700 border border-slate-600 text-sm text-slate-200">
+                        <option value="">Off</option>
+                        <option value="`">` (backtick)</option>
+                        <option value="Escape">Escape</option>
+                        <option value="~">~ (tilde)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div class="mb-6 pb-6 border-b border-slate-700/50">
+                    <p class="text-sm text-slate-200 mb-1">Quick Redirect</p>
+                    <p class="text-xs text-slate-400 mb-2">Button that instantly redirects to a site</p>
+                    <input id="cloakPanicRedirectUrl" type="text" maxlength="200" placeholder="https://classroom.google.com" value="https://classroom.google.com"
+                      class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-600 text-sm text-slate-100 focus:outline-none focus:border-sky-500" />
+                  </div>
+
+                  <div>
+                    <div class="flex items-center justify-between mb-3">
+                      <div>
+                        <p class="text-sm text-slate-200">Redirect on Leave</p>
+                        <p class="text-xs text-slate-400">Redirects page when you switch tabs</p>
+                      </div>
+                      <label for="cloakRedirectOnLeave" class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="cloakRedirectOnLeave" class="sr-only peer">
+                        <div class="w-11 h-6 bg-slate-700 rounded-full peer peer-checked:bg-sky-600 transition-colors"></div>
+                        <span class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></span>
+                      </label>
+                    </div>
+                    <div id="cloakRedirectOnLeaveOpts" class="hidden ml-2">
+                      <label class="text-xs text-slate-400">Redirect to</label>
+                      <input id="cloakLeaveRedirectUrl" type="text" maxlength="200" placeholder="https://classroom.google.com" value="https://classroom.google.com"
+                        class="w-full mt-1 px-3 py-2 rounded-lg bg-slate-800 border border-slate-600 text-sm text-slate-100 focus:outline-none focus:border-sky-500" />
+                    </div>
+                  </div>
+                </div>
+
+                <!-- ═══ ACCOUNT ═══ -->
+                <div id="settingsPanel-account" class="settings-panel hidden">
+                  <h3 class="text-lg font-semibold text-slate-100 mb-6">Account</h3>
+
+                  <div class="mb-6 pb-6 border-b border-slate-700/50">
+                    <label class="text-sm font-medium text-slate-200 block mb-2">Recovery Email</label>
+                    <p class="text-xs text-slate-400 mb-3">Set or update your recovery email (used for account verification/reset).</p>
+                    <input id="settingsRecoveryEmail" type="email" placeholder="you@example.com" class="w-full mb-3 p-3 rounded-xl bg-slate-800/80 border border-slate-600/60 text-slate-100" />
+                    <div class="flex gap-2">
+                      <button id="saveRecoveryBtn" class="flex-1 bg-sky-600 hover:bg-sky-700 px-4 py-2 rounded-md text-white font-semibold">Save</button>
+                      <button id="clearRecoveryBtn" class="flex-1 bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded-md text-slate-200">Clear</button>
+                    </div>
+                    <p id="settingsRecoveryMsg" class="text-xs mt-2 min-h-[1rem]"></p>
+                  </div>
+
+                  <div>
+                    <label class="text-sm font-medium text-slate-200 block mb-2">Delete Account</label>
+                    <p class="text-xs text-slate-400 mb-3">Permanently delete your account. Optionally remove your messages.</p>
+                    <label class="flex items-center gap-2 mb-3">
+                      <input id="deleteMessagesToggle" type="checkbox" class="h-4 w-4 rounded border-slate-500 bg-slate-800/90" />
+                      <span class="text-sm text-slate-300">Also delete all my messages</span>
+                    </label>
+                    <div class="flex gap-2">
+                      <button id="deleteAccountBtn" class="flex-1 bg-red-600 hover:bg-red-700 px-4 py-2 rounded-md text-white font-semibold">Delete account</button>
+                      <button id="deleteAccountCancel" class="flex-1 bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded-md text-slate-200">Cancel</button>
+                    </div>
+                    <p id="deleteAccountMsg" class="text-xs mt-2 min-h-[1rem]"></p>
+                  </div>
+                </div>
+
+              </div>
             </div>
           </div>
         </div>

@@ -64,3 +64,58 @@
   .relative.group > button[title="Report"] { left: -6px !important; }
   .relative.group > button[title="Reply"] { right: 8px !important; left: auto !important; }
 }
+
+/* iPad / touch device fixes for dropdowns, toggles and selects */
+@media (hover: none) and (pointer: coarse) {
+  /* Ensure selects are fully tappable — iOS Safari needs explicit dimensions + z-index */
+  select {
+    -webkit-appearance: menulist !important;
+    appearance: menulist !important;
+    min-height: 44px;
+    font-size: 16px !important; /* prevents iOS zoom on focus */
+    position: relative;
+    z-index: 5;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Toggle labels need explicit touch handling */
+  label[for] {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    cursor: pointer;
+  }
+
+  /* Ensure toggle containers are not blocked by overflow */
+  .relative.inline-flex {
+    z-index: 5;
+    touch-action: manipulation;
+  }
+
+  /* Fix hidden checkboxes (sr-only) still needing to be togglable via label */
+  .sr-only {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    /* Keep it in the DOM flow so label tap works */
+  }
+
+  /* Make scrollable modals work with selects on iPad */
+  .overflow-y-auto {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Increase touch target for toggle track */
+  label .rounded-full {
+    min-height: 28px;
+    min-width: 48px;
+  }
+
+  /* Inputs shouldn't zoom on iPad */
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  textarea {
+    font-size: 16px !important;
+  }
+}
