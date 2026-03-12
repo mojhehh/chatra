@@ -192,7 +192,7 @@
       // - TODO: Add server-enforced retention/erasure policies and version fields
       // ============================================================================
       
-      const FINGERPRINT_ENABLED = false; 
+      const FINGERPRINT_ENABLED = true; 
       
       
       
@@ -352,36 +352,91 @@
       }
       
       
+      // Persistent random salt — generated once per browser, stored in localStorage + IndexedDB
+      function getOrCreatePersistentSalt() {
+        const LS_KEY = 'chatra_fp_salt';
+        try {
+          let salt = localStorage.getItem(LS_KEY);
+          if (salt && salt.length >= 32) return salt;
+          const arr = new Uint8Array(16);
+          crypto.getRandomValues(arr);
+          salt = Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
+          localStorage.setItem(LS_KEY, salt);
+          // Also persist in IndexedDB as backup
+          try {
+            const req = indexedDB.open('chatra_fp', 1);
+            req.onupgradeneeded = () => req.result.createObjectStore('salt');
+            req.onsuccess = () => {
+              const tx = req.result.transaction('salt', 'readwrite');
+              tx.objectStore('salt').put(salt, 'fp_salt');
+            };
+          } catch (_) {}
+          return salt;
+        } catch (_) {
+          // If localStorage blocked, try IndexedDB synchronously isn't possible,
+          // fall back to session-level random (still unique per tab)
+          if (!window._chatraSessionSalt) {
+            const arr = new Uint8Array(16);
+            crypto.getRandomValues(arr);
+            window._chatraSessionSalt = Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
+          }
+          return window._chatraSessionSalt;
+        }
+      }
+
+      // Try to recover salt from IndexedDB if localStorage was cleared
+      async function recoverSaltFromIDB() {
+        const LS_KEY = 'chatra_fp_salt';
+        try {
+          if (localStorage.getItem(LS_KEY)) return; // already have it
+        } catch (_) { return; }
+        return new Promise(resolve => {
+          try {
+            const req = indexedDB.open('chatra_fp', 1);
+            req.onupgradeneeded = () => req.result.createObjectStore('salt');
+            req.onsuccess = () => {
+              const tx = req.result.transaction('salt', 'readonly');
+              const getReq = tx.objectStore('salt').get('fp_salt');
+              getReq.onsuccess = () => {
+                if (getReq.result) {
+                  try { localStorage.setItem(LS_KEY, getReq.result); } catch (_) {}
+                }
+                resolve();
+              };
+              getReq.onerror = () => resolve();
+            };
+            req.onerror = () => resolve();
+          } catch (_) { resolve(); }
+        });
+      }
+
       async function computeFingerprintHash() {
+        // Recover salt from IndexedDB if localStorage was cleared
+        await recoverSaltFromIDB();
+
         const components = [];
-        
-        
-        
-        
+
+        // Per-user salt — makes fingerprint unique even on identical hardware
+        const salt = getOrCreatePersistentSalt();
+        components.push('salt:' + salt);
+
         components.push('scr:' + screen.width + 'x' + screen.height + 'x' + screen.colorDepth);
         components.push('avail:' + screen.availWidth + 'x' + screen.availHeight);
-        
         
         components.push('tz:' + Intl.DateTimeFormat().resolvedOptions().timeZone);
         components.push('tzo:' + new Date().getTimezoneOffset());
         
-        
         components.push('lang:' + navigator.language);
         components.push('langs:' + (navigator.languages || []).join(','));
         
-        
         components.push('plat:' + navigator.platform);
-        
         
         components.push('cores:' + (navigator.hardwareConcurrency || 'unknown'));
         
-        
         components.push('mem:' + (navigator.deviceMemory || 'unknown'));
-        
         
         components.push('touch:' + ('ontouchstart' in window ? 'yes' : 'no'));
         components.push('maxt:' + (navigator.maxTouchPoints || 0));
-        
         
         try {
           const canvas = document.createElement('canvas');
@@ -396,9 +451,6 @@
         } catch (e) {
           components.push('webgl:error');
         }
-        
-        
-        
         
         if (hasCanvasConsent()) {
           try {
@@ -421,7 +473,6 @@
         } else {
           components.push('canvas:not_consented');
         }
-        
         
         const fpString = components.join('|');
         return await hashString(fpString);
