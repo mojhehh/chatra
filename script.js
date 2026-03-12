@@ -5696,7 +5696,10 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
             if (!activeDMTarget || !activeDMTarget.uid) return;
             if (confirm('Block this user?')) {
               try {
-                await db.ref('blocks/' + currentUserId + '/' + activeDMTarget.uid).set(true);
+                await db.ref('blockedUsers/' + currentUserId + '/' + activeDMTarget.uid).set({
+                  blockedAt: firebase.database.ServerValue.TIMESTAMP,
+                  blockedUsername: activeDMTarget.username || 'Unknown'
+                });
                 showToast('User blocked', 'success');
               } catch (err) {
                 console.error('[DM] block error', err);
