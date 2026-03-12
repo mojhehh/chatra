@@ -244,7 +244,11 @@
 
     if (localStream) {
       localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-    } else if (isSafari || isIOS) {
+      // If audio-only (camera failed), add a recvonly video transceiver so we can still receive video
+      if (localStream.getVideoTracks().length === 0) {
+        pc.addTransceiver('video', { direction: 'recvonly' });
+      }
+    } else {
       pc.addTransceiver('audio', { direction: 'recvonly' });
       pc.addTransceiver('video', { direction: 'recvonly' });
     }
@@ -1095,21 +1099,37 @@
         if (oldTrack) localStream.removeTrack(oldTrack);
         localStream.addTrack(newTrack);
 
-        // Replace track on all peer connections
+        // Replace or add video track on all peer connections
         for (const uid of Object.keys(participants)) {
           const p = participants[uid];
           if (p && p.pc) {
             const sender = p.pc.getSenders().find(s => s.track && s.track.kind === 'video');
-            if (sender) await sender.replaceTrack(newTrack);
+            if (sender) {
+              await sender.replaceTrack(newTrack);
+            } else {
+              // Was audio-only — add new video track and renegotiate
+              const videoSender = p.pc.getSenders().find(s => !s.track && s.track === null);
+              if (videoSender) {
+                await videoSender.replaceTrack(newTrack);
+              } else {
+                p.pc.addTrack(newTrack, localStream);
+              }
+            }
           }
         }
 
         if (deviceId) selectedVideoDeviceId = deviceId;
+        camMuted = false;
+        const camBtn = document.getElementById('gcToggleCam');
+        if (camBtn) camBtn.classList.remove('off');
         const localVid = document.getElementById('gcLocalVideo');
         if (localVid) {
           localVid.srcObject = localStream;
           localVid.play().catch(() => {});
+          const localTile = localVid.closest('.gc-video-tile');
+          if (localTile) localTile.classList.remove('gc-cam-off');
         }
+        console.log('[GroupCall] Video device switched successfully');
         return;
       } catch (err) {
         console.warn('[GroupCall] switchVideoDevice attempt', i, 'failed:', err.name);

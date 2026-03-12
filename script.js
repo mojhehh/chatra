@@ -12069,7 +12069,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             throw new Error('nsfwjs library not loaded');
           }
           // MobileNetV2 mid — 93% accurate, 4.2MB
-          nsfwModel = await nsfwjs.load('MobileNetV2Mid');
+          nsfwModel = await nsfwjs.load('MobileNetV2Mid/');
           console.log('[nsfw] model loaded successfully');
           return nsfwModel;
         } catch (e) {

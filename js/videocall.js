@@ -443,8 +443,12 @@
       localStream.getTracks().forEach(track => {
         pc.addTrack(track, localStream);
       });
-    } else if (isSafari || isIOS) {
-      // Ensure transceivers exist even without local media so Safari negotiates receive channels
+      // If audio-only (camera failed), add a recvonly video transceiver so we can still receive video
+      if (localStream.getVideoTracks().length === 0) {
+        pc.addTransceiver('video', { direction: 'recvonly' });
+      }
+    } else {
+      // No local media at all — ensure transceivers exist so we can receive
       pc.addTransceiver('audio', { direction: 'recvonly' });
       pc.addTransceiver('video', { direction: 'recvonly' });
     }
