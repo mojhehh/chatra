@@ -21,6 +21,8 @@
   let ytPlayer = null;       // YouTube IFrame Player instance
   let ytReady = false;       // YouTube API ready flag
   let ytApiLoaded = false;   // Whether we set up the onYouTubeIframeAPIReady callback
+  let usingServerFallback = false; // true when using <video> server stream
+  let ytEmbedTimeout = null; // timeout for YT embed fallback check
 
   // ── Firebase helpers ───────────────────────────────────
   function getDb() { return firebase.database(); }
@@ -50,11 +52,19 @@
     }
   }
 
+  function showLoading(msg) {
+    var container = document.getElementById('wtPlayer');
+    if (!container) return;
+    container.classList.remove('hidden');
+    container.innerHTML = '<div class="wt-loading"><div class="wt-spinner"></div><p>' + escapeHtml(msg || 'Loading...') + '</p></div>';
+  }
+
   function createYTPlayer(videoId) {
     var container = document.getElementById('wtPlayer');
     if (!container) return;
     container.classList.remove('hidden');
     container.innerHTML = '';
+    usingServerFallback = false;
 
     // Create a child div for the player
     var playerDiv = document.createElement('div');
@@ -79,9 +89,28 @@
         onError: onYTError
       }
     });
+
+    // Fallback: if YT embed doesn't start playing within 6s, use server
+    clearTimeout(ytEmbedTimeout);
+    ytEmbedTimeout = setTimeout(function () {
+      if (!usingServerFallback && ytPlayer) {
+        try {
+          var state = ytPlayer.getPlayerState();
+          // -1=unstarted, 3=buffering — if stuck, fall back
+          if (state === -1 || state === 3 || state === undefined) {
+            console.warn('[Watch] YouTube embed timed out, falling back to server stream');
+            fallbackToServer(videoId);
+          }
+        } catch (e) {
+          console.warn('[Watch] YouTube embed check failed, falling back to server stream');
+          fallbackToServer(videoId);
+        }
+      }
+    }, 6000);
   }
 
   function onYTPlayerReady(event) {
+    clearTimeout(ytEmbedTimeout);
     event.target.playVideo();
     // Sync initial state if host
     if (isHost && currentRoomId) {
@@ -92,6 +121,9 @@
   function onYTStateChange(event) {
     var state = event.data;
     // YT.PlayerState: ENDED=0, PLAYING=1, PAUSED=2, BUFFERING=3, CUED=5
+    if (state === YT.PlayerState.PLAYING) {
+      clearTimeout(ytEmbedTimeout); // YT is working, cancel fallback
+    }
     if (state === YT.PlayerState.ENDED) {
       playNext();
     } else if (isHost && !syncPaused && (state === YT.PlayerState.PLAYING || state === YT.PlayerState.PAUSED)) {
@@ -101,8 +133,60 @@
   }
 
   function onYTError(event) {
-    console.error('[Watch] YouTube player error:', event.data);
-    if (typeof showToast === 'function') showToast('Video playback error', 'error');
+    console.warn('[Watch] YouTube player error:', event.data, '— falling back to server');
+    clearTimeout(ytEmbedTimeout);
+    if (currentVideo) {
+      fallbackToServer(currentVideo.id);
+    }
+  }
+
+  // ── Server Video Fallback (when YouTube is blocked) ────
+  async function fallbackToServer(videoId) {
+    if (usingServerFallback) return;
+    usingServerFallback = true;
+
+    // Destroy any YT player
+    if (ytPlayer && typeof ytPlayer.destroy === 'function') {
+      try { ytPlayer.destroy(); } catch (e) {}
+      ytPlayer = null;
+    }
+
+    showLoading('YouTube blocked — loading from server...');
+    if (typeof showToast === 'function') showToast('Loading video from server (may take a moment)...', 'info');
+
+    var url = await fetchServerUrl();
+    var container = document.getElementById('wtPlayer');
+    if (!container) return;
+
+    container.innerHTML = '';
+    var videoEl = document.createElement('video');
+    videoEl.id = 'wtServerVideo';
+    videoEl.className = 'wt-server-video';
+    videoEl.controls = true;
+    videoEl.autoplay = true;
+    videoEl.playsInline = true;
+    videoEl.src = url + '/api/video/' + encodeURIComponent(videoId);
+    container.appendChild(videoEl);
+
+    // Wire events for room sync
+    videoEl.addEventListener('play', function () { if (isHost) syncPlayState(); });
+    videoEl.addEventListener('pause', function () { if (isHost) syncPlayState(); });
+    videoEl.addEventListener('seeked', function () {
+      if (isHost) {
+        clearTimeout(seekDebounce);
+        seekDebounce = setTimeout(syncPlayState, 300);
+      }
+    });
+    videoEl.addEventListener('ended', function () { playNext(); });
+    videoEl.addEventListener('canplay', function () {
+      if (typeof showToast === 'function') showToast('Video ready!', 'info');
+    });
+    videoEl.addEventListener('error', function () {
+      if (typeof showToast === 'function') showToast('Video failed to load from server', 'error');
+    });
+
+    videoEl.load();
+    videoEl.play().catch(function () {});
   }
 
   // ── Server URL (from procces Firebase or direct) ──────
@@ -179,6 +263,8 @@
   // ── Player ─────────────────────────────────────────────
   async function playVideo(video) {
     currentVideo = video;
+    usingServerFallback = false;
+    clearTimeout(ytEmbedTimeout);
     var placeholder = document.getElementById('wtPlaceholder');
     var playerContainer = document.getElementById('wtPlayer');
     var playerInfo = document.getElementById('wtPlayerInfo');
@@ -190,23 +276,39 @@
     if (playerTitle) playerTitle.textContent = video.title;
     if (playerArtist) playerArtist.textContent = video.artist;
 
-    // Use YouTube IFrame Player API
-    if (ytReady && ytPlayer && typeof ytPlayer.loadVideoById === 'function') {
-      // Player already exists, just load new video
+    // Try YouTube IFrame Player API first
+    if (ytReady && ytPlayer && typeof ytPlayer.loadVideoById === 'function' && !usingServerFallback) {
       ytPlayer.loadVideoById(video.id);
+      // Set fallback timeout
+      clearTimeout(ytEmbedTimeout);
+      ytEmbedTimeout = setTimeout(function () {
+        if (!usingServerFallback) {
+          try {
+            var state = ytPlayer.getPlayerState();
+            if (state === -1 || state === 3 || state === undefined) {
+              fallbackToServer(video.id);
+            }
+          } catch (e) { fallbackToServer(video.id); }
+        }
+      }, 6000);
     } else if (ytReady) {
-      // Create player for first time
       createYTPlayer(video.id);
     } else {
-      // API not ready yet, wait for it
+      // YT API not loaded (might be blocked) — wait briefly then fall back to server
+      showLoading('Connecting...');
+      var waited = 0;
       var waitInterval = setInterval(function () {
+        waited += 200;
         if (ytReady) {
           clearInterval(waitInterval);
           createYTPlayer(video.id);
+        } else if (waited >= 3000) {
+          // YT API itself is blocked, go straight to server
+          clearInterval(waitInterval);
+          console.warn('[Watch] YouTube API failed to load, using server stream');
+          fallbackToServer(video.id);
         }
       }, 200);
-      // Timeout after 10s
-      setTimeout(function () { clearInterval(waitInterval); }, 10000);
     }
 
     // If in a room and I'm host, sync the video + play state
@@ -223,12 +325,13 @@
   }
 
   function stopVideo() {
+    clearTimeout(ytEmbedTimeout);
     var placeholder = document.getElementById('wtPlaceholder');
     var playerContainer = document.getElementById('wtPlayer');
     var playerInfo = document.getElementById('wtPlayerInfo');
 
     if (ytPlayer && typeof ytPlayer.destroy === 'function') {
-      ytPlayer.destroy();
+      try { ytPlayer.destroy(); } catch (e) {}
       ytPlayer = null;
     }
     if (playerContainer) {
@@ -238,6 +341,7 @@
     if (placeholder) placeholder.classList.remove('hidden');
     if (playerInfo) playerInfo.classList.add('hidden');
     currentVideo = null;
+    usingServerFallback = false;
   }
 
   // ── Queue ──────────────────────────────────────────────
@@ -467,25 +571,38 @@
   }
 
   function applyPlayState(state) {
-    if (!ytPlayer || !currentVideo || typeof ytPlayer.getCurrentTime !== 'function') return;
-
+    if (!currentVideo) return;
     syncPaused = true;
 
-    // Seek if off by more than 2 seconds
     var serverTime = state.time || 0;
     var elapsed = (Date.now() - (state.updatedAt || Date.now())) / 1000;
     var expectedTime = state.playing ? serverTime + elapsed : serverTime;
-    var currentTime = ytPlayer.getCurrentTime() || 0;
 
-    if (Math.abs(currentTime - expectedTime) > 2) {
-      ytPlayer.seekTo(expectedTime, true);
-    }
-
-    var playerState = ytPlayer.getPlayerState();
-    if (state.playing && playerState !== YT.PlayerState.PLAYING) {
-      ytPlayer.playVideo();
-    } else if (!state.playing && playerState === YT.PlayerState.PLAYING) {
-      ytPlayer.pauseVideo();
+    if (usingServerFallback) {
+      // Server <video> fallback
+      var videoEl = document.getElementById('wtServerVideo');
+      if (!videoEl) { syncPaused = false; return; }
+      if (Math.abs(videoEl.currentTime - expectedTime) > 2) {
+        videoEl.currentTime = expectedTime;
+      }
+      if (state.playing && videoEl.paused) {
+        videoEl.play().catch(function () {});
+      } else if (!state.playing && !videoEl.paused) {
+        videoEl.pause();
+      }
+    } else {
+      // YouTube player
+      if (!ytPlayer || typeof ytPlayer.getCurrentTime !== 'function') { syncPaused = false; return; }
+      var currentTime = ytPlayer.getCurrentTime() || 0;
+      if (Math.abs(currentTime - expectedTime) > 2) {
+        ytPlayer.seekTo(expectedTime, true);
+      }
+      var playerState = ytPlayer.getPlayerState();
+      if (state.playing && playerState !== YT.PlayerState.PLAYING) {
+        ytPlayer.playVideo();
+      } else if (!state.playing && playerState === YT.PlayerState.PLAYING) {
+        ytPlayer.pauseVideo();
+      }
     }
 
     setTimeout(function () { syncPaused = false; }, 500);
@@ -493,14 +610,25 @@
 
   function syncPlayState() {
     if (!roomRef || !isHost || syncPaused) return;
-    if (!ytPlayer || typeof ytPlayer.getCurrentTime !== 'function') return;
 
-    var playerState = ytPlayer.getPlayerState();
-    var isPlaying = playerState === YT.PlayerState.PLAYING;
+    var playing = false;
+    var time = 0;
+
+    if (usingServerFallback) {
+      var videoEl = document.getElementById('wtServerVideo');
+      if (!videoEl) return;
+      playing = !videoEl.paused;
+      time = videoEl.currentTime || 0;
+    } else {
+      if (!ytPlayer || typeof ytPlayer.getCurrentTime !== 'function') return;
+      var playerState = ytPlayer.getPlayerState();
+      playing = playerState === YT.PlayerState.PLAYING;
+      time = ytPlayer.getCurrentTime() || 0;
+    }
 
     roomRef.child('playState').set({
-      playing: isPlaying,
-      time: ytPlayer.getCurrentTime() || 0,
+      playing: playing,
+      time: time,
       updatedAt: Date.now()
     });
   }

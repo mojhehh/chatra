@@ -15,6 +15,38 @@
   border: none;
 }
 
+/* Server fallback video */
+.wt-server-video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+}
+
+/* Loading overlay */
+.wt-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  width: 100%;
+  height: 100%;
+  color: #94a3b8;
+  font-size: 0.875rem;
+}
+.wt-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(148, 163, 184, 0.2);
+  border-top-color: #38bdf8;
+  border-radius: 50%;
+  animation: wt-spin 0.8s linear infinite;
+}
+@keyframes wt-spin {
+  to { transform: rotate(360deg); }
+}
+
 /* Search results */
 .wt-search-item {
   display: flex;
