@@ -1,4 +1,4 @@
-// Chatra Watch Together — YouTube search + video player via Chatra Media Server
+// Chatra Watch Together — YouTube search + YouTube embed player
 // Synced playback through Firebase Realtime Database
 
 (function () {
@@ -18,6 +18,9 @@
   let lastSyncTime = 0;
   let queue = [];            // upcoming videos
   let searchTimeout = null;
+  let ytPlayer = null;       // YouTube IFrame Player instance
+  let ytReady = false;       // YouTube API ready flag
+  let ytApiLoaded = false;   // Whether we set up the onYouTubeIframeAPIReady callback
 
   // ── Firebase helpers ───────────────────────────────────
   function getDb() { return firebase.database(); }
@@ -28,6 +31,78 @@
     var div = document.createElement('div');
     div.appendChild(document.createTextNode(text || ''));
     return div.innerHTML;
+  }
+
+  // ── YouTube IFrame Player API ──────────────────────────
+  function initYouTubeAPI() {
+    if (ytApiLoaded) return;
+    ytApiLoaded = true;
+
+    // The API script is loaded in index.html; set up the callback
+    if (window.YT && window.YT.Player) {
+      ytReady = true;
+    } else {
+      var prev = window.onYouTubeIframeAPIReady;
+      window.onYouTubeIframeAPIReady = function () {
+        ytReady = true;
+        if (typeof prev === 'function') prev();
+      };
+    }
+  }
+
+  function createYTPlayer(videoId) {
+    var container = document.getElementById('wtPlayer');
+    if (!container) return;
+    container.classList.remove('hidden');
+    container.innerHTML = '';
+
+    // Create a child div for the player
+    var playerDiv = document.createElement('div');
+    playerDiv.id = 'wtYTPlayerInner';
+    container.appendChild(playerDiv);
+
+    ytPlayer = new YT.Player('wtYTPlayerInner', {
+      width: '100%',
+      height: '100%',
+      videoId: videoId,
+      playerVars: {
+        autoplay: 1,
+        controls: 1,
+        modestbranding: 1,
+        rel: 0,
+        fs: 1,
+        playsinline: 1
+      },
+      events: {
+        onReady: onYTPlayerReady,
+        onStateChange: onYTStateChange,
+        onError: onYTError
+      }
+    });
+  }
+
+  function onYTPlayerReady(event) {
+    event.target.playVideo();
+    // Sync initial state if host
+    if (isHost && currentRoomId) {
+      setTimeout(syncPlayState, 500);
+    }
+  }
+
+  function onYTStateChange(event) {
+    var state = event.data;
+    // YT.PlayerState: ENDED=0, PLAYING=1, PAUSED=2, BUFFERING=3, CUED=5
+    if (state === YT.PlayerState.ENDED) {
+      playNext();
+    } else if (isHost && !syncPaused && (state === YT.PlayerState.PLAYING || state === YT.PlayerState.PAUSED)) {
+      clearTimeout(seekDebounce);
+      seekDebounce = setTimeout(syncPlayState, 300);
+    }
+  }
+
+  function onYTError(event) {
+    console.error('[Watch] YouTube player error:', event.data);
+    if (typeof showToast === 'function') showToast('Video playback error', 'error');
   }
 
   // ── Server URL (from procces Firebase or direct) ──────
@@ -104,23 +179,35 @@
   // ── Player ─────────────────────────────────────────────
   async function playVideo(video) {
     currentVideo = video;
-    var url = await fetchServerUrl();
-    var videoEl = document.getElementById('wtVideo');
     var placeholder = document.getElementById('wtPlaceholder');
+    var playerContainer = document.getElementById('wtPlayer');
     var playerInfo = document.getElementById('wtPlayerInfo');
     var playerTitle = document.getElementById('wtPlayerTitle');
     var playerArtist = document.getElementById('wtPlayerArtist');
 
     if (placeholder) placeholder.classList.add('hidden');
-    if (videoEl) {
-      videoEl.classList.remove('hidden');
-      videoEl.src = url + '/api/video/' + video.id;
-      videoEl.load();
-      videoEl.play().catch(function () {});
-    }
     if (playerInfo) playerInfo.classList.remove('hidden');
     if (playerTitle) playerTitle.textContent = video.title;
     if (playerArtist) playerArtist.textContent = video.artist;
+
+    // Use YouTube IFrame Player API
+    if (ytReady && ytPlayer && typeof ytPlayer.loadVideoById === 'function') {
+      // Player already exists, just load new video
+      ytPlayer.loadVideoById(video.id);
+    } else if (ytReady) {
+      // Create player for first time
+      createYTPlayer(video.id);
+    } else {
+      // API not ready yet, wait for it
+      var waitInterval = setInterval(function () {
+        if (ytReady) {
+          clearInterval(waitInterval);
+          createYTPlayer(video.id);
+        }
+      }, 200);
+      // Timeout after 10s
+      setTimeout(function () { clearInterval(waitInterval); }, 10000);
+    }
 
     // If in a room and I'm host, sync the video + play state
     if (currentRoomId && isHost && roomRef) {
@@ -131,19 +218,22 @@
         duration: video.duration,
         thumbnail: video.thumbnail
       });
-      syncPlayState();
+      setTimeout(syncPlayState, 1000);
     }
   }
 
   function stopVideo() {
-    var videoEl = document.getElementById('wtVideo');
     var placeholder = document.getElementById('wtPlaceholder');
+    var playerContainer = document.getElementById('wtPlayer');
     var playerInfo = document.getElementById('wtPlayerInfo');
-    if (videoEl) {
-      videoEl.pause();
-      videoEl.removeAttribute('src');
-      videoEl.load();
-      videoEl.classList.add('hidden');
+
+    if (ytPlayer && typeof ytPlayer.destroy === 'function') {
+      ytPlayer.destroy();
+      ytPlayer = null;
+    }
+    if (playerContainer) {
+      playerContainer.innerHTML = '';
+      playerContainer.classList.add('hidden');
     }
     if (placeholder) placeholder.classList.remove('hidden');
     if (playerInfo) playerInfo.classList.add('hidden');
@@ -377,8 +467,7 @@
   }
 
   function applyPlayState(state) {
-    var videoEl = document.getElementById('wtVideo');
-    if (!videoEl || !currentVideo) return;
+    if (!ytPlayer || !currentVideo || typeof ytPlayer.getCurrentTime !== 'function') return;
 
     syncPaused = true;
 
@@ -386,15 +475,17 @@
     var serverTime = state.time || 0;
     var elapsed = (Date.now() - (state.updatedAt || Date.now())) / 1000;
     var expectedTime = state.playing ? serverTime + elapsed : serverTime;
+    var currentTime = ytPlayer.getCurrentTime() || 0;
 
-    if (Math.abs(videoEl.currentTime - expectedTime) > 2) {
-      videoEl.currentTime = expectedTime;
+    if (Math.abs(currentTime - expectedTime) > 2) {
+      ytPlayer.seekTo(expectedTime, true);
     }
 
-    if (state.playing && videoEl.paused) {
-      videoEl.play().catch(function () {});
-    } else if (!state.playing && !videoEl.paused) {
-      videoEl.pause();
+    var playerState = ytPlayer.getPlayerState();
+    if (state.playing && playerState !== YT.PlayerState.PLAYING) {
+      ytPlayer.playVideo();
+    } else if (!state.playing && playerState === YT.PlayerState.PLAYING) {
+      ytPlayer.pauseVideo();
     }
 
     setTimeout(function () { syncPaused = false; }, 500);
@@ -402,12 +493,14 @@
 
   function syncPlayState() {
     if (!roomRef || !isHost || syncPaused) return;
-    var videoEl = document.getElementById('wtVideo');
-    if (!videoEl) return;
+    if (!ytPlayer || typeof ytPlayer.getCurrentTime !== 'function') return;
+
+    var playerState = ytPlayer.getPlayerState();
+    var isPlaying = playerState === YT.PlayerState.PLAYING;
 
     roomRef.child('playState').set({
-      playing: !videoEl.paused,
-      time: videoEl.currentTime,
+      playing: isPlaying,
+      time: ytPlayer.getCurrentTime() || 0,
       updatedAt: Date.now()
     });
   }
@@ -465,6 +558,9 @@
 
   // ── Init (called when watch page is shown) ─────────────
   function initWatchPage() {
+    // Initialize YouTube IFrame API
+    initYouTubeAPI();
+
     // Fetch server URL in background
     fetchServerUrl();
 
@@ -492,23 +588,6 @@
           if (loading) loading.innerHTML = '<p class="text-slate-400 text-sm text-center py-4">Searching...</p>';
           searchVideos(q).then(renderSearchResults);
         }
-      });
-    }
-
-    // Wire video events for host sync
-    var videoEl = document.getElementById('wtVideo');
-    if (videoEl && !videoEl._wired) {
-      videoEl._wired = true;
-      videoEl.addEventListener('play', function () { if (isHost) syncPlayState(); });
-      videoEl.addEventListener('pause', function () { if (isHost) syncPlayState(); });
-      videoEl.addEventListener('seeked', function () {
-        if (isHost) {
-          clearTimeout(seekDebounce);
-          seekDebounce = setTimeout(syncPlayState, 300);
-        }
-      });
-      videoEl.addEventListener('ended', function () {
-        playNext();
       });
     }
 
