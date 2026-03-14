@@ -119,3 +119,43 @@
     font-size: 16px !important;
   }
 }
+
+.modal-overlay {
+  padding-top: max(1rem, env(safe-area-inset-top, 0px));
+  padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+}
+
+.modal-overlay > .glass-card,
+#privacySettingsModal > .glass-card {
+  max-height: calc(var(--app-height, 100vh) - max(1rem, env(safe-area-inset-top, 0px)) - max(1rem, env(safe-area-inset-bottom, 0px)) - 1rem);
+}
+
+#settingsModal {
+  min-height: var(--app-height, 100vh);
+  height: calc(var(--vh, 1vh) * 100);
+}
+
+#settingsModal > div {
+  min-height: 0;
+}
+
+#settingsContent {
+  padding-bottom: calc(2rem + env(safe-area-inset-bottom, 0px));
+}
+
+body.keyboard-open .modal-overlay {
+  align-items: flex-start;
+}
+
+body.keyboard-open .modal-overlay > .glass-card,
+body.keyboard-open #privacySettingsModal > .glass-card {
+  margin-top: max(0.75rem, env(safe-area-inset-top, 0px));
+}
+
+@media (max-width: 900px) {
+  #settingsContent > div {
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+    padding-bottom: calc(6rem + env(safe-area-inset-bottom, 0px)) !important;
+  }
+}

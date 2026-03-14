@@ -1,0 +1,151 @@
+/* ── Watch Together ─────────────────────────────────── */
+
+/* Search results */
+.wt-search-item {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  width: 100%;
+  padding: 0.5rem;
+  border-radius: 0.5rem;
+  background: transparent;
+  border: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.wt-search-item:hover {
+  background: rgba(51, 65, 85, 0.6);
+}
+.wt-search-thumb {
+  width: 5rem;
+  height: 2.8rem;
+  object-fit: cover;
+  border-radius: 0.375rem;
+  flex-shrink: 0;
+  background: rgba(30, 41, 59, 0.5);
+}
+.wt-search-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+.wt-search-title {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #e2e8f0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wt-search-meta {
+  font-size: 0.6875rem;
+  color: #94a3b8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Queue */
+.wt-queue-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.5rem;
+  border-radius: 0.375rem;
+  transition: background 0.15s;
+}
+.wt-queue-item:hover {
+  background: rgba(51, 65, 85, 0.4);
+}
+.wt-queue-num {
+  font-size: 0.625rem;
+  color: #64748b;
+  width: 1rem;
+  text-align: center;
+  flex-shrink: 0;
+}
+.wt-queue-thumb {
+  width: 3rem;
+  height: 1.75rem;
+  object-fit: cover;
+  border-radius: 0.25rem;
+  flex-shrink: 0;
+}
+.wt-queue-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+.wt-queue-title {
+  font-size: 0.75rem;
+  color: #e2e8f0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wt-queue-artist {
+  font-size: 0.625rem;
+  color: #94a3b8;
+}
+.wt-queue-remove {
+  background: none;
+  border: none;
+  color: #64748b;
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 0.25rem;
+  border-radius: 0.25rem;
+  transition: color 0.15s, background 0.15s;
+  flex-shrink: 0;
+}
+.wt-queue-remove:hover {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.15);
+}
+
+/* Sidebar tabs */
+.wt-sidebar-tab {
+  color: #94a3b8;
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s, border-color 0.15s;
+}
+.wt-sidebar-tab:hover {
+  color: #e2e8f0;
+}
+.wt-sidebar-tab.active {
+  color: #38bdf8;
+  border-bottom-color: #38bdf8;
+}
+
+/* Room chat */
+.wt-chat-msg {
+  padding: 0.25rem 0;
+}
+.wt-chat-name {
+  font-weight: 600;
+  color: #38bdf8;
+  margin-right: 0.25rem;
+}
+.wt-chat-text {
+  color: #cbd5e1;
+}
+.wt-chat-mine .wt-chat-name {
+  color: #a78bfa;
+}
+
+/* Responsive: stack sidebar below on mobile */
+@media (max-width: 768px) {
+  #watchPage .flex-1.min-h-0 > .flex {
+    flex-direction: column;
+  }
+  #watchPage .w-80 {
+    width: 100%;
+    max-height: 40vh;
+    border-left: none;
+    border-top: 1px solid rgba(51, 65, 85, 0.5);
+  }
+}

@@ -17,6 +17,7 @@
     <link rel="stylesheet" href="css/responsive.css">
     <link rel="stylesheet" href="css/walkthrough.css">
     <link rel="stylesheet" href="css/videocall.css">
+    <link rel="stylesheet" href="css/watchtogether.css">
     
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     
@@ -31,13 +32,17 @@
         --vh: 1vh;
         --app-height: 100vh;
         --keyboard-height: 0px;
+        --safe-top: env(safe-area-inset-top);
+        --safe-bottom: env(safe-area-inset-bottom);
       }
       html {
         height: -webkit-fill-available;
         height: 100%;
+        overscroll-behavior: none;
       }
       body { 
-        padding-top: env(safe-area-inset-top);
+        padding-top: var(--safe-top);
+        padding-bottom: var(--safe-bottom);
         min-height: -webkit-fill-available;
         min-height: var(--app-height, 100vh);
         min-height: 100vh;
@@ -45,10 +50,11 @@
       
       .h-screen-safe {
         height: calc(var(--vh, 1vh) * 100);
+        min-height: calc(var(--vh, 1vh) * 100);
       }
       @supports (padding-top: env(safe-area-inset-top)) {
-        header { padding-top: calc(1rem + env(safe-area-inset-top)); }
-        body { padding-top: env(safe-area-inset-top); }
+        header { padding-top: calc(1rem + var(--safe-top)); }
+        body { padding-top: var(--safe-top); padding-bottom: var(--safe-bottom); }
       }
       
       .ios-device input:focus ~ *,
@@ -137,6 +143,66 @@
         <div class="text-center">
           <img id="shareQRCode" alt="QR code" class="mx-auto" src="" />
           <p class="text-xs text-slate-400 mt-2">Scan to open</p>
+        </div>
+      </div>
+    </div>
+
+    <div id="featureAnnouncementModal" class="fixed inset-0 z-[55] hidden items-center justify-center px-4 bg-black/60 backdrop-blur-sm">
+      <div class="glass-card max-w-lg w-full rounded-2xl p-6 sm:p-7">
+        <div class="flex items-start justify-between gap-4 mb-4">
+          <div>
+            <h3 class="text-xl font-semibold text-slate-100">What's New</h3>
+            <p class="mt-1 text-sm text-slate-400">A quicker, cleaner Chatra experience across phones, tablets, and desktop.</p>
+          </div>
+          <div class="h-12 w-12 rounded-2xl bg-sky-500/15 text-sky-300 flex items-center justify-center text-xl font-semibold">1.5</div>
+        </div>
+        <div class="grid gap-3 text-sm text-slate-300">
+          <div class="rounded-xl border border-slate-700/60 bg-slate-900/50 p-3">
+            <p class="font-medium text-slate-100">Smoother tablet layout</p>
+            <p class="mt-1 text-slate-400">Settings, modals, and calls now behave better on iPad-sized screens.</p>
+          </div>
+          <div class="rounded-xl border border-slate-700/60 bg-slate-900/50 p-3">
+            <p class="font-medium text-slate-100">More control over your look</p>
+            <p class="mt-1 text-slate-400">Pick an accent color to match your theme and make the app feel more personal.</p>
+          </div>
+          <div class="rounded-xl border border-slate-700/60 bg-slate-900/50 p-3">
+            <p class="font-medium text-slate-100">Better privacy visibility</p>
+            <p class="mt-1 text-slate-400">Device-check consent is now visible and manageable from the app UI.</p>
+          </div>
+        </div>
+        <button id="dismissFeatureAnnouncement" type="button" class="mt-6 w-full rounded-xl bg-sky-600 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-sky-500">
+          Continue
+        </button>
+      </div>
+    </div>
+
+    <div id="canvasConsentModal" class="modal-overlay fixed inset-0 z-[56] modal-closed items-center justify-center px-4">
+      <div class="glass-card max-w-lg w-full rounded-2xl p-6 sm:p-7 max-h-[90vh] overflow-y-auto">
+        <div class="mb-4">
+          <h3 class="text-xl font-semibold text-slate-100">Allow device checks?</h3>
+          <p class="mt-2 text-sm leading-6 text-slate-300">
+            Chatra can store a browser fingerprint to help detect ban evasion, repeated abuse, and other account safety issues.
+          </p>
+        </div>
+        <div class="space-y-3 text-sm text-slate-400">
+          <div class="rounded-xl border border-slate-700/60 bg-slate-900/50 p-3">
+            This is only used for safety and moderation. It is not used for ads or personalization.
+          </div>
+          <div class="rounded-xl border border-slate-700/60 bg-slate-900/50 p-3">
+            You can change this later from Privacy Settings.
+          </div>
+        </div>
+        <div class="mt-6 flex flex-col gap-3 sm:flex-row">
+          <button id="canvasConsentEnableBtn" type="button" class="flex-1 rounded-xl bg-sky-600 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-sky-500">
+            Allow device checks
+          </button>
+          <button id="canvasConsentSkipBtn" type="button" class="flex-1 rounded-xl bg-slate-800 px-4 py-3 text-sm font-medium text-slate-100 transition-colors hover:bg-slate-700">
+            Not now
+          </button>
+        </div>
+        <div class="mt-4 flex flex-wrap items-center gap-4 text-xs text-slate-400">
+          <a id="canvasConsentSettingsLink" href="#" class="underline underline-offset-4 hover:text-slate-200">Open privacy settings</a>
+          <a id="canvasConsentPrivacyLink" href="#" class="underline underline-offset-4 hover:text-slate-200">Read privacy policy</a>
         </div>
       </div>
     </div>
@@ -1274,6 +1340,17 @@
           </svg>
           <span class="hidden sm:inline">Groups</span>
         </button>
+        
+        <button
+          id="navWatch"
+          class="nav-tab flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all relative z-10"
+          title="Watch Together — search and watch videos with friends"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+          </svg>
+          <span class="hidden sm:inline">Watch</span>
+        </button>
       </div>
 
       <div class="flex items-center gap-3">
@@ -1395,6 +1472,23 @@
                       <option value="forest">🌲 Forest</option>
                       <option value="sunset">🌅 Sunset</option>
                     </select>
+                  </div>
+
+                  <div class="mb-6 pb-6 border-b border-slate-700/50">
+                    <label class="text-sm font-medium text-slate-200 block mb-2">Accent Color</label>
+                    <div class="flex flex-wrap gap-2 mb-3">
+                      <button type="button" class="accent-preset h-9 w-9 rounded-full bg-sky-500 ring-2 ring-transparent transition-transform hover:scale-105" data-accent="#0ea5e9" aria-label="Sky accent"></button>
+                      <button type="button" class="accent-preset h-9 w-9 rounded-full bg-emerald-500 ring-2 ring-transparent transition-transform hover:scale-105" data-accent="#10b981" aria-label="Emerald accent"></button>
+                      <button type="button" class="accent-preset h-9 w-9 rounded-full bg-violet-500 ring-2 ring-transparent transition-transform hover:scale-105" data-accent="#8b5cf6" aria-label="Violet accent"></button>
+                      <button type="button" class="accent-preset h-9 w-9 rounded-full bg-amber-500 ring-2 ring-transparent transition-transform hover:scale-105" data-accent="#f59e0b" aria-label="Amber accent"></button>
+                      <button type="button" class="accent-preset h-9 w-9 rounded-full bg-rose-500 ring-2 ring-transparent transition-transform hover:scale-105" data-accent="#f43f5e" aria-label="Rose accent"></button>
+                    </div>
+                    <div class="flex items-center gap-3">
+                      <input id="customAccentColor" type="color" value="#0ea5e9" class="h-11 w-16 rounded-lg border border-slate-600 bg-slate-800 p-1 cursor-pointer" />
+                      <button id="resetAccentBtn" type="button" class="rounded-lg bg-slate-800 px-4 py-2 text-sm text-slate-100 transition-colors hover:bg-slate-700">
+                        Reset accent
+                      </button>
+                    </div>
                   </div>
 
                   <div class="mb-6 pb-6 border-b border-slate-700/50 flex items-center justify-between">
@@ -2487,7 +2581,7 @@
             id="friendRequestsCloseBtn"
             class="p-1 hover:bg-slate-700 rounded-lg transition-colors"
           >
-            ✕
+            &times;
           </button>
         </div>
 
@@ -2513,7 +2607,7 @@
             id="friendsListCloseBtn"
             class="p-1 hover:bg-slate-700 rounded-lg transition-colors"
           >
-            ✕
+            &times;
           </button>
         </div>
 
@@ -2562,7 +2656,7 @@
             id="blockedUsersCloseBtn"
             class="p-1 hover:bg-slate-700 rounded-lg transition-colors"
           >
-            ✕
+            &times;
           </button>
         </div>
 
@@ -2822,6 +2916,16 @@
               </svg>
               <span class="hidden sm:inline">Groups</span>
             </button>
+            <button
+              id="navWatch2"
+              class="nav-tab flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all"
+              title="Watch Together"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+              </svg>
+              <span class="hidden sm:inline">Watch</span>
+            </button>
           </div>
 
           <button
@@ -3056,6 +3160,7 @@
               <button id="navGlobalChat3" class="nav-tab flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all"><span class="hidden sm:inline">Global Chat</span></button>
               <button id="navDMs3" class="nav-tab flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all"><span class="hidden sm:inline">DMs</span></button>
               <button id="navGroups3" class="nav-tab active flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all"><span class="hidden sm:inline">Groups</span></button>
+              <button id="navWatch3" class="nav-tab flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all"><span class="hidden sm:inline">Watch</span></button>
             </div>
 
             <button id="groupsPageLogoutBtn" class="px-3 py-1.5 text-xs rounded-lg bg-slate-700 hover:bg-slate-600 transition-colors">Logout</button>
@@ -3142,6 +3247,115 @@
                   <button id="groupsPageSendBtn" type="submit" class="px-4 py-2.5 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-sm font-medium">Send</button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ─── Watch Together Page ─── -->
+      <div
+        id="watchPage"
+        class="hidden flex-1 min-h-0 flex flex-col"
+      >
+        <div class="glass-card flex-1 min-h-0 flex flex-col w-full rounded-none overflow-hidden">
+          <!-- Header -->
+          <div class="relative flex items-center justify-between px-4 sm:px-5 py-3 bg-slate-900/70 border-b border-slate-800/50">
+            <div class="flex items-center gap-3">
+              <button id="watchPageMenuToggle" class="p-1.5 hover:bg-slate-700 rounded-lg transition-colors" title="Menu">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-slate-300">
+                  <line x1="3" y1="6" x2="21" y2="6"></line>
+                  <line x1="3" y1="12" x2="21" y2="12"></line>
+                  <line x1="3" y1="18" x2="21" y2="18"></line>
+                </svg>
+              </button>
+              <span class="text-sm text-slate-200 font-medium">Watch Together</span>
+            </div>
+
+            <div class="absolute left-1/2 transform -translate-x-1/2 flex items-center gap-1 bg-slate-800/60 rounded-lg p-1">
+              <button id="navGlobalChat4" class="nav-tab flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all"><span class="hidden sm:inline">Global Chat</span></button>
+              <button id="navDMs4" class="nav-tab flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all"><span class="hidden sm:inline">DMs</span></button>
+              <button id="navGroups4" class="nav-tab flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all"><span class="hidden sm:inline">Groups</span></button>
+              <button id="navWatch4" class="nav-tab active flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all"><span class="hidden sm:inline">Watch</span></button>
+            </div>
+
+            <div class="flex items-center gap-2">
+              <span id="wtParticipantCount" class="text-xs text-slate-400"></span>
+              <button id="watchPageLogoutBtn" class="px-3 py-1.5 text-xs rounded-lg bg-slate-700 hover:bg-slate-600 transition-colors">Logout</button>
+            </div>
+          </div>
+
+          <!-- Main content: player + sidebar -->
+          <div class="flex flex-1 min-h-0">
+            <!-- Video area -->
+            <div class="flex-1 flex flex-col min-h-0 bg-slate-950">
+              <!-- Player -->
+              <div class="relative flex-1 min-h-0 flex items-center justify-center bg-black">
+                <div id="wtPlaceholder" class="flex flex-col items-center gap-3 text-slate-500">
+                  <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                  </svg>
+                  <p class="text-sm">Search for a video to start watching</p>
+                </div>
+                <video id="wtVideo" class="hidden w-full h-full object-contain" controls></video>
+              </div>
+              <!-- Now Playing info -->
+              <div id="wtPlayerInfo" class="hidden px-4 py-2 bg-slate-900/80 border-t border-slate-800">
+                <p id="wtPlayerTitle" class="text-sm font-medium text-slate-200 truncate"></p>
+                <p id="wtPlayerArtist" class="text-xs text-slate-400 truncate"></p>
+              </div>
+            </div>
+
+            <!-- Sidebar: search + queue + room -->
+            <div class="w-80 bg-slate-900/70 border-l border-slate-800 flex flex-col min-h-0">
+              <!-- Tabs: Search / Queue / Room -->
+              <div class="flex border-b border-slate-800 bg-slate-900/80">
+                <button id="wtTabSearch" class="wt-sidebar-tab active flex-1 px-3 py-2 text-xs font-medium text-center transition-colors">Search</button>
+                <button id="wtTabQueue" class="wt-sidebar-tab flex-1 px-3 py-2 text-xs font-medium text-center transition-colors">Queue</button>
+                <button id="wtTabRoom" class="wt-sidebar-tab flex-1 px-3 py-2 text-xs font-medium text-center transition-colors">Room</button>
+              </div>
+
+              <!-- Search panel -->
+              <div id="wtPanelSearch" class="wt-panel flex-1 flex flex-col min-h-0">
+                <div class="p-3 border-b border-slate-800">
+                  <input id="wtSearchInput" type="text" placeholder="Search YouTube..." class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/50 outline-none text-sm" />
+                </div>
+                <div id="wtSearchResults" class="flex-1 overflow-y-auto p-2 space-y-1">
+                  <p class="text-slate-500 text-sm text-center py-4">Search for videos above</p>
+                </div>
+              </div>
+
+              <!-- Queue panel -->
+              <div id="wtPanelQueue" class="wt-panel hidden flex-1 flex flex-col min-h-0">
+                <div id="wtQueue" class="flex-1 overflow-y-auto p-2 space-y-1">
+                  <p class="text-slate-500 text-xs text-center py-2">Queue is empty</p>
+                </div>
+              </div>
+
+              <!-- Room panel -->
+              <div id="wtPanelRoom" class="wt-panel hidden flex-1 flex flex-col min-h-0">
+                <div class="p-3 space-y-2 border-b border-slate-800">
+                  <div class="flex items-center gap-2">
+                    <button id="wtCreateRoom" class="flex-1 px-3 py-2 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-xs font-medium transition-colors">Create Room</button>
+                    <button id="wtJoinRoom" class="flex-1 px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-xs font-medium transition-colors">Join Room</button>
+                  </div>
+                  <button id="wtLeaveRoom" class="hidden w-full px-3 py-2 rounded-lg bg-red-600/80 hover:bg-red-600 text-white text-xs font-medium transition-colors">Leave Room</button>
+                  <div class="flex items-center gap-2">
+                    <span id="wtRoomCode" class="hidden text-xs text-sky-400 font-mono flex-1 truncate"></span>
+                    <button id="wtCopyCode" class="hidden text-xs text-slate-400 hover:text-white transition-colors" title="Copy room code">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+                    </button>
+                    <span id="wtHostBadge" class="hidden text-[10px] bg-amber-600/60 text-amber-200 px-2 py-0.5 rounded-full">Host</span>
+                  </div>
+                </div>
+                <div id="wtRoomPanel" class="hidden flex-1 flex flex-col min-h-0">
+                  <div id="wtRoomChatMessages" class="flex-1 overflow-y-auto p-2 space-y-1 text-xs">
+                  </div>
+                  <form id="wtRoomChatForm" class="p-2 border-t border-slate-800 flex gap-2" onsubmit="return false">
+                    <input id="wtRoomChatInput" class="flex-1 px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 focus:border-sky-500 outline-none text-xs" placeholder="Chat in room..." maxlength="300" />
+                    <button type="submit" class="px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-xs font-medium">Send</button>
+                  </form>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -3374,14 +3588,14 @@
       id="privacySettingsModal"
       class="fixed inset-0 z-50 modal-closed flex items-center justify-center px-4 bg-black/50 backdrop-blur-sm"
     >
-      <div class="glass-card max-w-md w-full rounded-2xl p-6">
+      <div class="glass-card max-w-md w-full rounded-2xl p-6 max-h-[90vh] overflow-y-auto">
         <div class="flex justify-between items-center mb-4">
           <h3 class="text-lg font-semibold text-slate-100">Privacy Settings</h3>
           <button
             id="privacySettingsCloseBtn"
             class="p-1 hover:bg-slate-700 rounded-lg transition-colors"
           >
-            ✕
+            &times;
           </button>
         </div>
 
@@ -3442,6 +3656,22 @@
               <option value="friends">Friends only</option>
               <option value="none">No one</option>
             </select>
+          </div>
+
+          <div class="pt-2 border-t border-slate-700/50">
+            <div class="flex items-center justify-between gap-4">
+              <div>
+                <p class="text-sm font-medium text-slate-100">Device Check Consent</p>
+                <p class="text-xs text-slate-400">Allow Chatra to store a browser fingerprint for abuse prevention</p>
+              </div>
+              <label for="canvasConsentToggle" class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" id="canvasConsentToggle" aria-label="Device check consent toggle" class="sr-only peer">
+                <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-600"></div>
+              </label>
+            </div>
+            <p id="canvasConsentStatus" class="mt-2 text-xs text-slate-500">
+              This only affects device checks used for moderation and account safety.
+            </p>
           </div>
           
         </div>
@@ -3605,6 +3835,7 @@
     </script>
     <script src="js/videocall.js"></script>
     <script src="js/groupcall.js"></script>
+    <script src="js/watchtogether.js"></script>
     <script src="script.js"></script>
 
   </body>

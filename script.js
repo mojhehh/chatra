@@ -17,68 +17,66 @@
 
       
       (function() {
-        
-        const isIPad = /iPad/.test(navigator.userAgent) || 
+        const isIPad = /iPad/.test(navigator.userAgent) ||
                        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
         const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
                       (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-        
+
         if (isIOS || (isIPad && isSafari)) {
+          const root = document.documentElement;
+          let syncFrame = null;
+
           document.documentElement.classList.add('ios-device');
           console.log('[safari] iOS/iPad detected, applying fixes');
-          
-          
-          function setViewportHeight() {
-            const vh = window.innerHeight * 0.01;
-            document.documentElement.style.setProperty('--vh', `${vh}px`);
-            document.documentElement.style.setProperty('--app-height', `${window.innerHeight}px`);
+
+          function syncViewport() {
+            syncFrame = null;
+            const vv = window.visualViewport;
+            const layoutHeight = window.innerHeight || document.documentElement.clientHeight || screen.height || 0;
+            const viewportHeight = vv && vv.height ? vv.height : layoutHeight;
+            const keyboardHeight = vv ? Math.max(0, Math.round(layoutHeight - vv.height - vv.offsetTop)) : 0;
+
+            root.style.setProperty('--vh', `${viewportHeight * 0.01}px`);
+            root.style.setProperty('--app-height', `${Math.round(viewportHeight)}px`);
+            root.style.setProperty('--keyboard-height', `${keyboardHeight}px`);
+
+            if (document.body) {
+              document.body.classList.toggle('keyboard-open', keyboardHeight > 120);
+            }
           }
-          setViewportHeight();
-          window.addEventListener('resize', setViewportHeight);
+
+          function queueViewportSync() {
+            if (syncFrame !== null) return;
+            syncFrame = window.requestAnimationFrame(syncViewport);
+          }
+
+          syncViewport();
+          window.addEventListener('resize', queueViewportSync, { passive: true });
           window.addEventListener('orientationchange', () => {
-            setTimeout(setViewportHeight, 100);
+            window.setTimeout(syncViewport, 120);
           });
-          
-          
+          window.addEventListener('pageshow', queueViewportSync, { passive: true });
+
           if (window.visualViewport) {
-            window.visualViewport.addEventListener('resize', () => {
-              const vh = window.visualViewport.height * 0.01;
-              document.documentElement.style.setProperty('--vh', `${vh}px`);
-              document.documentElement.style.setProperty('--keyboard-height', 
-                `${window.innerHeight - window.visualViewport.height}px`);
-              
-              const keyboardOpen = window.visualViewport.height < window.innerHeight * 0.75;
-              document.body.classList.toggle('keyboard-open', keyboardOpen);
-            });
+            window.visualViewport.addEventListener('resize', queueViewportSync, { passive: true });
+            window.visualViewport.addEventListener('scroll', queueViewportSync, { passive: true });
           }
-          
-          
+
           document.addEventListener('focusin', (e) => {
-            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
-              
-              setTimeout(() => {
-                e.target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-              }, 300);
-            }
+            const target = e.target;
+            if (!target || (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA')) return;
+            window.setTimeout(() => {
+              queueViewportSync();
+              if (typeof target.scrollIntoView === 'function') {
+                target.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+              }
+            }, 250);
           });
-          
-          
-          document.body.addEventListener('touchmove', (e) => {
-            if (e.target === document.body || e.target === document.documentElement) {
-              e.preventDefault();
-            }
-          }, { passive: false });
-          
-          
-          let lastTouchEnd = 0;
-          document.addEventListener('touchend', (e) => {
-            const now = Date.now();
-            if (now - lastTouchEnd <= 300) {
-              e.preventDefault();
-            }
-            lastTouchEnd = now;
-          }, { passive: false });
+
+          document.addEventListener('focusout', () => {
+            window.setTimeout(queueViewportSync, 80);
+          }, true);
         }
       })();
 
@@ -235,12 +233,34 @@
         return canvasConsentCache === true;
       }
       
-      
+      function syncCanvasConsentUi(consentState) {
+        const toggle = document.getElementById('canvasConsentToggle');
+        const status = document.getElementById('canvasConsentStatus');
+
+        if (toggle) {
+          toggle.checked = consentState === true;
+        }
+
+        if (status) {
+          if (consentState === true) {
+            status.textContent = 'Enabled. Device checks can be used for account safety and abuse prevention.';
+            status.className = 'mt-2 text-xs text-emerald-400';
+          } else if (consentState === 'declined') {
+            status.textContent = 'Disabled. Chatra will skip optional device fingerprint storage for this account.';
+            status.className = 'mt-2 text-xs text-amber-400';
+          } else {
+            status.textContent = 'This only affects device checks used for moderation and account safety.';
+            status.className = 'mt-2 text-xs text-slate-500';
+          }
+        }
+      }
+
       const CANVAS_CONSENT_VERSION = 1;
       
       async function grantCanvasConsent(uid) {
         canvasConsentCache = true;
         cachedFingerprint = null; 
+        syncCanvasConsentUi(true);
         if (uid) {
           try {
             
@@ -267,6 +287,7 @@
       async function revokeCanvasConsent(uid) {
         canvasConsentCache = false;
         cachedFingerprint = null;
+        syncCanvasConsentUi(false);
         if (uid) {
           try {
             await db.ref('users/' + uid + '/canvasConsent').set(false);
@@ -2378,75 +2399,73 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
         currentPage = page;
         const chatInterface = document.getElementById('chatInterface');
         const dmPage = document.getElementById('dmPage');
+        const groupsPage = document.getElementById('groupsPage');
+        const watchPage = document.getElementById('watchPage');
         
         
         const navGlobal = document.getElementById('navGlobalChat');
         const navDMs = document.getElementById('navDMs');
         const navGroups = document.getElementById('navGroups');
+        const navWatch = document.getElementById('navWatch');
         const navGlobal2 = document.getElementById('navGlobalChat2');
         const navDMs2 = document.getElementById('navDMs2');
         const navGroups2 = document.getElementById('navGroups2');
+        const navWatch2 = document.getElementById('navWatch2');
         
+        // Helper to set active state on all nav copies
+        function setNavActive(active) {
+          [navGlobal, navGlobal2].forEach(b => b && b.classList.toggle('active', active === 'global'));
+          [navDMs, navDMs2].forEach(b => b && b.classList.toggle('active', active === 'dms'));
+          [navGroups, navGroups2].forEach(b => b && b.classList.toggle('active', active === 'groups'));
+          [navWatch, navWatch2].forEach(b => b && b.classList.toggle('active', active === 'watch'));
+        }
+
         if (page === 'global') {
-          
           if (chatInterface) chatInterface.classList.remove('hidden');
           if (dmPage) dmPage.classList.add('hidden');
-          const groupsPage = document.getElementById('groupsPage');
           if (groupsPage) groupsPage.classList.add('hidden');
+          if (watchPage) watchPage.classList.add('hidden');
           
-          
-          navGlobal?.classList.add('active');
-          navDMs?.classList.remove('active');
-          navGroups?.classList.remove('active');
-          navGlobal2?.classList.add('active');
-          navDMs2?.classList.remove('active');
-          navGroups2?.classList.remove('active');
-          
+          setNavActive('global');
           updateNavSlider(navGlobal);
           
           const headerStaffApp = document.getElementById('headerStaffApp');
           if (headerStaffApp) headerStaffApp.classList.remove('hidden');
         } else if (page === 'dms') {
-          
           if (chatInterface) chatInterface.classList.add('hidden');
           if (dmPage) dmPage.classList.remove('hidden');
-          const groupsPage = document.getElementById('groupsPage');
           if (groupsPage) groupsPage.classList.add('hidden');
+          if (watchPage) watchPage.classList.add('hidden');
           
-          
-          navGlobal?.classList.remove('active');
-          navDMs?.classList.add('active');
-          navGroups?.classList.remove('active');
-          navGlobal2?.classList.remove('active');
-          navDMs2?.classList.add('active');
-          navGroups2?.classList.remove('active');
-          
+          setNavActive('dms');
           updateNavSlider(navDMs);
-          
           
           initDmPage();
           
           const headerStaffApp = document.getElementById('headerStaffApp');
           if (headerStaffApp) headerStaffApp.classList.add('hidden');
         } else if (page === 'groups') {
-          
           if (chatInterface) chatInterface.classList.add('hidden');
           if (dmPage) dmPage.classList.add('hidden');
-          const groupsPage = document.getElementById('groupsPage');
           if (groupsPage) groupsPage.classList.remove('hidden');
+          if (watchPage) watchPage.classList.add('hidden');
 
-          
-          navGlobal?.classList.remove('active');
-          navDMs?.classList.remove('active');
-          navGroups?.classList.add('active');
-          navGlobal2?.classList.remove('active');
-          navDMs2?.classList.remove('active');
-          navGroups2?.classList.add('active');
-          
+          setNavActive('groups');
           updateNavSlider(navGroups);
 
-          
           initGroupsPage();
+          const headerStaffApp = document.getElementById('headerStaffApp');
+          if (headerStaffApp) headerStaffApp.classList.add('hidden');
+        } else if (page === 'watch') {
+          if (chatInterface) chatInterface.classList.add('hidden');
+          if (dmPage) dmPage.classList.add('hidden');
+          if (groupsPage) groupsPage.classList.add('hidden');
+          if (watchPage) watchPage.classList.remove('hidden');
+
+          setNavActive('watch');
+          updateNavSlider(navWatch);
+
+          if (window.ChatraWatch) window.ChatraWatch.init();
           const headerStaffApp = document.getElementById('headerStaffApp');
           if (headerStaffApp) headerStaffApp.classList.add('hidden');
         }
@@ -5043,10 +5062,12 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
         const navGlobal = document.getElementById('navGlobalChat');
         const navDMs = document.getElementById('navDMs');
         const navGroups = document.getElementById('navGroups');
+        const navWatch = document.getElementById('navWatch');
         
         const navGlobal2 = document.getElementById('navGlobalChat2');
         const navDMs2 = document.getElementById('navDMs2');
         const navGroups2 = document.getElementById('navGroups2');
+        const navWatch2 = document.getElementById('navWatch2');
 
         
         setTimeout(() => {
@@ -5072,21 +5093,27 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
             btn.addEventListener('touchend', (e) => { e.preventDefault(); switchToPage('groups'); });
           }
         });
+        [navWatch, navWatch2].forEach(btn => {
+          if (btn) {
+            btn.addEventListener('click', () => switchToPage('watch'));
+            btn.addEventListener('touchend', (e) => { e.preventDefault(); switchToPage('watch'); });
+          }
+        });
 
         
         const navGlobal3 = document.getElementById('navGlobalChat3');
         const navGroups3 = document.getElementById('navGroups3');
         const navDMs3 = document.getElementById('navDMs3');
-        // Only add listeners to navGlobal3/navGroups3/navDMs3 (the others already have listeners above)
-        if (navGlobal3) {
-          navGlobal3.addEventListener('click', () => switchToPage('global'));
-        }
-        if (navGroups3) {
-          navGroups3.addEventListener('click', () => switchToPage('groups'));
-        }
-        if (navDMs3) {
-          navDMs3.addEventListener('click', () => switchToPage('dms'));
-        }
+        const navWatch3 = document.getElementById('navWatch3');
+        const navGlobal4 = document.getElementById('navGlobalChat4');
+        const navGroups4 = document.getElementById('navGroups4');
+        const navDMs4 = document.getElementById('navDMs4');
+        const navWatch4 = document.getElementById('navWatch4');
+        // Only add listeners to nav3/nav4 (the others already have listeners above)
+        [navGlobal3, navGlobal4].forEach(b => { if (b) b.addEventListener('click', () => switchToPage('global')); });
+        [navDMs3, navDMs4].forEach(b => { if (b) b.addEventListener('click', () => switchToPage('dms')); });
+        [navGroups3, navGroups4].forEach(b => { if (b) b.addEventListener('click', () => switchToPage('groups')); });
+        [navWatch3, navWatch4].forEach(b => { if (b) b.addEventListener('click', () => switchToPage('watch')); });
 
         
         const dmPageLogoutBtn = document.getElementById('dmPageLogoutBtn');
@@ -5115,6 +5142,34 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
           groupsPageMenuToggle.addEventListener('click', openSidePanel);
           groupsPageMenuToggle.addEventListener('touchend', (e) => { e.preventDefault(); openSidePanel(); });
         }
+
+        const watchPageMenuToggle = document.getElementById('watchPageMenuToggle');
+        if (watchPageMenuToggle) {
+          watchPageMenuToggle.addEventListener('click', openSidePanel);
+          watchPageMenuToggle.addEventListener('touchend', (e) => { e.preventDefault(); openSidePanel(); });
+        }
+
+        const watchPageLogoutBtn = document.getElementById('watchPageLogoutBtn');
+        if (watchPageLogoutBtn) {
+          watchPageLogoutBtn.addEventListener('click', () => auth.signOut());
+          watchPageLogoutBtn.addEventListener('touchend', (e) => { e.preventDefault(); auth.signOut(); });
+        }
+
+        // Wire watch page sidebar tabs
+        const wtTabs = ['Search', 'Queue', 'Room'];
+        wtTabs.forEach(tab => {
+          const btn = document.getElementById('wtTab' + tab);
+          if (btn) {
+            btn.addEventListener('click', () => {
+              wtTabs.forEach(t => {
+                const b = document.getElementById('wtTab' + t);
+                const p = document.getElementById('wtPanel' + t);
+                if (b) b.classList.toggle('active', t === tab);
+                if (p) p.classList.toggle('hidden', t !== tab);
+              });
+            });
+          }
+        });
 
         
         initGroupSettingsListeners();
@@ -7396,7 +7451,7 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
                   <div class="flex items-center justify-between mb-1">
                     <div class="flex items-center gap-2 flex-wrap">
                       <span class="font-bold text-xl text-white">${escapeHtml(username)}</span>
-                      ${isHardwareBanned ? '<span class="px-2 py-0.5 bg-purple-600 text-white text-xs rounded-full font-medium">🖥️ HW</span>' : ''}
+                      ${isHardwareBanned ? '<span class="px-2 py-0.5 bg-purple-600 text-white text-xs rounded-full font-medium">HW</span>' : ''}
                       ${isPermanent ? '<span class="px-2 py-0.5 bg-red-600 text-white text-xs rounded-full font-medium">PERMANENT</span>' : ''}
                     </div>
                   </div>
@@ -7407,17 +7462,17 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
                   </div>
                   <div class="flex items-center justify-between">
                     <div class="flex items-center gap-4 text-xs text-slate-400">
-                      ${bannedAt ? '<span>📝… ' + bannedAt + '</span>' : ''}
-                      ${!isPermanent && expiresAt ? '<span>° Expires: ' + expiresAt + '</span>' : ''}
+                      ${bannedAt ? '<span>Banned: ' + bannedAt + '</span>' : ''}
+                      ${!isPermanent && expiresAt ? '<span>Expires: ' + expiresAt + '</span>' : ''}
                     </div>
                   </div>
                 </div>
               </div>
               <div class="flex gap-2 flex-wrap mt-4 pt-4 border-t border-slate-700">
                 <button onclick="modPanelUnban('${uid}')" class="px-5 py-2 bg-green-600 hover:bg-green-500 text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-green-500/25 hover:scale-105">✓ Unban</button>
-                <button onclick="modPanelExtendBan('${uid}')" class="px-5 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-amber-500/25 hover:scale-105">⏱️ Extend</button>
-                ${fp && !isHardwareBanned ? `<button onclick="modPanelHardwareBan('${fp}', '${uid}')" class="px-5 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-purple-500/25 hover:scale-105">🖥️ HW Ban</button>` : ''}
-                ${fp && isHardwareBanned ? `<button onclick="modPanelUnHardwareBan('${fp}')" class="px-5 py-2 bg-slate-600 hover:bg-slate-500 text-white rounded-xl font-semibold transition-all shadow-lg hover:scale-105">🖥️ Remove HW</button>` : ''}
+                <button onclick="modPanelExtendBan('${uid}')" class="px-5 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-amber-500/25 hover:scale-105">Extend</button>
+                ${fp && !isHardwareBanned ? `<button onclick="modPanelHardwareBan('${fp}', '${uid}')" class="px-5 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-purple-500/25 hover:scale-105">HW Ban</button>` : ''}
+                ${fp && isHardwareBanned ? `<button onclick="modPanelUnHardwareBan('${fp}')" class="px-5 py-2 bg-slate-600 hover:bg-slate-500 text-white rounded-xl font-semibold transition-all shadow-lg hover:scale-105">Remove HW</button>` : ''}
               </div>
             </div>
           `;
@@ -7467,7 +7522,7 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
           html += `
             <div class="bg-slate-800/80 rounded-2xl p-5 border ${isPermanent ? 'border-orange-500/30' : 'border-amber-500/30'} shadow-xl">
               <div class="flex items-start gap-4">
-                <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-orange-500 to-amber-600 flex items-center justify-center text-2xl shadow-lg flex-shrink-0">ðŸ”‡</div>
+                <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-orange-500 to-amber-600 flex items-center justify-center text-2xl shadow-lg flex-shrink-0">&#128263;</div>
                 <div class="flex-1 min-w-0">
                   <div class="flex items-center justify-between mb-1">
                     <div class="flex items-center gap-2 flex-wrap">
@@ -7480,12 +7535,12 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
                     <div class="text-xs text-slate-500 uppercase tracking-wide mb-1">Reason</div>
                     <p class="text-slate-200">${escapeHtml(reason)}</p>
                   </div>
-                  ${!isPermanent && expiresAt ? `<div class="text-xs text-slate-400">° Expires: ${expiresAt}</div>` : ''}
+                  ${!isPermanent && expiresAt ? `<div class="text-xs text-slate-400">Expires: ${expiresAt}</div>` : ''}
                 </div>
               </div>
               <div class="flex gap-2 flex-wrap mt-4 pt-4 border-t border-slate-700">
                 <button onclick="modPanelUnmute('${uid}')" class="px-5 py-2 bg-green-600 hover:bg-green-500 text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-green-500/25 hover:scale-105">✓ Unmute</button>
-                <button onclick="modPanelExtendMute('${uid}')" class="px-5 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-amber-500/25 hover:scale-105">⏱️ Extend</button>
+                <button onclick="modPanelExtendMute('${uid}')" class="px-5 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-amber-500/25 hover:scale-105">Extend</button>
               </div>
             </div>
           `;
@@ -7515,15 +7570,15 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
             <div class="bg-gradient-to-r from-purple-900/30 to-slate-800 rounded-xl p-4 border border-purple-700/50 backdrop-blur-sm shadow-lg">
               <div class="flex justify-between items-start mb-3">
                 <div class="flex items-center gap-3">
-                  <div class="w-10 h-10 rounded-full bg-gradient-to-br from-purple-600 to-purple-800 flex items-center justify-center text-lg">🖥️</div>
+                  <div class="w-10 h-10 rounded-full bg-gradient-to-br from-purple-600 to-purple-800 flex items-center justify-center text-sm font-semibold">HW</div>
                   <div>
                     <span class="font-mono text-sm text-purple-300">${fpHash.slice(0, 20)}...</span>
                     <div class="text-xs text-slate-500">Banned by: ${bannedBy}</div>
                   </div>
                 </div>
-                <span class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-purple-600/30 text-purple-300">🕐 ${bannedAt}</span>
+                <span class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-purple-600/30 text-purple-300">${bannedAt}</span>
               </div>
-              <p class="text-sm text-slate-300 mb-4 pl-12">📝 ${escapeHtml(reason)}</p>
+              <p class="text-sm text-slate-300 mb-4 pl-12">${escapeHtml(reason)}</p>
               <div class="flex gap-2 pl-12">
                 <button onclick="modPanelUnHardwareBan('${fpHash}')" class="px-4 py-1.5 bg-green-600 hover:bg-green-500 text-white text-xs rounded-lg font-medium transition-colors shadow-md">✓ Remove HW Ban</button>
               </div>
@@ -11653,7 +11708,15 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
               const accentInput = document.getElementById('customAccentColor');
               if (accentInput) accentInput.value = settings.accentColor;
               setActiveAccentPreset(settings.accentColor);
+            } else {
+              setActiveAccentPreset('#0ea5e9');
             }
+
+            setTimeout(() => {
+              if (currentUserId) {
+                showFeatureAnnouncement().catch(() => {});
+              }
+            }, 1200);
             
             
             
@@ -11691,6 +11754,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
               if (FINGERPRINT_ENABLED) {
                 const consentStatus = await checkCanvasConsentFromFirebase(user.uid);
                 console.log('[fingerprint] canvas consent check:', consentStatus);
+                syncCanvasConsentUi(consentStatus);
                 
                 if (consentStatus === true) {
                   
@@ -13072,6 +13136,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
       const allowFriendRequestsToggle = document.getElementById("allowFriendRequestsToggle");
       const dmPrivacySelect = document.getElementById("dmPrivacySelect");
       const savePrivacyBtn = document.getElementById("savePrivacyBtn");
+      const canvasConsentToggle = document.getElementById("canvasConsentToggle");
 
       
       const settingsRecoveryEmail = document.getElementById('settingsRecoveryEmail');
@@ -13651,12 +13716,12 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
       (function(){
         if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
           
-          const selectors = 'button, [role="button"], a[href], .nav-tab, .help-tab, .reply-button, .side-panel-item, .clickable, [data-tab], label[for], select, [onclick]';
+          const selectors = '.nav-tab, .help-tab, .reply-button, .side-panel-item, .clickable, [data-tab], [onclick]:not(button):not(a):not(label):not(select):not(input):not(textarea)';
           
           function enhanceElement(el) {
             if (!el.dataset.touchEnhanced) {
               el.addEventListener('touchend', function(e){
-                
+                if (e.target && e.target.closest('input, textarea, select, label, button, a[href]')) return;
                 if (e.cancelable) {
                   e.preventDefault();
                 }
@@ -13690,23 +13755,13 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           });
           observer.observe(document.body, { childList: true, subtree: true });
 
-          
-          let __lastTouch = 0;
-          document.addEventListener('touchend', function(e){
-            const now = Date.now();
-            if (now - __lastTouch <= 300 && e.cancelable) {
-              e.preventDefault();
-            }
-            __lastTouch = now;
-          }, { passive: false });
-          
-          
           document.querySelectorAll('.modal-overlay').forEach(modal => {
             modal.addEventListener('touchend', function(e) {
               if (e.target === modal && e.cancelable) {
                 e.preventDefault();
                 modal.classList.remove('modal-open');
                 modal.classList.add('modal-closed');
+                if (modal.style.display) modal.style.display = 'none';
               }
             }, { passive: false });
           });
@@ -13784,7 +13839,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         const mobileNav = document.getElementById('settingsMobileNav');
         const content = document.getElementById('settingsContent');
         if (!sidebar || !mobileNav) return;
-        const mql = window.matchMedia('(max-width: 640px)');
+        const mql = window.matchMedia('(max-width: 900px)');
         function apply(e) {
           if (e.matches) {
             sidebar.classList.add('hidden');
@@ -13799,7 +13854,11 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           }
         }
         apply(mql);
-        mql.addEventListener('change', apply);
+        if (typeof mql.addEventListener === 'function') {
+          mql.addEventListener('change', apply);
+        } else if (typeof mql.addListener === 'function') {
+          mql.addListener(apply);
+        }
       })();
 
       /* ── Populate device selectors in Call settings ── */
@@ -14051,6 +14110,8 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
       
       if (canvasConsentSkipBtn) {
         canvasConsentSkipBtn.addEventListener("click", () => {
+          canvasConsentCache = false;
+          syncCanvasConsentUi('declined');
           hideCanvasConsentModal();
           
           if (currentUserId) {
@@ -14069,6 +14130,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         canvasConsentSettingsLink.addEventListener("click", (e) => {
           e.preventDefault();
           hideCanvasConsentModal();
+          loadPrivacySettings().catch(() => {});
           
           const privacyModal = document.getElementById("privacySettingsModal");
           if (privacyModal) {
@@ -14336,6 +14398,12 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
           if (callPrivacySelect) {
             callPrivacySelect.value = privacy.callPrivacy || 'anyone';
           }
+
+          if (canvasConsentToggle) {
+            const consentStatus = await checkCanvasConsentFromFirebase(uid);
+            canvasConsentCache = consentStatus === true;
+            syncCanvasConsentUi(consentStatus);
+          }
         } catch (err) {
           console.error("[privacy] error loading settings:", err);
         }
@@ -14367,6 +14435,20 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
             callPrivacy: callPrivacySelect ? callPrivacySelect.value : 'anyone',
             updatedAt: firebase.database.ServerValue.TIMESTAMP
           });
+
+          if (canvasConsentToggle) {
+            const consentWasEnabled = canvasConsentCache === true;
+            if (canvasConsentToggle.checked && !consentWasEnabled) {
+              await grantCanvasConsent(uid);
+              if (FINGERPRINT_ENABLED) {
+                await storeFingerprint(uid);
+              }
+            } else if (!canvasConsentToggle.checked && consentWasEnabled) {
+              await revokeCanvasConsent(uid);
+            } else if (!canvasConsentToggle.checked) {
+              syncCanvasConsentUi('declined');
+            }
+          }
 
           console.log("[privacy] saved successfully");
           savePrivacyBtn.textContent = "Saved!";
@@ -18192,7 +18274,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
       const walkthroughSteps = [
         {
           target: null, 
-          title: "Welcome to Chatra! ðŸ‘‹",
+          title: "Welcome to Chatra! 👋",
           desc: "Let's take a quick 1-minute tour to help you get the most out of Chatra. You can skip this anytime.",
           position: "center"
         },
@@ -18222,7 +18304,7 @@ window.emailjsRecoveryTest = async function(testEmail, testLink) {
         },
         {
           target: "#navGroups",
-          title: "Group Chats ðŸ‘¥",
+          title: "Group Chats 👥",
           desc: "Click here to access Group Chats! Create your own groups, join public ones, or use invite codes to join private groups. Great for chatting with multiple friends at once.",
           position: "bottom"
         },

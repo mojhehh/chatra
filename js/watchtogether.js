@@ -1,0 +1,577 @@
+// Chatra Watch Together — YouTube search + video player via Chatra Media Server
+// Synced playback through Firebase Realtime Database
+
+(function () {
+  'use strict';
+
+  // ── State ──────────────────────────────────────────────
+  let serverUrl = null;      // Cloudflare tunnel URL for melodify server
+  let currentVideo = null;   // { id, title, artist, duration, thumbnail }
+  let isHost = false;
+  let currentRoomId = null;
+  let roomRef = null;
+  let syncListener = null;
+  let participantRef = null;
+  let chatListener = null;
+  let seekDebounce = null;
+  let syncPaused = false;    // true while we're processing an incoming sync
+  let lastSyncTime = 0;
+  let queue = [];            // upcoming videos
+  let searchTimeout = null;
+
+  // ── Firebase helpers ───────────────────────────────────
+  function getDb() { return firebase.database(); }
+  function getAuth() { return firebase.auth(); }
+  function myUid() { return getAuth().currentUser && getAuth().currentUser.uid; }
+
+  function escapeHtml(text) {
+    var div = document.createElement('div');
+    div.appendChild(document.createTextNode(text || ''));
+    return div.innerHTML;
+  }
+
+  // ── Server URL (from procces Firebase or direct) ──────
+  async function fetchServerUrl() {
+    if (serverUrl) return serverUrl;
+    try {
+      var resp = await fetch('https://procces-3efd9-default-rtdb.firebaseio.com/backends/melodify.json');
+      var data = await resp.json();
+      if (data && data.url) {
+        serverUrl = data.url;
+        console.log('[Watch] Server URL:', serverUrl);
+        return serverUrl;
+      }
+    } catch (e) {
+      console.warn('[Watch] Could not fetch server URL:', e);
+    }
+    // Fallback to localhost
+    serverUrl = 'http://localhost:8092';
+    return serverUrl;
+  }
+
+  // ── Search ─────────────────────────────────────────────
+  async function searchVideos(query) {
+    var url = await fetchServerUrl();
+    try {
+      var resp = await fetch(url + '/api/search?q=' + encodeURIComponent(query) + '&max=8');
+      var data = await resp.json();
+      return data.results || [];
+    } catch (e) {
+      console.error('[Watch] Search error:', e);
+      return [];
+    }
+  }
+
+  function renderSearchResults(results) {
+    var container = document.getElementById('wtSearchResults');
+    if (!container) return;
+    if (!results || results.length === 0) {
+      container.innerHTML = '<p class="text-slate-500 text-sm text-center py-4">No results found</p>';
+      return;
+    }
+    var html = '';
+    for (var i = 0; i < results.length; i++) {
+      var r = results[i];
+      html += '<button class="wt-search-item" data-id="' + escapeHtml(r.id) + '" data-title="' + escapeHtml(r.title) + '" data-artist="' + escapeHtml(r.artist) + '" data-duration="' + (r.duration || 0) + '" data-thumb="' + escapeHtml(r.thumbnail) + '">';
+      html += '<img src="' + escapeHtml(r.thumbnail) + '" class="wt-search-thumb" loading="lazy" onerror="this.style.display=\'none\'" />';
+      html += '<div class="wt-search-info">';
+      html += '<span class="wt-search-title">' + escapeHtml(r.title) + '</span>';
+      html += '<span class="wt-search-meta">' + escapeHtml(r.artist) + ' · ' + escapeHtml(r.duration_string || '') + '</span>';
+      html += '</div>';
+      html += '</button>';
+    }
+    container.innerHTML = html;
+
+    // Wire click handlers
+    container.querySelectorAll('.wt-search-item').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var video = {
+          id: btn.dataset.id,
+          title: btn.dataset.title,
+          artist: btn.dataset.artist,
+          duration: parseInt(btn.dataset.duration) || 0,
+          thumbnail: btn.dataset.thumb
+        };
+        if (currentRoomId) {
+          addToQueue(video);
+        } else {
+          playVideo(video);
+        }
+      });
+    });
+  }
+
+  // ── Player ─────────────────────────────────────────────
+  async function playVideo(video) {
+    currentVideo = video;
+    var url = await fetchServerUrl();
+    var videoEl = document.getElementById('wtVideo');
+    var placeholder = document.getElementById('wtPlaceholder');
+    var playerInfo = document.getElementById('wtPlayerInfo');
+    var playerTitle = document.getElementById('wtPlayerTitle');
+    var playerArtist = document.getElementById('wtPlayerArtist');
+
+    if (placeholder) placeholder.classList.add('hidden');
+    if (videoEl) {
+      videoEl.classList.remove('hidden');
+      videoEl.src = url + '/api/video/' + video.id;
+      videoEl.load();
+      videoEl.play().catch(function () {});
+    }
+    if (playerInfo) playerInfo.classList.remove('hidden');
+    if (playerTitle) playerTitle.textContent = video.title;
+    if (playerArtist) playerArtist.textContent = video.artist;
+
+    // If in a room and I'm host, sync the video + play state
+    if (currentRoomId && isHost && roomRef) {
+      roomRef.child('video').set({
+        id: video.id,
+        title: video.title,
+        artist: video.artist,
+        duration: video.duration,
+        thumbnail: video.thumbnail
+      });
+      syncPlayState();
+    }
+  }
+
+  function stopVideo() {
+    var videoEl = document.getElementById('wtVideo');
+    var placeholder = document.getElementById('wtPlaceholder');
+    var playerInfo = document.getElementById('wtPlayerInfo');
+    if (videoEl) {
+      videoEl.pause();
+      videoEl.removeAttribute('src');
+      videoEl.load();
+      videoEl.classList.add('hidden');
+    }
+    if (placeholder) placeholder.classList.remove('hidden');
+    if (playerInfo) playerInfo.classList.add('hidden');
+    currentVideo = null;
+  }
+
+  // ── Queue ──────────────────────────────────────────────
+  function addToQueue(video) {
+    // If nothing is playing, play immediately
+    if (!currentVideo) {
+      playVideo(video);
+      return;
+    }
+    queue.push(video);
+    renderQueue();
+    if (typeof showToast === 'function') showToast('Added to queue', 'info');
+    // Sync queue to room
+    if (currentRoomId && isHost && roomRef) {
+      roomRef.child('queue').set(queue);
+    }
+  }
+
+  function playNext() {
+    if (queue.length === 0) {
+      stopVideo();
+      return;
+    }
+    var next = queue.shift();
+    renderQueue();
+    playVideo(next);
+    if (currentRoomId && isHost && roomRef) {
+      roomRef.child('queue').set(queue);
+    }
+  }
+
+  function renderQueue() {
+    var container = document.getElementById('wtQueue');
+    if (!container) return;
+    if (queue.length === 0) {
+      container.innerHTML = '<p class="text-slate-500 text-xs text-center py-2">Queue is empty</p>';
+      return;
+    }
+    var html = '';
+    for (var i = 0; i < queue.length; i++) {
+      var v = queue[i];
+      html += '<div class="wt-queue-item">';
+      html += '<span class="wt-queue-num">' + (i + 1) + '</span>';
+      html += '<img src="' + escapeHtml(v.thumbnail) + '" class="wt-queue-thumb" onerror="this.style.display=\'none\'" />';
+      html += '<div class="wt-queue-info">';
+      html += '<span class="wt-queue-title">' + escapeHtml(v.title) + '</span>';
+      html += '<span class="wt-queue-artist">' + escapeHtml(v.artist) + '</span>';
+      html += '</div>';
+      html += '<button class="wt-queue-remove" data-idx="' + i + '" title="Remove">&times;</button>';
+      html += '</div>';
+    }
+    container.innerHTML = html;
+    container.querySelectorAll('.wt-queue-remove').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var idx = parseInt(btn.dataset.idx);
+        queue.splice(idx, 1);
+        renderQueue();
+        if (currentRoomId && isHost && roomRef) {
+          roomRef.child('queue').set(queue);
+        }
+      });
+    });
+  }
+
+  // ── Watch Together Rooms (Firebase sync) ───────────────
+  function generateRoomId() {
+    return 'wt_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 6);
+  }
+
+  async function createRoom() {
+    var uid = myUid();
+    if (!uid) return;
+    if (currentRoomId) {
+      if (typeof showToast === 'function') showToast('Already in a room', 'error');
+      return;
+    }
+
+    var roomId = generateRoomId();
+    currentRoomId = roomId;
+    isHost = true;
+    roomRef = getDb().ref('watchRooms/' + roomId);
+
+    await roomRef.set({
+      host: uid,
+      hostName: window.currentUsername || 'Unknown',
+      createdAt: firebase.database.ServerValue.TIMESTAMP,
+      video: currentVideo ? {
+        id: currentVideo.id,
+        title: currentVideo.title,
+        artist: currentVideo.artist,
+        duration: currentVideo.duration,
+        thumbnail: currentVideo.thumbnail
+      } : null,
+      playState: currentVideo ? { playing: false, time: 0, updatedAt: Date.now() } : null,
+      queue: queue
+    });
+
+    // Register self
+    participantRef = roomRef.child('participants/' + uid);
+    await participantRef.set({ name: window.currentUsername || 'User', joinedAt: firebase.database.ServerValue.TIMESTAMP });
+    participantRef.onDisconnect().remove();
+
+    // Clean up room when host disconnects
+    roomRef.onDisconnect().remove();
+
+    listenToRoom();
+    updateRoomUI();
+    if (typeof showToast === 'function') showToast('Room created! Share the code: ' + roomId, 'info');
+  }
+
+  async function joinRoom(roomId) {
+    var uid = myUid();
+    if (!uid) return;
+    if (currentRoomId) {
+      if (typeof showToast === 'function') showToast('Already in a room', 'error');
+      return;
+    }
+
+    roomRef = getDb().ref('watchRooms/' + roomId);
+    var snap = await roomRef.once('value');
+    if (!snap.exists()) {
+      if (typeof showToast === 'function') showToast('Room not found', 'error');
+      roomRef = null;
+      return;
+    }
+
+    currentRoomId = roomId;
+    isHost = false;
+
+    // Register self
+    participantRef = roomRef.child('participants/' + uid);
+    await participantRef.set({ name: window.currentUsername || 'User', joinedAt: firebase.database.ServerValue.TIMESTAMP });
+    participantRef.onDisconnect().remove();
+
+    // Load current state
+    var data = snap.val();
+    if (data.video) {
+      await playVideo(data.video);
+    }
+    if (data.queue) {
+      queue = data.queue;
+      renderQueue();
+    }
+    if (data.playState) {
+      applyPlayState(data.playState);
+    }
+
+    listenToRoom();
+    updateRoomUI();
+    if (typeof showToast === 'function') showToast('Joined room!', 'info');
+  }
+
+  function leaveRoom() {
+    if (!currentRoomId) return;
+
+    if (participantRef) {
+      participantRef.onDisconnect().cancel();
+      participantRef.remove().catch(function () {});
+      participantRef = null;
+    }
+
+    if (syncListener) {
+      roomRef.child('playState').off('value', syncListener);
+      syncListener = null;
+    }
+    if (chatListener) {
+      roomRef.child('chat').off('child_added', chatListener);
+      chatListener = null;
+    }
+    roomRef.child('video').off();
+    roomRef.child('queue').off();
+    roomRef.child('participants').off();
+
+    // If host, remove the room
+    if (isHost && roomRef) {
+      roomRef.onDisconnect().cancel();
+      roomRef.remove().catch(function () {});
+    }
+
+    roomRef = null;
+    currentRoomId = null;
+    isHost = false;
+    updateRoomUI();
+    if (typeof showToast === 'function') showToast('Left room', 'info');
+  }
+
+  function listenToRoom() {
+    if (!roomRef) return;
+
+    // Sync play state (non-host)
+    syncListener = roomRef.child('playState').on('value', function (snap) {
+      if (isHost) return; // host doesn't react to its own updates
+      var state = snap.val();
+      if (state) applyPlayState(state);
+    });
+
+    // Sync video changes
+    roomRef.child('video').on('value', function (snap) {
+      if (isHost) return;
+      var vid = snap.val();
+      if (vid && (!currentVideo || vid.id !== currentVideo.id)) {
+        playVideo(vid);
+      }
+    });
+
+    // Sync queue
+    roomRef.child('queue').on('value', function (snap) {
+      if (isHost) return;
+      var q = snap.val();
+      queue = q || [];
+      renderQueue();
+    });
+
+    // Participant count
+    roomRef.child('participants').on('value', function (snap) {
+      var parts = snap.val() || {};
+      var count = Object.keys(parts).length;
+      var el = document.getElementById('wtParticipantCount');
+      if (el) el.textContent = count + (count === 1 ? ' viewer' : ' viewers');
+    });
+
+    // Chat
+    chatListener = roomRef.child('chat').orderByChild('ts').limitToLast(50).on('child_added', function (snap) {
+      var msg = snap.val();
+      if (msg) appendRoomChat(msg);
+    });
+  }
+
+  function applyPlayState(state) {
+    var videoEl = document.getElementById('wtVideo');
+    if (!videoEl || !currentVideo) return;
+
+    syncPaused = true;
+
+    // Seek if off by more than 2 seconds
+    var serverTime = state.time || 0;
+    var elapsed = (Date.now() - (state.updatedAt || Date.now())) / 1000;
+    var expectedTime = state.playing ? serverTime + elapsed : serverTime;
+
+    if (Math.abs(videoEl.currentTime - expectedTime) > 2) {
+      videoEl.currentTime = expectedTime;
+    }
+
+    if (state.playing && videoEl.paused) {
+      videoEl.play().catch(function () {});
+    } else if (!state.playing && !videoEl.paused) {
+      videoEl.pause();
+    }
+
+    setTimeout(function () { syncPaused = false; }, 500);
+  }
+
+  function syncPlayState() {
+    if (!roomRef || !isHost || syncPaused) return;
+    var videoEl = document.getElementById('wtVideo');
+    if (!videoEl) return;
+
+    roomRef.child('playState').set({
+      playing: !videoEl.paused,
+      time: videoEl.currentTime,
+      updatedAt: Date.now()
+    });
+  }
+
+  // ── Room Chat ──────────────────────────────────────────
+  function sendRoomChat(text) {
+    if (!roomRef || !text.trim()) return;
+    roomRef.child('chat').push({
+      uid: myUid(),
+      name: window.currentUsername || 'User',
+      text: text.trim().substring(0, 300),
+      ts: firebase.database.ServerValue.TIMESTAMP
+    });
+  }
+
+  function appendRoomChat(msg) {
+    var container = document.getElementById('wtRoomChatMessages');
+    if (!container) return;
+    var div = document.createElement('div');
+    div.className = 'wt-chat-msg' + (msg.uid === myUid() ? ' wt-chat-mine' : '');
+    div.innerHTML = '<span class="wt-chat-name">' + escapeHtml(msg.name) + '</span> ' +
+      '<span class="wt-chat-text">' + escapeHtml(msg.text) + '</span>';
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+  }
+
+  // ── Room UI Updates ────────────────────────────────────
+  function updateRoomUI() {
+    var roomPanel = document.getElementById('wtRoomPanel');
+    var createBtn = document.getElementById('wtCreateRoom');
+    var joinBtn = document.getElementById('wtJoinRoom');
+    var leaveBtn = document.getElementById('wtLeaveRoom');
+    var roomCode = document.getElementById('wtRoomCode');
+    var hostBadge = document.getElementById('wtHostBadge');
+    var copyBtn = document.getElementById('wtCopyCode');
+
+    if (currentRoomId) {
+      if (roomPanel) roomPanel.classList.remove('hidden');
+      if (createBtn) createBtn.classList.add('hidden');
+      if (joinBtn) joinBtn.classList.add('hidden');
+      if (leaveBtn) leaveBtn.classList.remove('hidden');
+      if (roomCode) { roomCode.textContent = currentRoomId; roomCode.classList.remove('hidden'); }
+      if (copyBtn) copyBtn.classList.remove('hidden');
+      if (hostBadge) hostBadge.classList.toggle('hidden', !isHost);
+    } else {
+      if (roomPanel) roomPanel.classList.add('hidden');
+      if (createBtn) createBtn.classList.remove('hidden');
+      if (joinBtn) joinBtn.classList.remove('hidden');
+      if (leaveBtn) leaveBtn.classList.add('hidden');
+      if (roomCode) roomCode.classList.add('hidden');
+      if (copyBtn) copyBtn.classList.add('hidden');
+      if (hostBadge) hostBadge.classList.add('hidden');
+    }
+  }
+
+  // ── Init (called when watch page is shown) ─────────────
+  function initWatchPage() {
+    // Fetch server URL in background
+    fetchServerUrl();
+
+    // Wire search
+    var searchInput = document.getElementById('wtSearchInput');
+    if (searchInput && !searchInput._wired) {
+      searchInput._wired = true;
+      searchInput.addEventListener('input', function () {
+        clearTimeout(searchTimeout);
+        var q = searchInput.value.trim();
+        if (q.length < 2) return;
+        searchTimeout = setTimeout(function () {
+          var loading = document.getElementById('wtSearchResults');
+          if (loading) loading.innerHTML = '<p class="text-slate-400 text-sm text-center py-4">Searching...</p>';
+          searchVideos(q).then(renderSearchResults);
+        }, 400);
+      });
+      searchInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          clearTimeout(searchTimeout);
+          var q = searchInput.value.trim();
+          if (!q) return;
+          var loading = document.getElementById('wtSearchResults');
+          if (loading) loading.innerHTML = '<p class="text-slate-400 text-sm text-center py-4">Searching...</p>';
+          searchVideos(q).then(renderSearchResults);
+        }
+      });
+    }
+
+    // Wire video events for host sync
+    var videoEl = document.getElementById('wtVideo');
+    if (videoEl && !videoEl._wired) {
+      videoEl._wired = true;
+      videoEl.addEventListener('play', function () { if (isHost) syncPlayState(); });
+      videoEl.addEventListener('pause', function () { if (isHost) syncPlayState(); });
+      videoEl.addEventListener('seeked', function () {
+        if (isHost) {
+          clearTimeout(seekDebounce);
+          seekDebounce = setTimeout(syncPlayState, 300);
+        }
+      });
+      videoEl.addEventListener('ended', function () {
+        playNext();
+      });
+    }
+
+    // Wire room buttons
+    var createBtn = document.getElementById('wtCreateRoom');
+    if (createBtn && !createBtn._wired) {
+      createBtn._wired = true;
+      createBtn.addEventListener('click', createRoom);
+    }
+    var joinBtn = document.getElementById('wtJoinRoom');
+    if (joinBtn && !joinBtn._wired) {
+      joinBtn._wired = true;
+      joinBtn.addEventListener('click', function () {
+        var code = prompt('Enter room code:');
+        if (code && code.trim()) joinRoom(code.trim());
+      });
+    }
+    var leaveBtn = document.getElementById('wtLeaveRoom');
+    if (leaveBtn && !leaveBtn._wired) {
+      leaveBtn._wired = true;
+      leaveBtn.addEventListener('click', leaveRoom);
+    }
+
+    // Wire room chat
+    var chatForm = document.getElementById('wtRoomChatForm');
+    if (chatForm && !chatForm._wired) {
+      chatForm._wired = true;
+      chatForm.addEventListener('submit', function (e) {
+        e.preventDefault();
+        var input = document.getElementById('wtRoomChatInput');
+        if (input && input.value.trim()) {
+          sendRoomChat(input.value);
+          input.value = '';
+        }
+      });
+    }
+
+    // Wire copy room code
+    var copyBtn = document.getElementById('wtCopyCode');
+    if (copyBtn && !copyBtn._wired) {
+      copyBtn._wired = true;
+      copyBtn.addEventListener('click', function () {
+        var code = document.getElementById('wtRoomCode');
+        if (code && code.textContent) {
+          navigator.clipboard.writeText(code.textContent).then(function () {
+            if (typeof showToast === 'function') showToast('Room code copied!', 'info');
+          }).catch(function () {});
+        }
+      });
+    }
+
+    renderQueue();
+    updateRoomUI();
+  }
+
+  // ── Exports ────────────────────────────────────────────
+  window.ChatraWatch = {
+    init: initWatchPage,
+    createRoom: createRoom,
+    joinRoom: joinRoom,
+    leaveRoom: leaveRoom,
+    searchVideos: searchVideos,
+    playVideo: playVideo
+  };
+
+})();
