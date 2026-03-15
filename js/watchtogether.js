@@ -408,7 +408,7 @@
 
   // ── Watch Together Rooms (Firebase sync) ───────────────
   function generateRoomId() {
-    return 'wt_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 6);
+    return String(Math.floor(1000 + Math.random() * 9000));
   }
 
   async function createRoom() {
@@ -558,9 +558,11 @@
     // Participant count
     roomRef.child('participants').on('value', function (snap) {
       var parts = snap.val() || {};
-      var count = Object.keys(parts).length;
+      var uids = Object.keys(parts);
+      var count = uids.length;
       var el = document.getElementById('wtParticipantCount');
       if (el) el.textContent = count + (count === 1 ? ' viewer' : ' viewers');
+      renderParticipantList(parts);
     });
 
     // Chat
@@ -636,23 +638,74 @@
   // ── Room Chat ──────────────────────────────────────────
   function sendRoomChat(text) {
     if (!roomRef || !text.trim()) return;
+    var uid = myUid();
     roomRef.child('chat').push({
-      uid: myUid(),
+      uid: uid,
       name: window.currentUsername || 'User',
       text: text.trim().substring(0, 300),
       ts: firebase.database.ServerValue.TIMESTAMP
     });
   }
 
+  function fetchProfilePicUrl(uid) {
+    return firebase.database().ref('users/' + uid + '/profilePic').once('value').then(function (s) {
+      return s.val() || null;
+    }).catch(function () { return null; });
+  }
+
+  function renderParticipantList(parts) {
+    var container = document.getElementById('wtParticipantList');
+    if (!container) return;
+    var label = container.querySelector('p');
+    container.innerHTML = '';
+    if (label) container.appendChild(label);
+    else {
+      var p = document.createElement('p');
+      p.className = 'text-[10px] text-slate-500 uppercase tracking-wider font-semibold';
+      p.textContent = 'Participants';
+      container.appendChild(p);
+    }
+
+    var uids = Object.keys(parts);
+    uids.forEach(function (uid) {
+      var info = parts[uid];
+      var name = (info && info.name) || 'User';
+      var initial = name[0].toUpperCase();
+      var row = document.createElement('div');
+      row.className = 'wt-participant-row';
+      row.innerHTML = '<div class="wt-participant-avatar"><span>' + escapeHtml(initial) + '</span></div>' +
+        '<span class="wt-participant-name">' + escapeHtml(name) + '</span>';
+      container.appendChild(row);
+      fetchProfilePicUrl(uid).then(function (url) {
+        if (url) {
+          var av = row.querySelector('.wt-participant-avatar');
+          if (av) av.innerHTML = '<img src="' + escapeHtml(url) + '" class="wt-participant-img" onerror="this.parentElement.innerHTML=\'<span>' + escapeHtml(initial) + '</span>\'" />';
+        }
+      });
+    });
+  }
+
   function appendRoomChat(msg) {
     var container = document.getElementById('wtRoomChatMessages');
     if (!container) return;
+    var isMine = msg.uid === myUid();
+    var name = (msg.name || 'User');
+    var initial = name[0].toUpperCase();
     var div = document.createElement('div');
-    div.className = 'wt-chat-msg' + (msg.uid === myUid() ? ' wt-chat-mine' : '');
-    div.innerHTML = '<span class="wt-chat-name">' + escapeHtml(msg.name) + '</span> ' +
-      '<span class="wt-chat-text">' + escapeHtml(msg.text) + '</span>';
+    div.className = 'wt-chat-msg' + (isMine ? ' wt-chat-mine' : '');
+    div.innerHTML = '<div class="wt-chat-avatar" id="wtChatAv_' + (msg.ts || '') + '"><span>' + escapeHtml(initial) + '</span></div>' +
+      '<div class="wt-chat-bubble"><span class="wt-chat-name">' + escapeHtml(name) + '</span>' +
+      '<span class="wt-chat-text">' + escapeHtml(msg.text) + '</span></div>';
     container.appendChild(div);
     container.scrollTop = container.scrollHeight;
+    if (msg.uid) {
+      fetchProfilePicUrl(msg.uid).then(function (url) {
+        if (url) {
+          var av = div.querySelector('.wt-chat-avatar');
+          if (av) av.innerHTML = '<img src="' + escapeHtml(url) + '" class="wt-chat-avatar-img" onerror="this.parentElement.innerHTML=\'<span>' + escapeHtml(initial) + '</span>\'" />';
+        }
+      });
+    }
   }
 
   // ── Room UI Updates ────────────────────────────────────

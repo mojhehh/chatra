@@ -1159,3 +1159,66 @@
     bottom: calc(88px + env(safe-area-inset-bottom, 0px));
   }
 }
+
+/* ── Audio Call Layout ─────────────────────────────────── */
+.vc-audio-display {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: radial-gradient(ellipse at center, rgba(56, 189, 248, 0.06) 0%, transparent 70%);
+}
+
+.vc-audio-display.hidden { display: none; }
+
+.vc-audio-avatar {
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 56px;
+  font-weight: 700;
+  color: white;
+  overflow: hidden;
+  transition: box-shadow 0.2s ease;
+  border: 4px solid transparent;
+}
+
+.vc-audio-avatar.vc-speaking {
+  box-shadow: 0 0 0 4px #38bdf8, 0 0 24px rgba(56, 189, 248, 0.5) !important;
+  border-color: #38bdf8;
+}
+
+.vc-audio-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+
+.vc-audio-name {
+  font-size: 22px;
+  font-weight: 600;
+  color: #f1f5f9;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.vc-audio-label {
+  font-size: 14px;
+  color: #64748b;
+  margin-top: -4px;
+}
+
+.vc-audio-only .videocall-local,
+.vc-audio-only .vc-local-cam-off {
+  display: none;
+}

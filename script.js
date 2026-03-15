@@ -4676,6 +4676,21 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
           };
         }
 
+        const acBtn = document.getElementById('dmPageAudioCallBtn');
+        if (acBtn) {
+          acBtn.classList.remove('hidden');
+          acBtn.onclick = async function() {
+            if (window.ChatraVideoCall && otherUid) {
+              const privCheck = await checkCallPrivacy(otherUid);
+              if (!privCheck.allowed) {
+                showToast(privCheck.reason, 'error');
+                return;
+              }
+              window.ChatraVideoCall.startCall(otherUid, otherUsername || 'Unknown', true);
+            }
+          };
+        }
+
         
         try {
           const now = Date.now();
@@ -9055,6 +9070,21 @@ Be helpful, remember context, and maintain conversation continuity. You're frien
                 return;
               }
               window.ChatraVideoCall.startCall(targetUid, resolvedUsername || 'Unknown');
+            }
+          };
+        }
+
+        const acBtn2 = document.getElementById('dmAudioCallBtn');
+        if (acBtn2) {
+          acBtn2.classList.remove('hidden');
+          acBtn2.onclick = async function() {
+            if (window.ChatraVideoCall && targetUid) {
+              const privCheck = await checkCallPrivacy(targetUid);
+              if (!privCheck.allowed) {
+                showToast(privCheck.reason, 'error');
+                return;
+              }
+              window.ChatraVideoCall.startCall(targetUid, resolvedUsername || 'Unknown', true);
             }
           };
         }

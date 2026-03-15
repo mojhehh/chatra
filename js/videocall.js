@@ -1,4 +1,4 @@
-// Chatra Video Calling — WebRTC + Firebase Signaling
+// Chatra Video & Audio Calling — WebRTC + Firebase Signaling
 // Targets 1080p 60fps, iPad/Safari compatible
 
 (function () {
@@ -20,6 +20,7 @@
   let isCaller = false;
   let camMuted = false;
   let micMuted = false;
+  let audioOnly = false;      // true = audio call (no camera)
   let usingFrontCam = true;
   let selectedVideoDeviceId = null; // null = default
   let selectedAudioDeviceId = null; // null = default
@@ -293,7 +294,6 @@
     if (who === 'local') {
       const el = document.getElementById('vcLocalVideo');
       if (el) el.classList.toggle('vc-speaking', speaking);
-      // Also highlight camera-off overlay if cam is off
       const coff = document.getElementById('vcLocalCamOff');
       if (coff) coff.classList.toggle('vc-speaking', speaking);
     } else {
@@ -301,6 +301,8 @@
       if (el) el.classList.toggle('vc-speaking', speaking);
       const coff = document.getElementById('vcRemoteCamOff');
       if (coff) coff.classList.toggle('vc-speaking', speaking);
+      const audioAv = document.getElementById('vcAudioAvatar');
+      if (audioAv) audioAv.classList.toggle('vc-speaking', speaking);
     }
   }
 
@@ -385,17 +387,24 @@
     const noiseSup = localStorage.getItem('chatra_pref_callNoiseSuppressionToggle') !== 'false';
     const autoGain = localStorage.getItem('chatra_pref_callAutoGainToggle') !== 'false';
 
-    const videoConstraint = selectedVideoDeviceId
-      ? { deviceId: { exact: selectedVideoDeviceId }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 60 } }
-      : getVideoConstraints();
     const audioConstraint = selectedAudioDeviceId
       ? { deviceId: { exact: selectedAudioDeviceId }, echoCancellation: echoCancel, noiseSuppression: noiseSup, autoGainControl: autoGain }
       : { echoCancellation: echoCancel, noiseSuppression: noiseSup, autoGainControl: autoGain };
-
-    const constraints = { video: videoConstraint, audio: audioConstraint };
     const fbAudio = selectedAudioDeviceId
       ? { deviceId: { exact: selectedAudioDeviceId } }
       : true;
+
+    // Audio-only mode: skip camera entirely
+    if (audioOnly) {
+      localStream = await navigator.mediaDevices.getUserMedia({ video: false, audio: audioConstraint });
+      return localStream;
+    }
+
+    const videoConstraint = selectedVideoDeviceId
+      ? { deviceId: { exact: selectedVideoDeviceId }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 60 } }
+      : getVideoConstraints();
+
+    const constraints = { video: videoConstraint, audio: audioConstraint };
 
     // Progressive fallback chain for browser compatibility (Edge, Safari, etc.)
     const fallbacks = [
@@ -443,8 +452,7 @@
       localStream.getTracks().forEach(track => {
         pc.addTrack(track, localStream);
       });
-      // If audio-only (camera failed), add a recvonly video transceiver so we can still receive video
-      if (localStream.getVideoTracks().length === 0) {
+      if (localStream.getVideoTracks().length === 0 && !audioOnly) {
         pc.addTransceiver('video', { direction: 'recvonly' });
       }
     } else {
@@ -539,6 +547,10 @@
         }
       }
       if (waitingEl) waitingEl.classList.add('hidden');
+      if (audioOnly) {
+        const ad = document.getElementById('vcAudioDisplay');
+        if (ad) ad.classList.remove('hidden');
+      }
       if (!callStartTime) {
         callStartTime = Date.now();
         startTimer();
@@ -556,6 +568,10 @@
         }
         const waitEl = document.getElementById('vcWaiting');
         if (waitEl) waitEl.classList.add('hidden');
+        if (audioOnly) {
+          const ad = document.getElementById('vcAudioDisplay');
+          if (ad) ad.classList.remove('hidden');
+        }
       }
 
       if (state === 'disconnected') {
@@ -564,6 +580,10 @@
           waitEl.classList.remove('hidden');
           const p = waitEl.querySelector('p');
           if (p) p.textContent = 'Reconnecting...';
+        }
+        if (audioOnly) {
+          const ad = document.getElementById('vcAudioDisplay');
+          if (ad) ad.classList.add('hidden');
         }
         if (!disconnectTimer) {
           disconnectTimer = setTimeout(() => {
@@ -984,7 +1004,7 @@
   // ── Calling Flow ───────────────────────────────────────
 
   // Start an outgoing call
-  async function startCall(peerUid, peerUsername) {
+  async function startCall(peerUid, peerUsername, isAudioOnly) {
     if (peerConnection) {
       if (typeof showToast === 'function') showToast('Already in a call', 'error');
       return;
@@ -995,6 +1015,7 @@
     currentPeerUid = peerUid;
     currentPeerName = peerUsername;
     isCaller = true;
+    audioOnly = !!isAudioOnly;
 
     enterCallPerformanceMode();
     showCallUI(peerUsername, true);
@@ -1047,6 +1068,7 @@
         calleeUid: peerUid,
         callerName: window.currentUsername || 'Unknown',
         calleeName: peerUsername,
+        callMode: audioOnly ? 'audio' : 'video',
         offer: { type: offer.type, sdp: offer.sdp },
         status: 'ringing',
         createdAt: firebase.database.ServerValue.TIMESTAMP
@@ -1057,6 +1079,7 @@
         callId: callId,
         callerUid: uid,
         callerName: window.currentUsername || 'Unknown',
+        callMode: audioOnly ? 'audio' : 'video',
         type: 'incoming',
         timestamp: firebase.database.ServerValue.TIMESTAMP
       });
@@ -1121,6 +1144,7 @@
                   peerName: currentPeerName || 'Unknown',
                   type: 'outgoing',
                   callType: 'dm',
+                  callMode: audioOnly ? 'audio' : 'video',
                   startedAt: Date.now(),
                   endedAt: Date.now(),
                   duration: 0
@@ -1145,7 +1169,7 @@
   }
 
   // Answer an incoming call
-  async function answerCall(callId, callerUid, callerName) {
+  async function answerCall(callId, callerUid, callerName, isAudioOnly) {
     if (peerConnection) {
       if (typeof showToast === 'function') showToast('Already in a call', 'error');
       return;
@@ -1155,6 +1179,7 @@
     currentPeerUid = callerUid;
     currentPeerName = callerName;
     isCaller = false;
+    audioOnly = !!isAudioOnly;
 
     hideIncomingUI();
     enterCallPerformanceMode();
@@ -1268,88 +1293,180 @@
     }
   }
 
+  async function convertToVideoCall() {
+    if (!audioOnly || !peerConnection) return;
+    try {
+      const constraints = { video: selectedVideoDeviceId ? { deviceId: { exact: selectedVideoDeviceId } } : true, audio: false };
+      const vidStream = await navigator.mediaDevices.getUserMedia(constraints);
+      const videoTrack = vidStream.getVideoTracks()[0];
+      if (!videoTrack) {
+        if (typeof showToast === 'function') showToast('Camera not available', 'error');
+        return;
+      }
+      if (localStream) localStream.addTrack(videoTrack);
+      else localStream = vidStream;
+      const sender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
+      if (sender) {
+        await sender.replaceTrack(videoTrack);
+      } else {
+        peerConnection.addTrack(videoTrack, localStream);
+      }
+      audioOnly = false;
+      if (callRef) callRef.update({ callMode: 'video' }).catch(() => {});
+      const overlay = document.getElementById('vcOverlay');
+      if (overlay) overlay.classList.remove('vc-audio-only');
+      const audioDisplay = document.getElementById('vcAudioDisplay');
+      const waiting = document.getElementById('vcWaiting');
+      if (audioDisplay) audioDisplay.remove();
+      if (waiting) waiting.remove();
+      const vids = document.querySelector('.videocall-videos');
+      if (vids) {
+        vids.querySelectorAll('video, .vc-cam-off-overlay, .vc-local-cam-off').forEach(el => el.remove());
+        const safeName = escapeHtml(truncName(currentPeerName || '?', 20));
+        const initial = escapeHtml((currentPeerName || '?')[0].toUpperCase());
+        vids.insertAdjacentHTML('beforeend', `
+          <video id="vcRemoteVideo" class="videocall-remote hidden" autoplay playsinline webkit-playsinline></video>
+          <div id="vcRemoteCamOff" class="vc-cam-off-overlay">
+            <div id="vcRemoteCamAvatar" class="vc-cam-off-avatar"><span>${initial}</span></div>
+            <p id="vcRemoteCamName" class="vc-cam-off-name">${safeName}</p>
+          </div>
+          <video id="vcLocalVideo" class="videocall-local" autoplay playsinline webkit-playsinline muted></video>
+          <div id="vcLocalCamOff" class="vc-local-cam-off hidden">
+            <div id="vcLocalCamAvatar" class="vc-cam-off-avatar vc-cam-off-avatar-sm"><span id="vcLocalInitial"></span></div>
+            <p id="vcLocalCamName" class="vc-cam-off-name-sm"></p>
+          </div>
+        `);
+        if (remoteStream) {
+          const rv = document.getElementById('vcRemoteVideo');
+          if (rv) { rv.srcObject = remoteStream; rv.classList.remove('hidden'); }
+          const rcOff = document.getElementById('vcRemoteCamOff');
+          if (rcOff) rcOff.classList.add('hidden');
+        }
+        if (currentPeerUid) {
+          fetchProfilePic(currentPeerUid).then((url) => {
+            if (url) {
+              const camAv = document.getElementById('vcRemoteCamAvatar');
+              if (camAv) camAv.innerHTML = '<img src="' + escapeHtml(url) + '" class="vc-cam-off-img" onerror="this.parentElement.innerHTML=\'<span>' + initial + '</span>\'" />';
+            }
+          });
+        }
+        const localVideo = document.getElementById('vcLocalVideo');
+        if (localVideo && localStream) { localVideo.srcObject = localStream; localVideo.play().catch(() => {}); }
+        const myName = window.currentUsername || 'You';
+        const myInitial = myName[0].toUpperCase();
+        const lcn = document.getElementById('vcLocalCamName');
+        if (lcn) lcn.textContent = truncName(myName, 14);
+        const lci = document.getElementById('vcLocalInitial');
+        if (lci) lci.textContent = myInitial;
+      }
+      const convertBtn = document.getElementById('vcConvertVideo');
+      if (convertBtn) {
+        const newBtn = document.createElement('button');
+        newBtn.id = 'vcToggleCam';
+        newBtn.className = 'vc-btn vc-btn-toggle';
+        newBtn.title = 'Toggle camera';
+        newBtn.innerHTML = '<svg viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>';
+        newBtn.addEventListener('click', toggleCam);
+        convertBtn.replaceWith(newBtn);
+      }
+      const endBtn = document.getElementById('vcEndCall');
+      if (endBtn && !document.getElementById('vcFlipCam')) {
+        const flipBtn = document.createElement('button');
+        flipBtn.id = 'vcFlipCam';
+        flipBtn.className = 'vc-btn vc-btn-flip';
+        flipBtn.title = 'Flip camera';
+        flipBtn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M20 5h-3.17L15 3H9L7.17 5H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2z"/><circle cx="12" cy="13" r="4"/><path d="M16 9l2-2m0 0l-2-2m2 2h-4" stroke="white" fill="none" stroke-width="1.5"/></svg>';
+        flipBtn.addEventListener('click', flipCamera);
+        endBtn.after(flipBtn);
+      }
+      startVideoHealthCheck();
+    } catch (e) {
+      console.warn('[VideoCall] Convert to video failed:', e);
+      if (typeof showToast === 'function') showToast('Could not switch to video: ' + (e.message || 'Camera error'), 'error');
+    }
+  }
+
   // End current call
   function endCall() {
-    // Guard against double calls
     if (endCall._running) return;
     endCall._running = true;
+    try {
+      stopTimer();
+      stopVideoHealthCheck();
+      stopStatsMonitor();
+      stopSpeakingDetection();
 
-    stopTimer();
-    stopVideoHealthCheck();
-    stopStatsMonitor();
-    stopSpeakingDetection();
+      if (disconnectTimer) {
+        clearTimeout(disconnectTimer);
+        disconnectTimer = null;
+      }
 
-    if (disconnectTimer) {
-      clearTimeout(disconnectTimer);
-      disconnectTimer = null;
+      if (playRetryTimer) {
+        clearInterval(playRetryTimer);
+        playRetryTimer = null;
+      }
+
+      pendingCandidates = [];
+      remoteStream = null;
+      iceRestartAttempts = 0;
+      stopCallChat();
+
+      if (callRef) {
+        callRef.update({ status: 'ended' }).catch(() => {});
+        callRef.child('answer').off();
+        callRef.child('offer').off();
+        callRef.child('callerCandidates').off();
+        callRef.child('calleeCandidates').off();
+        callRef.child('status').off();
+
+        const cRef = callRef;
+        setTimeout(() => { cRef.remove().catch(() => {}); }, 5000);
+        callRef = null;
+      }
+
+      if (peerConnection) {
+        peerConnection.close();
+        peerConnection = null;
+      }
+
+      stopMedia();
+
+      const uid = myUid();
+      if (uid && currentPeerUid && callStartTime > 0) {
+        const duration = Math.floor((Date.now() - callStartTime) / 1000);
+        logCallHistory(uid, {
+          peerUid: currentPeerUid,
+          peerName: currentPeerName || 'Unknown',
+          type: isCaller ? 'outgoing' : 'incoming',
+          callType: 'dm',
+          callMode: audioOnly ? 'audio' : 'video',
+          startedAt: callStartTime,
+          endedAt: Date.now(),
+          duration: duration
+        });
+      }
+
+      if (uid) getDb().ref('callSignals/' + uid).remove().catch(() => {});
+      if (currentPeerUid) getDb().ref('callSignals/' + currentPeerUid).remove().catch(() => {});
+
+      currentCallId = null;
+      currentPeerUid = null;
+      currentPeerName = null;
+      isCaller = false;
+      camMuted = false;
+      micMuted = false;
+      audioOnly = false;
+      callStartTime = 0;
+      selectedVideoDeviceId = null;
+      selectedAudioDeviceId = null;
+      devicePickerOpen = false;
+
+      hideCallUI();
+      hideIncomingUI();
+      exitCallPerformanceMode();
+    } finally {
+      endCall._running = false;
     }
-
-    if (playRetryTimer) {
-      clearInterval(playRetryTimer);
-      playRetryTimer = null;
-    }
-
-    pendingCandidates = [];
-    remoteStream = null;
-    iceRestartAttempts = 0;
-    stopCallChat();
-
-    if (callRef) {
-      callRef.update({ status: 'ended' }).catch(() => {});
-      callRef.child('answer').off();
-      callRef.child('offer').off();
-      callRef.child('callerCandidates').off();
-      callRef.child('calleeCandidates').off();
-      callRef.child('status').off();
-
-      // Clean up call data after a delay
-      const cRef = callRef;
-      setTimeout(() => { cRef.remove().catch(() => {}); }, 5000);
-      callRef = null;
-    }
-
-    if (peerConnection) {
-      peerConnection.close();
-      peerConnection = null;
-    }
-
-    stopMedia();
-
-    // Log call to history before clearing state
-    const uid = myUid();
-    if (uid && currentPeerUid && callStartTime > 0) {
-      const duration = Math.floor((Date.now() - callStartTime) / 1000);
-      logCallHistory(uid, {
-        peerUid: currentPeerUid,
-        peerName: currentPeerName || 'Unknown',
-        type: isCaller ? 'outgoing' : 'incoming',
-        callType: 'dm',
-        startedAt: callStartTime,
-        endedAt: Date.now(),
-        duration: duration
-      });
-    }
-
-    // Clear signals — both our own and the peer's
-    if (uid) getDb().ref('callSignals/' + uid).remove().catch(() => {});
-    if (currentPeerUid) getDb().ref('callSignals/' + currentPeerUid).remove().catch(() => {});
-
-    currentCallId = null;
-    currentPeerUid = null;
-    currentPeerName = null;
-    isCaller = false;
-    camMuted = false;
-    micMuted = false;
-    callStartTime = 0;
-    selectedVideoDeviceId = null;
-    selectedAudioDeviceId = null;
-    // Keep selectedOutputDeviceId across calls — user preference
-    devicePickerOpen = false;
-
-    hideCallUI();
-    hideIncomingUI();
-    exitCallPerformanceMode();
-    endCall._running = false;
   }
 
   // ── Incoming Call Listener ─────────────────────────────
@@ -1384,6 +1501,7 @@
             peerName: data.callerName || 'Unknown',
             type: 'missed',
             callType: 'dm',
+            callMode: data.callMode || 'video',
             startedAt: Date.now(),
             endedAt: Date.now(),
             duration: 0
@@ -1401,6 +1519,7 @@
           peerName: data.callerName || 'Unknown',
           type: 'missed',
           callType: 'dm',
+          callMode: data.callMode || 'video',
           startedAt: Date.now(),
           endedAt: Date.now(),
           duration: 0
@@ -1411,7 +1530,7 @@
         return;
       }
 
-      showIncomingUI(data.callId, data.callerUid, data.callerName);
+      showIncomingUI(data.callId, data.callerUid, data.callerName, data.callMode || 'video');
     });
   }
 
@@ -1425,7 +1544,6 @@
   // ── UI Builders ────────────────────────────────────────
 
   function showCallUI(peerName, isOutgoing) {
-    // Remove existing overlay just in case
     let overlay = document.getElementById('vcOverlay');
     if (overlay) overlay.remove();
 
@@ -1434,13 +1552,22 @@
 
     overlay = document.createElement('div');
     overlay.id = 'vcOverlay';
-    overlay.className = 'videocall-overlay';
-    overlay.innerHTML = `
-      <div class="videocall-status">
-        <span class="vc-peer-name">${safeName}</span>
-        <span id="vcTimer" class="vc-timer">00:00</span>
-      </div>
-      <div class="videocall-videos">
+    overlay.className = 'videocall-overlay' + (audioOnly ? ' vc-audio-only' : '');
+
+    const videoSection = audioOnly ? `
+        <div id="vcWaiting" class="videocall-waiting">
+          <div class="pulse-ring">
+            <div id="vcRingAvatar" class="vc-ring-avatar"><span>${initial}</span></div>
+          </div>
+          <p class="vc-ring-name">${safeName}</p>
+          <p style="font-size:14px;color:#94a3b8;">${isOutgoing ? 'Calling...' : 'Connecting...'}</p>
+        </div>
+        <div id="vcAudioDisplay" class="vc-audio-display hidden">
+          <div id="vcAudioAvatar" class="vc-audio-avatar"><span>${initial}</span></div>
+          <p class="vc-audio-name">${safeName}</p>
+          <p class="vc-audio-label">Audio Call</p>
+        </div>
+    ` : `
         <div id="vcWaiting" class="videocall-waiting">
           <div class="pulse-ring">
             <div id="vcRingAvatar" class="vc-ring-avatar"><span>${initial}</span></div>
@@ -1458,21 +1585,42 @@
           <div id="vcLocalCamAvatar" class="vc-cam-off-avatar vc-cam-off-avatar-sm"><span id="vcLocalInitial"></span></div>
           <p id="vcLocalCamName" class="vc-cam-off-name-sm"></p>
         </div>
+    `;
+
+    const camButtons = audioOnly ? `
+        <button id="vcConvertVideo" class="vc-btn vc-btn-toggle" title="Switch to video call">
+          <svg viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+        </button>
+    ` : `
+        <button id="vcToggleCam" class="vc-btn vc-btn-toggle" title="Toggle camera">
+          <svg viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+        </button>
+    `;
+
+    const flipBtn = audioOnly ? '' : `
+        <button id="vcFlipCam" class="vc-btn vc-btn-flip" title="Flip camera">
+          <svg viewBox="0 0 24 24"><path d="M20 5h-3.17L15 3H9L7.17 5H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2z"/><circle cx="12" cy="13" r="4"/><path d="M16 9l2-2m0 0l-2-2m2 2h-4" stroke="white" fill="none" stroke-width="1.5"/></svg>
+        </button>
+    `;
+
+    overlay.innerHTML = `
+      <div class="videocall-status">
+        <span class="vc-peer-name">${safeName}</span>
+        <span id="vcTimer" class="vc-timer">00:00</span>
+      </div>
+      <div class="videocall-videos">
+        ${videoSection}
       </div>
       <div class="videocall-controls">
         <button id="vcToggleMic" class="vc-btn vc-btn-toggle" title="Toggle microphone">
           <svg viewBox="0 0 24 24"><path d="M12 1a4 4 0 0 0-4 4v7a4 4 0 0 0 8 0V5a4 4 0 0 0-4-4z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
         </button>
-        <button id="vcToggleCam" class="vc-btn vc-btn-toggle" title="Toggle camera">
-          <svg viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
-        </button>
+        ${camButtons}
         <button id="vcEndCall" class="vc-btn vc-btn-end" title="End call">
           <svg viewBox="0 0 24 24"><path d="M22.5 12.5c0-1-.8-1.5-1.5-1.5h-3c-.7 0-1.5.7-1.5 1.5v1c-1.2.5-2.5.8-4 .8s-2.8-.3-4-.8v-1C8.5 11.7 7.7 11 7 11H4c-.7 0-1.5.5-1.5 1.5S3.24 16 5 16.5c2 .6 4.5 1 7.5 1s5.5-.4 7.5-1c1.76-.5 2.5-3 2.5-4z" fill="white" stroke="none"/></svg>
         </button>
-        <button id="vcFlipCam" class="vc-btn vc-btn-flip" title="Flip camera">
-          <svg viewBox="0 0 24 24"><path d="M20 5h-3.17L15 3H9L7.17 5H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2z"/><circle cx="12" cy="13" r="4"/><path d="M16 9l2-2m0 0l-2-2m2 2h-4" stroke="white" fill="none" stroke-width="1.5"/></svg>
-        </button>
-        <button id="vcDevicePickerBtn" class="vc-btn vc-btn-toggle" title="Switch camera or mic">
+        ${flipBtn}
+        <button id="vcDevicePickerBtn" class="vc-btn vc-btn-toggle" title="Switch ${audioOnly ? 'mic' : 'camera or mic'}">
           <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
         </button>
         <button id="vcChatBtn" class="vc-btn vc-btn-toggle" title="In-call chat">
@@ -1496,11 +1644,14 @@
 
     document.body.appendChild(overlay);
 
-    // Wire buttons
     document.getElementById('vcToggleMic').addEventListener('click', toggleMic);
-    document.getElementById('vcToggleCam').addEventListener('click', toggleCam);
+    if (audioOnly) {
+      document.getElementById('vcConvertVideo').addEventListener('click', convertToVideoCall);
+    } else {
+      document.getElementById('vcToggleCam').addEventListener('click', toggleCam);
+      document.getElementById('vcFlipCam').addEventListener('click', flipCamera);
+    }
     document.getElementById('vcEndCall').addEventListener('click', () => endCall());
-    document.getElementById('vcFlipCam').addEventListener('click', flipCamera);
     document.getElementById('vcDevicePickerBtn').addEventListener('click', toggleDevicePicker);
     document.getElementById('vcChatBtn').addEventListener('click', toggleCallChat);
     document.getElementById('vcChatClose').addEventListener('click', () => {
@@ -1508,38 +1659,41 @@
     });
     document.getElementById('vcChatForm').addEventListener('submit', sendCallChatMessage);
 
-    // Prevent iOS scroll bounce on overlay (but allow chat panel scroll)
     overlay.addEventListener('touchmove', (e) => {
       if (!e.target.closest('.vc-chat-messages')) e.preventDefault();
     }, { passive: false });
 
-    // Load peer profile pic into ring avatar and cam-off overlay
     if (currentPeerUid) {
       fetchProfilePic(currentPeerUid).then((url) => {
         if (url) {
           const ringAv = document.getElementById('vcRingAvatar');
           if (ringAv) ringAv.innerHTML = '<img src="' + escapeHtml(url) + '" class="vc-ring-avatar-img" onerror="this.parentElement.innerHTML=\'<span>' + initial + '</span>\'" />';
-          const camAv = document.getElementById('vcRemoteCamAvatar');
-          if (camAv) camAv.innerHTML = '<img src="' + escapeHtml(url) + '" class="vc-cam-off-img" onerror="this.parentElement.innerHTML=\'<span>' + initial + '</span>\'" />';
+          if (audioOnly) {
+            const audioAv = document.getElementById('vcAudioAvatar');
+            if (audioAv) audioAv.innerHTML = '<img src="' + escapeHtml(url) + '" class="vc-audio-avatar-img" onerror="this.parentElement.innerHTML=\'<span>' + initial + '</span>\'" />';
+          } else {
+            const camAv = document.getElementById('vcRemoteCamAvatar');
+            if (camAv) camAv.innerHTML = '<img src="' + escapeHtml(url) + '" class="vc-cam-off-img" onerror="this.parentElement.innerHTML=\'<span>' + initial + '</span>\'" />';
+          }
         }
       });
     }
-    // Set local user info for cam-off overlay
-    const myName = window.currentUsername || 'You';
-    const myInitial = myName[0].toUpperCase();
-    const lcn = document.getElementById('vcLocalCamName');
-    if (lcn) lcn.textContent = truncName(myName, 14);
-    const lci = document.getElementById('vcLocalInitial');
-    if (lci) lci.textContent = myInitial;
-    // Load own profile pic
-    const myId = myUid();
-    if (myId) {
-      fetchProfilePic(myId).then((url) => {
-        if (url) {
-          const lcAv = document.getElementById('vcLocalCamAvatar');
-          if (lcAv) lcAv.innerHTML = '<img src="' + escapeHtml(url) + '" class="vc-cam-off-img" onerror="this.parentElement.innerHTML=\'<span>' + escapeHtml(myInitial) + '</span>\'" />';
-        }
-      });
+    if (!audioOnly) {
+      const myName = window.currentUsername || 'You';
+      const myInitial = myName[0].toUpperCase();
+      const lcn = document.getElementById('vcLocalCamName');
+      if (lcn) lcn.textContent = truncName(myName, 14);
+      const lci = document.getElementById('vcLocalInitial');
+      if (lci) lci.textContent = myInitial;
+      const myId = myUid();
+      if (myId) {
+        fetchProfilePic(myId).then((url) => {
+          if (url) {
+            const lcAv = document.getElementById('vcLocalCamAvatar');
+            if (lcAv) lcAv.innerHTML = '<img src="' + escapeHtml(url) + '" class="vc-cam-off-img" onerror="this.parentElement.innerHTML=\'<span>' + escapeHtml(myInitial) + '</span>\'" />';
+          }
+        });
+      }
     }
   }
 
@@ -1575,7 +1729,7 @@
   }
 
   function applyStartPrefs() {
-    if (localStorage.getItem('chatra_pref_callStartCameraToggle') === 'false' && localStream) {
+    if (!audioOnly && localStorage.getItem('chatra_pref_callStartCameraToggle') === 'false' && localStream) {
       localStream.getVideoTracks().forEach(t => { t.enabled = false; });
       camMuted = true;
       const camBtn = document.getElementById('vcToggleCam');
@@ -1593,10 +1747,11 @@
     }
   }
 
-  function showIncomingUI(callId, callerUid, callerName) {
+  function showIncomingUI(callId, callerUid, callerName, callMode) {
     // Remove existing
     hideIncomingUI();
 
+    const isAudio = callMode === 'audio';
     const safeName = escapeHtml(truncName(callerName, 20));
     const initial = escapeHtml((callerName || '?')[0].toUpperCase());
 
@@ -1607,13 +1762,16 @@
       <div class="videocall-incoming-card">
         <div id="vcIncomingAvatar" class="caller-avatar">${initial}</div>
         <div class="caller-name">${safeName}</div>
-        <div class="caller-label">Incoming video call</div>
+        <div class="caller-label">Incoming ${isAudio ? 'audio' : 'video'} call</div>
         <div class="videocall-incoming-actions">
           <button id="vcDeclineBtn" class="vc-decline-btn" title="Decline">
             <svg viewBox="0 0 24 24"><path d="M22.5 12.5c0-1-.8-1.5-1.5-1.5h-3c-.7 0-1.5.7-1.5 1.5v1c-1.2.5-2.5.8-4 .8s-2.8-.3-4-.8v-1C8.5 11.7 7.7 11 7 11H4c-.7 0-1.5.5-1.5 1.5S3.24 16 5 16.5c2 .6 4.5 1 7.5 1s5.5-.4 7.5-1c1.76-.5 2.5-3 2.5-4z" fill="white" stroke="none"/></svg>
           </button>
           <button id="vcAnswerBtn" class="vc-answer-btn" title="Answer">
-            <svg viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+            ${isAudio
+              ? '<svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.79 19.79 0 012.12 4.18 2 2 0 014.11 2h3a2 2 0 012 1.72c.12.96.36 1.9.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.91.34 1.85.58 2.81.7A2 2 0 0122 16.92z"/></svg>'
+              : '<svg viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>'
+            }
           </button>
         </div>
       </div>
@@ -1632,7 +1790,7 @@
     }
 
     document.getElementById('vcDeclineBtn').addEventListener('click', () => declineCall(callId));
-    document.getElementById('vcAnswerBtn').addEventListener('click', () => answerCall(callId, callerUid, callerName));
+    document.getElementById('vcAnswerBtn').addEventListener('click', () => answerCall(callId, callerUid, callerName, isAudio));
 
     // Auto-dismiss after 45 seconds
     setTimeout(() => {
@@ -1789,7 +1947,7 @@
 
     let html = '';
 
-    if (videoDevices.length > 1) {
+    if (videoDevices.length > 1 && !audioOnly) {
       html += '<div class="vc-picker-section"><div class="vc-picker-label">Camera</div>';
       videoDevices.forEach((d, i) => {
         const active = d.deviceId === activeVideoId;

@@ -2975,13 +2975,22 @@
                 <p class="text-xs text-slate-400">Chatting with</p>
                 <p id="dmPageActiveUser" class="text-base text-slate-100 font-semibold">Select a conversation</p>
               </div>
-              <button
-                id="dmPageVideoCallBtn"
-                class="hidden p-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white transition-colors"
-                title="Video Call"
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
-              </button>
+              <div class="flex items-center gap-2">
+                <button
+                  id="dmPageAudioCallBtn"
+                  class="hidden p-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition-colors"
+                  title="Audio Call"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                </button>
+                <button
+                  id="dmPageVideoCallBtn"
+                  class="hidden p-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white transition-colors"
+                  title="Video Call"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+                </button>
+              </div>
               <button
                 id="dmPageBlockBtn"
                 class="hidden text-xs px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white"
@@ -3094,13 +3103,22 @@
                 <p class="text-sm text-slate-400">Chatting with</p>
                 <p id="dmActiveUser" class="text-base text-slate-100 font-semibold">Select a conversation</p>
               </div>
-              <button
-                id="dmVideoCallBtn"
-                class="hidden p-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white transition-colors"
-                title="Video Call"
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
-              </button>
+              <div class="flex items-center gap-2">
+                <button
+                  id="dmAudioCallBtn"
+                  class="hidden p-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition-colors"
+                  title="Audio Call"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                </button>
+                <button
+                  id="dmVideoCallBtn"
+                  class="hidden p-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white transition-colors"
+                  title="Video Call"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+                </button>
+              </div>
               <button
                 id="dmBlockBtn"
                 class="text-xs px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white"
@@ -3348,7 +3366,10 @@
                   </div>
                 </div>
                 <div id="wtRoomPanel" class="hidden flex-1 flex flex-col min-h-0">
-                  <div id="wtRoomChatMessages" class="flex-1 overflow-y-auto p-2 space-y-1 text-xs">
+                  <div id="wtParticipantList" class="px-3 py-2 border-b border-slate-800 space-y-1 max-h-[140px] overflow-y-auto">
+                    <p class="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">Participants</p>
+                  </div>
+                  <div id="wtRoomChatMessages" class="flex-1 overflow-y-auto p-2 space-y-1.5 text-xs">
                   </div>
                   <form id="wtRoomChatForm" class="p-2 border-t border-slate-800 flex gap-2" onsubmit="return false">
                     <input id="wtRoomChatInput" class="flex-1 px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 focus:border-sky-500 outline-none text-xs" placeholder="Chat in room..." maxlength="300" />

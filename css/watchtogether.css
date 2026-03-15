@@ -170,18 +170,87 @@
 
 /* Room chat */
 .wt-chat-msg {
-  padding: 0.25rem 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 3px 0;
+}
+.wt-chat-avatar {
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: white;
+  overflow: hidden;
+  margin-top: 1px;
+}
+.wt-chat-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+.wt-chat-bubble {
+  flex: 1;
+  min-width: 0;
 }
 .wt-chat-name {
   font-weight: 600;
   color: #38bdf8;
   margin-right: 0.25rem;
+  font-size: 11px;
 }
 .wt-chat-text {
   color: #cbd5e1;
+  word-break: break-word;
+}
+.wt-chat-mine .wt-chat-avatar {
+  background: linear-gradient(135deg, #8b5cf6, #a78bfa);
 }
 .wt-chat-mine .wt-chat-name {
   color: #a78bfa;
+}
+
+/* Participant list */
+.wt-participant-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+}
+.wt-participant-avatar {
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: white;
+  overflow: hidden;
+}
+.wt-participant-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+.wt-participant-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: #e2e8f0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Responsive: stack sidebar below on mobile */
