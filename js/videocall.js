@@ -481,8 +481,10 @@
     // Create a single persistent remote stream up front
     if (!remoteStream) remoteStream = new MediaStream();
     const remoteVideo = document.getElementById('vcRemoteVideo');
-    if (remoteVideo) {
-      remoteVideo.srcObject = remoteStream;
+    const remoteAudio = document.getElementById('vcRemoteAudio');
+    const remoteEl = remoteVideo || remoteAudio;
+    if (remoteEl) {
+      remoteEl.srcObject = remoteStream;
     }
 
     // Receive remote tracks
@@ -688,24 +690,23 @@
     stopVideoHealthCheck();
     videoHealthTimer = setInterval(() => {
       const rv = document.getElementById('vcRemoteVideo');
-      if (!rv || !peerConnection) return;
+      const ra = document.getElementById('vcRemoteAudio');
+      const el = rv || ra;
+      if (!el || !peerConnection) return;
 
-      // If video element has srcObject with tracks but is paused, try playing
-      if (rv.srcObject && rv.srcObject.getTracks().length > 0 && rv.paused) {
-        console.log('[VideoCall] Health check: re-playing paused remote video');
-        rv.play().catch(() => {});
+      if (el.srcObject && el.srcObject.getTracks().length > 0 && el.paused) {
+        console.log('[VideoCall] Health check: re-playing paused remote media');
+        el.play().catch(() => {});
       }
 
-      // If remoteStream has tracks but video element lost them, reconnect
-      if (remoteStream && remoteStream.getTracks().length > 0 && (!rv.srcObject || rv.srcObject.getTracks().length === 0)) {
+      if (remoteStream && remoteStream.getTracks().length > 0 && (!el.srcObject || el.srcObject.getTracks().length === 0)) {
         console.log('[VideoCall] Health check: reconnecting remote stream');
-        rv.srcObject = remoteStream;
-        rv.classList.remove('hidden');
-        rv.play().catch(() => {});
+        el.srcObject = remoteStream;
+        if (rv) rv.classList.remove('hidden');
+        el.play().catch(() => {});
       }
 
-      // If connected but remote video still hidden, force show
-      if (peerConnection.iceConnectionState === 'connected' || peerConnection.iceConnectionState === 'completed') {
+      if (rv && (peerConnection.iceConnectionState === 'connected' || peerConnection.iceConnectionState === 'completed')) {
         if (remoteStream && remoteStream.getVideoTracks().length > 0 && rv.classList.contains('hidden')) {
           rv.classList.remove('hidden');
           const waitEl = document.getElementById('vcWaiting');
@@ -1023,9 +1024,9 @@
     enterCallPerformanceMode();
     showCallUI(peerUsername, true);
 
-    // Prime the remote video element for Safari — touch play() in user gesture chain
+    // Prime the remote media element for Safari — touch play() in user gesture chain
     // so later programmatic play() calls are allowed
-    const warmRv = document.getElementById('vcRemoteVideo');
+    const warmRv = document.getElementById('vcRemoteVideo') || document.getElementById('vcRemoteAudio');
     if (warmRv) warmRv.play().catch(() => {});
 
     try {
@@ -1917,10 +1918,10 @@
   // Switch audio output device (speaker/headphones)
   async function switchOutputDevice(deviceId) {
     selectedOutputDeviceId = deviceId;
-    const rv = document.getElementById('vcRemoteVideo');
-    if (rv && typeof rv.setSinkId === 'function') {
+    const el = document.getElementById('vcRemoteVideo') || document.getElementById('vcRemoteAudio');
+    if (el && typeof el.setSinkId === 'function') {
       try {
-        await rv.setSinkId(deviceId);
+        await el.setSinkId(deviceId);
         console.log('[VideoCall] Output device set to', deviceId);
       } catch (err) {
         console.warn('[VideoCall] setSinkId failed', err);
