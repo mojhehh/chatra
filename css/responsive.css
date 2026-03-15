@@ -72,11 +72,21 @@
     -webkit-appearance: menulist !important;
     appearance: menulist !important;
     min-height: 44px;
+    padding-top: 10px !important;
+    padding-bottom: 10px !important;
     font-size: 16px !important; /* prevents iOS zoom on focus */
     position: relative;
     z-index: 5;
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
+    -webkit-user-select: auto !important;
+    user-select: auto !important;
+  }
+
+  /* Prevent transform shifting touch target on selects */
+  select:active {
+    opacity: 1 !important;
+    transform: none !important;
   }
 
   /* Toggle labels need explicit touch handling */
