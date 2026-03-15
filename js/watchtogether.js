@@ -86,6 +86,7 @@
       events: {
         onReady: onYTPlayerReady,
         onStateChange: onYTStateChange,
+        onPlaybackRateChange: onYTRateChange,
         onError: onYTError
       }
     });
@@ -127,6 +128,13 @@
     if (state === YT.PlayerState.ENDED) {
       playNext();
     } else if (isHost && !syncPaused && (state === YT.PlayerState.PLAYING || state === YT.PlayerState.PAUSED)) {
+      clearTimeout(seekDebounce);
+      seekDebounce = setTimeout(syncPlayState, 300);
+    }
+  }
+
+  function onYTRateChange() {
+    if (isHost && !syncPaused) {
       clearTimeout(seekDebounce);
       seekDebounce = setTimeout(syncPlayState, 300);
     }
@@ -178,6 +186,12 @@
       }
     });
     videoEl.addEventListener('ended', function () { playNext(); });
+    videoEl.addEventListener('ratechange', function () {
+      if (isHost) {
+        clearTimeout(seekDebounce);
+        seekDebounce = setTimeout(syncPlayState, 300);
+      }
+    });
     videoEl.addEventListener('canplay', function () {
       if (typeof showToast === 'function') showToast('Video ready!', 'info');
     });
@@ -592,6 +606,9 @@
       } else if (!state.playing && !videoEl.paused) {
         videoEl.pause();
       }
+      if (state.playbackRate && videoEl.playbackRate !== state.playbackRate) {
+        videoEl.playbackRate = state.playbackRate;
+      }
     } else {
       // YouTube player
       if (!ytPlayer || typeof ytPlayer.getCurrentTime !== 'function') { syncPaused = false; return; }
@@ -604,6 +621,10 @@
         ytPlayer.playVideo();
       } else if (!state.playing && playerState === YT.PlayerState.PLAYING) {
         ytPlayer.pauseVideo();
+      }
+      if (state.playbackRate && typeof ytPlayer.setPlaybackRate === 'function') {
+        var curRate = ytPlayer.getPlaybackRate() || 1;
+        if (curRate !== state.playbackRate) ytPlayer.setPlaybackRate(state.playbackRate);
       }
     }
 
@@ -628,9 +649,18 @@
       time = ytPlayer.getCurrentTime() || 0;
     }
 
+    var rate = 1;
+    if (usingServerFallback) {
+      var vEl = document.getElementById('wtServerVideo');
+      if (vEl) rate = vEl.playbackRate || 1;
+    } else if (ytPlayer && typeof ytPlayer.getPlaybackRate === 'function') {
+      rate = ytPlayer.getPlaybackRate() || 1;
+    }
+
     roomRef.child('playState').set({
       playing: playing,
       time: time,
+      playbackRate: rate,
       updatedAt: Date.now()
     });
   }

@@ -489,6 +489,8 @@
     pc.addEventListener('track', (event) => {
       console.log('[VideoCall] track event:', event.track.kind, 'readyState:', event.track.readyState, 'streams:', event.streams ? event.streams.length : 0);
       const rv = document.getElementById('vcRemoteVideo');
+      const ra = document.getElementById('vcRemoteAudio');
+      const mediaEl = rv || ra;
       const waitingEl = document.getElementById('vcWaiting');
 
       // Always add to our single persistent stream
@@ -514,23 +516,24 @@
         if (event.track.kind === 'video') updateRemoteCamOff(false);
         // Safari sometimes mutes then unmutes — re-trigger play
         if (rv && rv.paused) rv.play().catch(() => {});
+        if (ra && ra.paused) ra.play().catch(() => {});
       });
 
       // Hook remote audio for speaking detection
       if (event.track.kind === 'audio') hookRemoteSpeaking();
 
-      if (rv) {
-        if (rv.srcObject !== remoteStream) rv.srcObject = remoteStream;
-        rv.classList.remove('hidden');
+      if (mediaEl) {
+        if (mediaEl.srcObject !== remoteStream) mediaEl.srcObject = remoteStream;
+        if (rv) rv.classList.remove('hidden');
 
         // Set output device if selected
-        if (selectedOutputDeviceId && typeof rv.setSinkId === 'function') {
-          rv.setSinkId(selectedOutputDeviceId).catch(() => {});
+        if (selectedOutputDeviceId && typeof mediaEl.setSinkId === 'function') {
+          mediaEl.setSinkId(selectedOutputDeviceId).catch(() => {});
         }
 
         // Play with retries for Safari autoplay restrictions
         const tryPlay = () => {
-          const p = rv.play();
+          const p = mediaEl.play();
           if (p) p.catch((e) => console.warn('[VideoCall] play() blocked:', e.name));
         };
         tryPlay();
@@ -538,8 +541,8 @@
           let retries = 0;
           playRetryTimer = setInterval(() => {
             retries++;
-            if (rv.paused) tryPlay();
-            if (!rv.paused || retries >= 20) {
+            if (mediaEl.paused) tryPlay();
+            if (!mediaEl.paused || retries >= 20) {
               clearInterval(playRetryTimer);
               playRetryTimer = null;
             }
@@ -1185,8 +1188,8 @@
     enterCallPerformanceMode();
     showCallUI(callerName, false);
 
-    // Prime the remote video element for Safari — touch play() in user gesture chain
-    const warmRv = document.getElementById('vcRemoteVideo');
+    // Prime the remote media element for Safari — touch play() in user gesture chain
+    const warmRv = document.getElementById('vcRemoteVideo') || document.getElementById('vcRemoteAudio');
     if (warmRv) warmRv.play().catch(() => {});
 
     try {
@@ -1321,7 +1324,7 @@
       if (waiting) waiting.remove();
       const vids = document.querySelector('.videocall-videos');
       if (vids) {
-        vids.querySelectorAll('video, .vc-cam-off-overlay, .vc-local-cam-off').forEach(el => el.remove());
+        vids.querySelectorAll('video, audio, .vc-cam-off-overlay, .vc-local-cam-off').forEach(el => el.remove());
         const safeName = escapeHtml(truncName(currentPeerName || '?', 20));
         const initial = escapeHtml((currentPeerName || '?')[0].toUpperCase());
         vids.insertAdjacentHTML('beforeend', `
@@ -1567,6 +1570,7 @@
           <p class="vc-audio-name">${safeName}</p>
           <p class="vc-audio-label">Audio Call</p>
         </div>
+        <audio id="vcRemoteAudio" autoplay playsinline webkit-playsinline></audio>
     ` : `
         <div id="vcWaiting" class="videocall-waiting">
           <div class="pulse-ring">
@@ -1627,6 +1631,9 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
           <span id="vcChatBadge" class="vc-chat-badge hidden">0</span>
         </button>
+        <button id="vcWatchBtn" class="vc-btn vc-btn-toggle" title="Watch Together">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><polygon points="10 8 16 10 10 12" fill="currentColor" stroke="none"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        </button>
         <div id="vcDevicePicker" class="vc-device-picker hidden"></div>
       </div>
       <div id="vcChatPanel" class="vc-chat-panel hidden">
@@ -1658,6 +1665,7 @@
       document.getElementById('vcChatPanel').classList.add('hidden');
     });
     document.getElementById('vcChatForm').addEventListener('submit', sendCallChatMessage);
+    document.getElementById('vcWatchBtn').addEventListener('click', toggleCallMinimize);
 
     overlay.addEventListener('touchmove', (e) => {
       if (!e.target.closest('.vc-chat-messages')) e.preventDefault();
@@ -1700,13 +1708,14 @@
   function hideCallUI() {
     const overlay = document.getElementById('vcOverlay');
     if (overlay) {
-      // Stop any lingering video elements to prevent blank frame artifacts
-      overlay.querySelectorAll('video').forEach(v => {
+      overlay.querySelectorAll('video, audio').forEach(v => {
         v.pause();
         v.srcObject = null;
       });
       overlay.remove();
     }
+    const minBar = document.getElementById('vcMinBar');
+    if (minBar) minBar.remove();
     // Force a repaint so the underlying chat is visible immediately
     document.body.style.display = 'none';
     document.body.offsetHeight; // trigger reflow
@@ -2036,6 +2045,30 @@
     }
   }
 
+  function toggleCallMinimize() {
+    const overlay = document.getElementById('vcOverlay');
+    if (!overlay) return;
+    const isMinimized = overlay.classList.toggle('vc-minimized');
+    if (isMinimized) {
+      let bar = document.getElementById('vcMinBar');
+      if (!bar) {
+        bar = document.createElement('div');
+        bar.id = 'vcMinBar';
+        bar.className = 'vc-minimized-bar';
+        bar.innerHTML = '<span class="vc-min-dot"></span><span id="vcMinTimer" class="vc-min-timer"></span><span class="vc-min-label">' + escapeHtml(truncName(currentPeerName || 'Call', 15)) + '</span><button id="vcMinExpand" class="vc-min-expand" title="Return to call">&#x2197;</button><button id="vcMinEnd" class="vc-min-end" title="End call">&times;</button>';
+        document.body.appendChild(bar);
+        document.getElementById('vcMinExpand').addEventListener('click', toggleCallMinimize);
+        document.getElementById('vcMinEnd').addEventListener('click', () => endCall());
+      }
+      bar.classList.remove('hidden');
+      const navWatch = document.getElementById('navWatch') || document.getElementById('navWatch2');
+      if (navWatch) navWatch.click();
+    } else {
+      const bar = document.getElementById('vcMinBar');
+      if (bar) bar.classList.add('hidden');
+    }
+  }
+
   function updateChatBadge() {
     const badge = document.getElementById('vcChatBadge');
     if (!badge) return;
@@ -2126,6 +2159,8 @@
       const ss = String(elapsed % 60).padStart(2, '0');
       const el = document.getElementById('vcTimer');
       if (el) el.textContent = mm + ':' + ss;
+      const minEl = document.getElementById('vcMinTimer');
+      if (minEl) minEl.textContent = mm + ':' + ss;
     }, 1000);
   }
 
