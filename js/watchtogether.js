@@ -153,16 +153,48 @@
     if (usingServerFallback) return;
     usingServerFallback = true;
 
-    // Destroy any YT player
     if (ytPlayer && typeof ytPlayer.destroy === 'function') {
       try { ytPlayer.destroy(); } catch (e) {}
       ytPlayer = null;
     }
 
-    showLoading('YouTube blocked — loading from server...');
-    if (typeof showToast === 'function') showToast('Loading video from server (may take a moment)...', 'info');
+    showLoading('Preparing video on server...');
+    if (typeof showToast === 'function') showToast('Downloading video on server — this may take a moment...', 'info');
 
     var url = await fetchServerUrl();
+
+    try {
+      await fetch(url + '/api/video/prepare/' + encodeURIComponent(videoId), { method: 'POST' });
+    } catch (e) {
+      console.warn('[Watch] prepare call failed, falling back to direct load');
+    }
+
+    var ready = false;
+    for (var attempt = 0; attempt < 120; attempt++) {
+      await new Promise(function (r) { setTimeout(r, 2000); });
+      try {
+        var resp = await fetch(url + '/api/video/status/' + encodeURIComponent(videoId));
+        var data = await resp.json();
+        if (data.status === 'ready') { ready = true; break; }
+        if (data.status === 'error') {
+          if (typeof showToast === 'function') showToast('Server could not load video', 'error');
+          showLoading('');
+          usingServerFallback = false;
+          return;
+        }
+        showLoading('Downloading video on server... (' + (attempt + 1) + 's)');
+      } catch (e) {
+        break;
+      }
+    }
+
+    if (!ready) {
+      if (typeof showToast === 'function') showToast('Video download timed out', 'error');
+      showLoading('');
+      usingServerFallback = false;
+      return;
+    }
+
     var container = document.getElementById('wtPlayer');
     if (!container) return;
 
@@ -176,7 +208,6 @@
     videoEl.src = url + '/api/video/' + encodeURIComponent(videoId);
     container.appendChild(videoEl);
 
-    // Wire events for room sync
     videoEl.addEventListener('play', function () { if (isHost) syncPlayState(); });
     videoEl.addEventListener('pause', function () { if (isHost) syncPlayState(); });
     videoEl.addEventListener('seeked', function () {
